@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 71d84bb835a2c47748bbabbdbb1d61b5
+timeCreated: 1473942290
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 73777
+  packageName: Legacy Particle Pack
+  packageVersion: 4.0
+  assetPath: Assets/GameElements/UnityTechnologies/ParticlePack/EffectExamples/Goop
+    Effects/Prefabs/BloodSprayEffect.prefab
+  uploadId: 684565

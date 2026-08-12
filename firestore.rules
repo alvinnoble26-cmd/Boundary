@@ -1,0 +1,128 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isLobbyParticipant() {
+      return signedIn()
+        && (resource.data.hostUid == request.auth.uid
+          || resource.data.joinerUid == request.auth.uid);
+    }
+
+    match /lobbies/{lobbyCode} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && lobbyCode.matches('^[0-9]{4}$')
+        && request.resource.data.code == lobbyCode
+        && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.joinerUid == ''
+        && request.resource.data.players == 1
+        && request.resource.data.status == 'waiting'
+        && request.resource.data.serverStatus == 'deploying'
+        && request.resource.data.matchEnded == false
+        && request.resource.data.loserRole == ''
+        && request.resource.data.hostRematchReady == false
+        && request.resource.data.joinerRematchReady == false
+        && request.resource.data.rematchRound == 0;
+
+      allow update: if signedIn()
+        && resource.data.status == 'waiting'
+        && resource.data.players == 1
+        && resource.data.joinerUid == ''
+        && request.resource.data.joinerUid == request.auth.uid
+        && request.resource.data.players == 2
+        && request.resource.data.status == 'full'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['joinerUid', 'players', 'status']);
+
+      allow update: if isLobbyParticipant()
+        && resource.data.matchEnded == false
+        && request.resource.data.matchEnded == true
+        && request.resource.data.loserRole ==
+          (resource.data.hostUid == request.auth.uid ? 'host' : 'joiner')
+        && request.resource.data.hostRematchReady == false
+        && request.resource.data.joinerRematchReady == false
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['matchEnded', 'loserRole', 'endReason', 'endedAt',
+                    'hostRematchReady', 'joinerRematchReady']);
+
+      allow update: if isLobbyParticipant()
+        && resource.data.matchEnded == true
+        && request.time <= resource.data.endedAt + duration.value(1, 'm')
+        && ((resource.data.hostUid == request.auth.uid
+              && request.resource.data.hostRematchReady == true
+              && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['hostRematchReady']))
+          || (resource.data.joinerUid == request.auth.uid
+              && request.resource.data.joinerRematchReady == true
+              && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['joinerRematchReady'])));
+
+      allow update: if signedIn()
+        && resource.data.hostUid == request.auth.uid
+        && resource.data.matchEnded == true
+        && resource.data.hostRematchReady == true
+        && resource.data.joinerRematchReady == true
+        && request.time <= resource.data.endedAt + duration.value(1, 'm')
+        && request.resource.data.matchEnded == false
+        && request.resource.data.loserRole == ''
+        && request.resource.data.hostRematchReady == false
+        && request.resource.data.joinerRematchReady == false
+        && request.resource.data.rematchRound == resource.data.rematchRound + 1
+        && request.resource.data.status == 'full'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['matchEnded', 'loserRole', 'endReason',
+                    'hostRematchReady', 'joinerRematchReady',
+                    'rematchRound', 'status']);
+
+      allow delete: if false;
+    }
+
+    match /players/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.wins == 0
+        && request.resource.data.losses == 0
+        && request.resource.data.matchesPlayed == 0
+        && request.resource.data.selectedSkin == 'beard';
+
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['lastSeenAt', 'accountType', 'selectedSkin', 'uid', 'createdAt'])
+        && (request.resource.data.selectedSkin == resource.data.selectedSkin
+          || request.resource.data.selectedSkin == 'beard'
+          || (request.resource.data.selectedSkin == 'sun_ducker'
+            && exists(/databases/$(database)/documents/players/$(uid)/skins/sun_ducker)));
+
+      allow delete: if false;
+
+      match /skins/{skinId} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow create: if signedIn() && request.auth.uid == uid
+          && skinId == 'beard'
+          && request.resource.data.owned == true
+          && request.resource.data.acquisitionType == 'default';
+        allow update, delete: if false;
+      }
+    }
+
+    match /matchStatEvents/{eventId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /purchaseEntitlements/{transactionId} {
+      allow read: if signedIn()
+        && (resource.data.uid == request.auth.uid
+          || (resource.data.uids is list && request.auth.uid in resource.data.uids));
+      allow write: if false;
+    }
+  }
+}

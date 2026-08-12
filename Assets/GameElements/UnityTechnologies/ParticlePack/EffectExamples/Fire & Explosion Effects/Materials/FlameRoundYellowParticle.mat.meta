@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: d77d88520e0f84b47bbd874a199bca5a
+timeCreated: 1472825013
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 73777
+  packageName: Legacy Particle Pack
+  packageVersion: 4.0
+  assetPath: Assets/GameElements/UnityTechnologies/ParticlePack/EffectExamples/Fire
+    & Explosion Effects/Materials/FlameRoundYellowParticle.mat
+  uploadId: 684565

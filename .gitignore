@@ -1,0 +1,68 @@
+# Unity-generated directories
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Local and distributable builds are reproducible artifacts, not source
+[Bb]uild/
+[Bb]uilds/
+[Rr]elease/
+
+# IDE and generated project files
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.slnx
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.tmp
+
+# macOS and Windows filesystem metadata
+.DS_Store
+Thumbs.db
+
+# Crash and profiling output
+sysinfo.txt
+*.stacktrace
+mono_crash.*.json
+
+# Firebase tooling and server dependencies
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+functions/node_modules/
+node_modules/
+
+# Secrets and local environment overrides
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.p8
+*.mobileprovision
+*service-account*.json
+*serviceAccount*.json
+
+# Xcode user and build state
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcuserstate
+
+# ParrelSync clone data
+ParrelSync/Clones/

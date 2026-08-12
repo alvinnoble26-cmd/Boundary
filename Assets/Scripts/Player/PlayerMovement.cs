@@ -1,0 +1,432 @@
+using UnityEngine;
+using PurrNet;
+
+[RequireComponent(typeof(Rigidbody))]
+public class PlayerMovement : NetworkBehaviour
+{
+    [Header("Slope Movement")]
+    public float maxSlopeAngle = 45f;
+    private RaycastHit slopeHit;
+    private bool exitingSlope;
+
+    [Header("Movement")]
+    public float acceleration = 35f;
+    public float maxSpeed = 7f;
+    public float deceleration = 20f;
+    public float jumpForce = 7f;
+    public float fallGravityMultiplier = 2.5f;
+
+    [Header("Mobile Input")]
+    public float deadzone = 0.15f;
+    public float inputSmoothing = 12f;
+
+    [Header("Detection")]
+    public LayerMask groundMask = ~0;
+    public float groundCheckDistance = 0.25f;
+    public float wallCheckDistance = 0.7f;
+    public float wallSphereRadius = 0.35f;
+
+    [Header("Wall Settings")]
+    public float wallJumpUp = 7f;
+    public float wallJumpSide = 7f;
+    public float wallStickTime = 0.25f;
+    public float wallSlideSpeed = 3.5f;
+    public float wallAttachForce = 15f;
+
+    [Header("Tilt Settings")]
+    public float uprightStrength = 10f;
+    public float wallTiltAngle = 25f;
+    public float backTiltAngle = 10f;
+
+    [Header("Refs")]
+    public Transform orientation;
+    public PlayerInputReader input;
+
+    [HideInInspector] public Rigidbody rb;
+    [HideInInspector] public Vector2 moveInput;
+
+    public bool IsGrounded => isGrounded;
+    public bool JumpPressedThisFrame { get; private set; }
+    public bool MovementSuppressed { get; private set; }
+    public float ExternalSpeedCap { get; private set; } = -1f;
+
+    public Vector3 LastFlatMoveDir { get; private set; } = Vector3.forward;
+
+    public Vector3 CurrentAimFlatDir
+    {
+        get
+        {
+            Vector3 fwd = orientation ? orientation.forward : transform.forward;
+            fwd.y = 0f;
+            if (LastFlatMoveDir.sqrMagnitude > 0.0001f) return LastFlatMoveDir.normalized;
+            if (fwd.sqrMagnitude > 0.0001f) return fwd.normalized;
+            return Vector3.forward;
+        }
+    }
+
+    private bool isGrounded;
+    private bool jumpRequested;
+
+    private Vector3 wallNormal;
+    private float wallStickCounter;
+
+    private Collider myCol;
+    private Vector2 smoothedMoveInput;
+
+// Add this field near the top with other private fields
+private SlideAbility slideAbility;
+
+// Replace your existing Awake with this
+void Awake()
+{
+    rb = GetComponent<Rigidbody>();
+    myCol = GetComponent<Collider>();
+    if (input == null) input = GetComponent<PlayerInputReader>();
+    if (orientation == null) orientation = transform;
+    slideAbility = GetComponentInChildren<SlideAbility>();
+}
+    protected override void OnSpawned()
+{
+    StartCoroutine(SetupPhysicsAuthority());
+}
+
+private System.Collections.IEnumerator SetupPhysicsAuthority()
+{
+    yield return new WaitUntil(() => rb != null);
+
+    // Wait a moment for ownership to settle
+    yield return null;
+
+    Debug.Log($"[Move] OnSpawned isOwner={isOwner} kinematic(before)={rb.isKinematic}");
+
+    if (isOwner)
+    {
+        rb.isKinematic = false;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+    }
+    else
+    {
+        rb.isKinematic = true;
+    }
+
+    Debug.Log($"[Move] after: isOwner={isOwner} kinematic(after)={rb.isKinematic}");
+}
+
+    public void SetMovementSuppressed(bool on, float speedCap = -1f)
+    {
+        MovementSuppressed = on;
+        ExternalSpeedCap = speedCap;
+    }
+
+    void FixedUpdate()
+    {
+        
+        if (!isOwner) return;
+        if (input != null)
+        {
+            Vector2 raw = input.Move;
+            raw = Vector2.ClampMagnitude(raw, 1f);
+            if (raw.magnitude < deadzone) raw = Vector2.zero;
+
+            float k = 1f - Mathf.Exp(-inputSmoothing * Time.fixedDeltaTime);
+            smoothedMoveInput = Vector2.Lerp(smoothedMoveInput, raw, k);
+
+            moveInput = smoothedMoveInput;
+
+           if (input.ConsumeJump())
+            {
+            jumpRequested = true;
+            JumpPressedThisFrame = true;
+            }
+
+        }
+        UpdateGrounded();
+        HandleWallDetection();
+
+        if (MovementSuppressed)
+        {
+            JumpPressedThisFrame = false;
+            jumpRequested = false;
+            return;
+        }
+
+        PerformNormalMovement();
+        HandleGravityAndWallPhysics();
+        HandleJump();
+        ApplyMasterRotation();
+
+        float cap = (ExternalSpeedCap > 0f) ? ExternalSpeedCap : maxSpeed;
+        ClampHorizontalSpeed(cap);
+
+        Vector3 v = rb.linearVelocity;
+        if (float.IsNaN(v.x) || float.IsNaN(v.y) || float.IsNaN(v.z) || v.sqrMagnitude > 5000f)
+        {
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
+        JumpPressedThisFrame = false;
+        //Cursor.lockState = CursorLockMode.None;
+        //Cursor.visible = true;
+    }
+
+    void UpdateGrounded()
+    {
+        if (myCol == null)
+        {
+            isGrounded = Physics.Raycast(transform.position, Vector3.down, 1.2f, groundMask, QueryTriggerInteraction.Ignore);
+            return;
+        }
+
+        Bounds b = myCol.bounds;
+
+        float radius = Mathf.Min(b.extents.x, b.extents.z) * 0.45f;
+        radius = Mathf.Max(radius, 0.05f);
+
+        Vector3 start = new Vector3(b.center.x, b.min.y + radius + 0.02f, b.center.z);
+
+        isGrounded = Physics.SphereCast(
+            start,
+            radius,
+            Vector3.down,
+            out _,
+            groundCheckDistance,
+            groundMask,
+            QueryTriggerInteraction.Ignore
+        );
+
+        if (isGrounded)
+            exitingSlope = false;
+    }
+
+    void PerformNormalMovement()
+    {
+        Vector3 fwd = orientation ? orientation.forward : transform.forward;
+        Vector3 right = orientation ? orientation.right : transform.right;
+
+        Vector3 inputDir = (fwd * moveInput.y + right * moveInput.x);
+        inputDir.y = 0f;
+
+        float inputMag = Mathf.Clamp01(inputDir.magnitude);
+        Vector3 inputDirNorm = (inputMag > 0.0001f) ? (inputDir / inputMag) : Vector3.zero;
+
+        if (inputMag > 0.001f)
+            LastFlatMoveDir = inputDirNorm;
+
+        Vector3 vel = rb.linearVelocity;
+        Vector3 flatVel = new Vector3(vel.x, 0f, vel.z);
+
+        if (inputMag > 0.001f)
+        {
+            if (OnSlope() && !exitingSlope)
+            {
+                Vector3 slopeDirNorm = GetSlopeMoveDirection(inputDirNorm);
+                Vector3 slopeDir = slopeDirNorm * inputMag;
+
+                rb.AddForce(slopeDir * acceleration, ForceMode.Acceleration);
+
+                if (rb.linearVelocity.y > 0f)
+                    rb.AddForce(Vector3.down * 80f, ForceMode.Acceleration);
+
+                rb.useGravity = false;
+            }
+            else
+            {
+                rb.useGravity = true;
+                rb.AddForce(inputDirNorm * (acceleration * inputMag), ForceMode.Acceleration);
+            }
+        }
+        else
+        {
+            rb.AddForce(-flatVel * deceleration, ForceMode.Acceleration);
+            rb.useGravity = true;
+        }
+    }
+
+    void ClampHorizontalSpeed(float speedCap)
+    {
+        Vector3 vel = rb.linearVelocity;
+        Vector3 flat = new Vector3(vel.x, 0f, vel.z);
+
+        float m = flat.magnitude;
+        if (m > speedCap)
+        {
+            Vector3 capped = flat * (speedCap / m);
+            rb.linearVelocity = new Vector3(capped.x, vel.y, capped.z);
+        }
+    }
+
+void HandleWallDetection()
+{
+    if (isGrounded)
+    {
+        wallStickCounter = 0f;
+        // If we land while suppressed (e.g. mid-slide), reset suppression
+        if (MovementSuppressed)
+            SetMovementSuppressed(false, -1f);
+        return;
+    }
+
+    if (TryFindWall(out RaycastHit hit) && hit.normal.y < 0.2f)
+    {
+        wallNormal = hit.normal;
+        wallStickCounter = wallStickTime;
+    }
+    else
+    {
+        wallStickCounter = Mathf.Max(0f, wallStickCounter - Time.fixedDeltaTime);
+
+        // Wall contact lost — if still suppressed, release it
+        if (wallStickCounter <= 0f && MovementSuppressed)
+            SetMovementSuppressed(false, -1f);
+    }
+}
+
+    void HandleGravityAndWallPhysics()
+    {
+        if (!isGrounded && wallStickCounter > 0f)
+        {
+            rb.AddForce(-wallNormal * wallAttachForce, ForceMode.Acceleration);
+
+            Vector3 v = rb.linearVelocity;
+            if (v.y < -wallSlideSpeed)
+                rb.linearVelocity = new Vector3(v.x, -wallSlideSpeed, v.z);
+
+            rb.useGravity = true;
+            return;
+        }
+
+        if (rb.linearVelocity.y < 0f)
+        {
+            rb.AddForce(Vector3.up * Physics.gravity.y * (fallGravityMultiplier - 1f), ForceMode.Acceleration);
+        }
+    }
+
+void HandleJump()
+{
+    if (!jumpRequested) return;
+
+    // Always release suppression on jump regardless of source
+    if (MovementSuppressed)
+        SetMovementSuppressed(false, -1f);
+
+    if (isGrounded)
+    {
+        rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
+        rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+        SfxManager.PlayJump();
+    }
+    else if (wallStickCounter > 0f)
+    {
+        Vector3 jumpDir = (wallNormal + Vector3.up).normalized;
+        rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
+        rb.AddForce(jumpDir * (wallJumpUp + wallJumpSide), ForceMode.Impulse);
+        wallStickCounter = 0f;
+        SfxManager.PlayJump();
+    }
+
+    jumpRequested = false;
+    exitingSlope = true;
+}
+
+    void ApplyMasterRotation()
+    {
+        float zTilt = 0f;
+        float xTilt = moveInput.y * backTiltAngle;
+
+        Transform basis = orientation ? orientation : transform;
+        Vector3 inputDir = (basis.forward * moveInput.y + basis.right * moveInput.x);
+        inputDir.y = 0f;
+
+        float yaw;
+        if (inputDir.sqrMagnitude > 0.001f)
+        {
+            yaw = Quaternion.LookRotation(inputDir.normalized, Vector3.up).eulerAngles.y;
+        }
+        else
+        {
+            yaw = rb.rotation.eulerAngles.y;
+        }
+
+        if (!isGrounded && wallStickCounter > 0f)
+        {
+            Vector3 localWallNormal = basis.InverseTransformDirection(wallNormal);
+            zTilt = localWallNormal.x > 0 ? -wallTiltAngle : wallTiltAngle;
+        }
+
+        Quaternion targetRot = Quaternion.Euler(xTilt, yaw, zTilt);
+        rb.MoveRotation(Quaternion.Slerp(rb.rotation, targetRot, uprightStrength * Time.fixedDeltaTime));
+    }
+
+    bool TryFindWall(out RaycastHit bestHit)
+    {
+        Vector3[] dirs = { transform.forward, -transform.forward, transform.right, -transform.right };
+        bestHit = default;
+
+        float bestDist = float.PositiveInfinity;
+        bool found = false;
+
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            if (Physics.SphereCast(transform.position, wallSphereRadius, dirs[i], out RaycastHit hit,
+                    wallCheckDistance, groundMask, QueryTriggerInteraction.Ignore))
+            {
+                if (!hit.collider || !hit.collider.CompareTag("Wall"))
+                    continue;
+
+                if (hit.distance < bestDist)
+                {
+                    bestDist = hit.distance;
+                    bestHit = hit;
+                    found = true;
+                }
+            }
+        }
+
+        return found;
+    }
+
+    private bool OnSlope()
+    {
+        float rayLen = 1.2f;
+        if (myCol != null)
+            rayLen = myCol.bounds.extents.y + 0.6f;
+
+        if (Physics.Raycast(transform.position, Vector3.down, out slopeHit, rayLen, groundMask, QueryTriggerInteraction.Ignore))
+        {
+            float angle = Vector3.Angle(Vector3.up, slopeHit.normal);
+            return angle < maxSlopeAngle && angle != 0f;
+        }
+        return false;
+    }
+
+    private Vector3 GetSlopeMoveDirection(Vector3 directionNormalized)
+    {
+        Vector3 p = Vector3.ProjectOnPlane(directionNormalized, slopeHit.normal);
+        if (p.sqrMagnitude < 0.0001f) return Vector3.zero;
+        return p.normalized;
+    }
+    private void OnCollisionEnter(Collision collision)
+{
+    if (!isOwner) return;
+
+    // If we hit a ceiling or steep wall, release suppression
+    foreach (ContactPoint contact in collision.contacts)
+    {
+        float angle = Vector3.Angle(contact.normal, Vector3.down);
+        // Normal pointing down = ceiling hit
+        // Normal pointing mostly horizontal = wall hit  
+        if (angle < 45f || (angle > 60f && angle < 120f))
+        {
+            if (MovementSuppressed)
+            {
+                bool isSliding = slideAbility != null && slideAbility.IsActive;
+                if (!isSliding)
+                {
+                    SetMovementSuppressed(false, -1f);
+                }
+            }
+        }
+    }
+}
+}
