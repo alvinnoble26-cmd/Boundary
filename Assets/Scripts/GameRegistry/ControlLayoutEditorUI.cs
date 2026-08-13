@@ -7,9 +7,11 @@ using UnityEngine.UI;
 
 public class ControlLayoutEditorUI : MonoBehaviour
 {
-    private static readonly Color Purple = new Color(0.24f, 0.08f, 0.40f, 1f);
-    private static readonly Color DeepPurple = new Color(0.12f, 0.035f, 0.22f, 0.96f);
-    private static readonly Color AccentPurple = new Color(0.63f, 0.30f, 0.91f, 1f);
+    private static readonly Color Navy = new Color(0.025f, 0.075f, 0.17f, 1f);
+    private static readonly Color DeepNavy = new Color(0.012f, 0.035f, 0.09f, 0.98f);
+    private static readonly Color AccentBlue = new Color(0.12f, 0.48f, 0.90f, 1f);
+
+    public static Color PanelColor => Navy;
 
     private GameObject optionsMenu;
     private GameObject editButton;
@@ -31,25 +33,25 @@ public class ControlLayoutEditorUI : MonoBehaviour
 
         EnsureEventSystem();
         // This sits between the volume slider and the existing Back button.
-        editButton = CreateButton(canvas.transform, "Edit Controls", new Vector2(0.5f, 0.5f), new Vector2(0f, -78f), new Vector2(300f, 58f), AccentPurple, OpenEditor);
+        editButton = CreateButton(canvas.transform, "Edit Controls", new Vector2(0.5f, 0.5f), new Vector2(0f, -78f), new Vector2(300f, 58f), AccentBlue, OpenEditor);
 
-        editorPanel = CreateImage(canvas.transform, "ControlLayoutEditor", Purple).gameObject;
+        editorPanel = CreateImage(canvas.transform, "ControlLayoutEditor", Navy).gameObject;
         StretchToParent((RectTransform)editorPanel.transform);
         editorPanel.transform.SetAsLastSibling();
 
-        workspace = (RectTransform)CreateImage(editorPanel.transform, "ControlWorkspace", new Color(0.18f, 0.055f, 0.31f, 1f)).transform;
+        workspace = (RectTransform)CreateImage(editorPanel.transform, "ControlWorkspace", new Color(0.018f, 0.055f, 0.13f, 1f)).transform;
         StretchToParent(workspace);
 
-        RectTransform topBar = (RectTransform)CreateImage(editorPanel.transform, "TopBar", DeepPurple).transform;
+        RectTransform topBar = (RectTransform)CreateImage(editorPanel.transform, "TopBar", DeepNavy).transform;
         topBar.anchorMin = new Vector2(0f, 1f);
         topBar.anchorMax = new Vector2(1f, 1f);
         topBar.pivot = new Vector2(0.5f, 1f);
         topBar.anchoredPosition = Vector2.zero;
         topBar.sizeDelta = new Vector2(0f, 155f);
 
-        CreateButton(topBar, "Cancel", new Vector2(0f, 1f), new Vector2(90f, -52f), new Vector2(150f, 58f), new Color(0.38f, 0.20f, 0.48f, 1f), Cancel);
-        CreateButton(topBar, "Save", new Vector2(1f, 1f), new Vector2(-90f, -52f), new Vector2(150f, 58f), AccentPurple, Save);
-        CreateButton(topBar, "Reset", new Vector2(1f, 1f), new Vector2(-90f, -116f), new Vector2(150f, 45f), new Color(0.38f, 0.20f, 0.48f, 1f), ResetToDefaults);
+        CreateButton(topBar, "Cancel", new Vector2(0f, 1f), new Vector2(90f, -52f), new Vector2(150f, 58f), new Color(0.08f, 0.16f, 0.28f, 1f), Cancel);
+        CreateButton(topBar, "Save", new Vector2(1f, 1f), new Vector2(-90f, -52f), new Vector2(150f, 58f), AccentBlue, Save);
+        CreateButton(topBar, "Reset", new Vector2(1f, 1f), new Vector2(-90f, -116f), new Vector2(150f, 45f), new Color(0.08f, 0.16f, 0.28f, 1f), ResetToDefaults);
 
         CreateText(topBar, "CAMERA SENSITIVITY", 24, TextAnchor.MiddleCenter, Color.white,
             new Vector2(0.5f, 1f), new Vector2(0f, -31f), new Vector2(420f, 38f));
@@ -63,14 +65,14 @@ public class ControlLayoutEditorUI : MonoBehaviour
             new Vector2(0.5f, 1f), new Vector2(292f, -81f), new Vector2(100f, 40f));
 
         CreateText(topBar, "Drag a control to move it. Drag its + corner to resize it.", 18,
-            TextAnchor.MiddleCenter, new Color(0.88f, 0.78f, 1f, 1f),
+            TextAnchor.MiddleCenter, new Color(0.68f, 0.84f, 1f, 1f),
             new Vector2(0.5f, 1f), new Vector2(0f, -126f), new Vector2(620f, 32f));
 
         CreateControlWidget("Move", 175f, new Color(0.20f, 0.55f, 0.86f, 0.88f));
         CreateControlWidget("Jump", 250f, new Color(0.92f, 0.45f, 0.20f, 0.88f));
-        CreateControlWidget("A1", 150f, new Color(0.62f, 0.25f, 0.82f, 0.90f));
-        CreateControlWidget("A2", 150f, new Color(0.62f, 0.25f, 0.82f, 0.90f));
-        CreateControlWidget("A3", 150f, new Color(0.62f, 0.25f, 0.82f, 0.90f));
+        CreateControlWidget("A1", 150f, new Color(0.12f, 0.42f, 0.82f, 0.90f));
+        CreateControlWidget("A2", 150f, new Color(0.12f, 0.42f, 0.82f, 0.90f));
+        CreateControlWidget("A3", 150f, new Color(0.12f, 0.42f, 0.82f, 0.90f));
 
         editorPanel.SetActive(false);
         UpdateEditButtonVisibility();
@@ -156,14 +158,14 @@ public class ControlLayoutEditorUI : MonoBehaviour
         CreateText(rect, id, id == "Jump" ? 32 : 38, TextAnchor.MiddleCenter, Color.white,
             new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, true);
 
-        CircleGraphic handleGraphic = CreateCircle(rect, "ResizeHandle", new Color(0.95f, 0.85f, 1f, 1f));
+        CircleGraphic handleGraphic = CreateCircle(rect, "ResizeHandle", new Color(0.78f, 0.90f, 1f, 1f));
         RectTransform handle = handleGraphic.rectTransform;
         handle.anchorMin = new Vector2(1f, 0f);
         handle.anchorMax = new Vector2(1f, 0f);
         handle.pivot = new Vector2(0.5f, 0.5f);
         handle.anchoredPosition = Vector2.zero;
         handle.sizeDelta = new Vector2(46f, 46f);
-        CreateText(handle, "+", 30, TextAnchor.MiddleCenter, DeepPurple,
+        CreateText(handle, "+", 30, TextAnchor.MiddleCenter, DeepNavy,
             new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, true);
         handleGraphic.gameObject.AddComponent<ControlResizeHandle>().Initialize(widget);
 
@@ -252,10 +254,10 @@ public class ControlLayoutEditorUI : MonoBehaviour
         rootRect.anchoredPosition = new Vector2(0f, -81f);
         rootRect.sizeDelta = new Vector2(500f, 34f);
 
-        Image background = CreateImage(root.transform, "Background", new Color(0.12f, 0.06f, 0.18f, 1f));
+        Image background = CreateImage(root.transform, "Background", new Color(0.012f, 0.03f, 0.075f, 1f));
         StretchToParent(background.rectTransform);
 
-        Image fill = CreateImage(root.transform, "Fill", AccentPurple);
+        Image fill = CreateImage(root.transform, "Fill", AccentBlue);
         RectTransform fillRect = fill.rectTransform;
         fillRect.anchorMin = Vector2.zero;
         fillRect.anchorMax = Vector2.one;

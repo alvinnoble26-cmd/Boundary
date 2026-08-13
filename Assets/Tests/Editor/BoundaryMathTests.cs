@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public sealed class BoundaryMathTests
 {
@@ -172,6 +173,35 @@ public sealed class BoundaryMathTests
 
         Assert.That(nearPull.y, Is.GreaterThan(farPull.y));
         Assert.That(nearPull.y, Is.LessThan(farPull.y * 2.8f));
+    }
+
+    [Test]
+    public void SkinTemplateLookup_FindsTemplatesUnderInactiveRoot()
+    {
+        Scene scene = SceneManager.GetActiveScene();
+        GameObject skins = new GameObject("skins");
+        GameObject turtle = new GameObject("Turtle");
+        turtle.transform.SetParent(skins.transform, false);
+        skins.SetActive(false);
+
+        Assert.That(PlayerAbilities.FindSkinTemplateInScene(scene, "Turtle"),
+            Is.EqualTo(turtle.transform));
+
+        Object.DestroyImmediate(skins);
+    }
+
+    [Test]
+    public void CustomizationPanels_UseDarkBlueBackgrounds()
+    {
+        Color controls = ControlLayoutEditorUI.PanelColor;
+        Color skins = SkinShopUI.PanelColor;
+
+        Assert.That(controls.b, Is.GreaterThan(controls.r));
+        Assert.That(controls.b, Is.GreaterThan(controls.g));
+        Assert.That(skins.b, Is.GreaterThan(skins.r));
+        Assert.That(skins.b, Is.GreaterThan(skins.g));
+        Assert.That(controls.b, Is.LessThan(0.25f));
+        Assert.That(skins.b, Is.LessThan(0.25f));
     }
 }
 #endif

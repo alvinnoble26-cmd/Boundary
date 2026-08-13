@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using System.Collections.Generic;
 using PurrNet; 
 using PurrNet.Modules;
+using UnityEngine.SceneManagement;
 
 public class PlayerAbilities : NetworkBehaviour 
 {
@@ -81,6 +82,12 @@ private async void LoadAndSyncSelectedSkin()
     string selectedSkin = FirebaseManager.I != null
         ? FirebaseManager.I.SelectedSkin
         : "beard";
+    string locallyAppliedSkin = NormalizeSkinId(selectedSkin);
+
+    // Practice can begin while the cloud refresh is still in flight. Apply
+    // the locally persisted choice immediately, then reconcile it once the
+    // profile refresh completes.
+    RequestSelectedSkin(locallyAppliedSkin);
 
     try
     {
@@ -98,7 +105,8 @@ private async void LoadAndSyncSelectedSkin()
                          selectedSkin + "': " + e.Message);
     }
 
-    RequestSelectedSkin(selectedSkin);
+    if (NormalizeSkinId(selectedSkin) != locallyAppliedSkin)
+        RequestSelectedSkin(selectedSkin);
 }
 
 [ServerRpc]
@@ -128,9 +136,8 @@ private void ApplySkinVisual(string skinId)
     if (beardEye != null) beardEye.gameObject.SetActive(!useCustomSkin);
     if (!useCustomSkin || tilt == null) return;
 
-    GameObject templates = GameObject.Find("skins");
     string templateName = useTurtle ? "Turtle" : "Sun Ducker";
-    Transform source = templates != null ? templates.transform.Find(templateName) : null;
+    Transform source = FindSkinTemplateInScene(gameObject.scene, templateName);
     if (source == null)
     {
         Debug.LogError($"[PlayerAbilities] Game scene skin template 'skins/{templateName}' was not found.");
@@ -151,6 +158,45 @@ private void ApplySkinVisual(string skinId)
         Destroy(collider);
     foreach (Rigidbody body in clone.GetComponentsInChildren<Rigidbody>(true))
         Destroy(body);
+}
+
+public static Transform FindSkinTemplateInScene(Scene scene, string templateName)
+{
+    if (!scene.IsValid() || string.IsNullOrWhiteSpace(templateName))
+        return null;
+
+    // Scene.GetRootGameObjects includes inactive roots. GameObject.Find does
+    // not, which caused Practice mode to fall back to Beard whenever the
+    // editor-only template container was hidden in the Game scene.
+    foreach (GameObject root in scene.GetRootGameObjects())
+    {
+        Transform skinsRoot = FindNamedTransform(root.transform, "skins");
+        if (skinsRoot == null)
+            continue;
+
+        Transform template = skinsRoot.Find(templateName);
+        if (template != null)
+            return template;
+    }
+
+    return null;
+}
+
+private static Transform FindNamedTransform(Transform root, string targetName)
+{
+    if (root == null)
+        return null;
+    if (root.name == targetName)
+        return root;
+
+    for (int i = 0; i < root.childCount; i++)
+    {
+        Transform found = FindNamedTransform(root.GetChild(i), targetName);
+        if (found != null)
+            return found;
+    }
+
+    return null;
 }
 
 private static string NormalizeSkinId(string skinId)

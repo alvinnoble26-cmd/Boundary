@@ -8,6 +8,13 @@ using UnityEngine.UI;
 
 public sealed class SkinShopUI : MonoBehaviour
 {
+    private static readonly Color NavyPanel = new Color(0.018f, 0.045f, 0.12f, 0.98f);
+    private static readonly Color NavyCard = new Color(0.035f, 0.085f, 0.18f, 1f);
+    private static readonly Color NavyPreview = new Color(0.008f, 0.022f, 0.065f, 1f);
+    private static readonly Color AccentBlue = new Color(0.10f, 0.40f, 0.82f, 1f);
+
+    public static Color PanelColor => NavyPanel;
+
     private readonly List<GameObject> cards = new List<GameObject>();
     private readonly string[] skinIds = { "beard", "turtle", "sun_ducker" };
     private GameObject panel;
@@ -115,7 +122,7 @@ public sealed class SkinShopUI : MonoBehaviour
         Canvas canvas = GetComponentInParent<Canvas>();
         if (canvas == null) return;
 
-        panel = Ui("SkinsPanel", canvas.transform, new Color(0.035f, 0.015f, 0.09f, 0.97f));
+        panel = Ui("SkinsPanel", canvas.transform, NavyPanel);
         panel.transform.SetAsLastSibling();
         RectTransform panelRect = panel.GetComponent<RectTransform>();
         panelRect.anchorMin = Vector2.zero;
@@ -130,7 +137,7 @@ public sealed class SkinShopUI : MonoBehaviour
 
         Label("SKINS", panel.transform, 54, new Vector2(0, 440), new Vector2(600, 70));
         pageLabel = Label("", panel.transform, 22, new Vector2(0, 390), new Vector2(500, 35));
-        pageLabel.color = new Color(.8f, .68f, 1f, 1f);
+        pageLabel.color = new Color(.68f, .84f, 1f, 1f);
         Button close = MakeButton("Close", panel.transform, "X", new Vector2(430, 430), new Vector2(70, 62));
         close.onClick.AddListener(() => panel.SetActive(false));
 
@@ -168,14 +175,14 @@ public sealed class SkinShopUI : MonoBehaviour
 
     private Button MakeSkinCard(string objectName, string title, string skinId, out Text state)
     {
-        GameObject card = Ui(objectName, panel.transform, new Color(0.13f, 0.065f, 0.23f, 1f));
+        GameObject card = Ui(objectName, panel.transform, NavyCard);
         card.AddComponent<CanvasGroup>();
         RectTransform cardRect = card.GetComponent<RectTransform>();
         cardRect.sizeDelta = new Vector2(430, 650);
         cardRect.anchoredPosition = new Vector2(0, 20);
         Label(title, card.transform, 38, new Vector2(0, 275), new Vector2(400, 58));
 
-        GameObject preview = Ui("Preview", card.transform, new Color(.025f, .012f, .06f, 1f));
+        GameObject preview = Ui("Preview", card.transform, NavyPreview);
         RectTransform previewRect = preview.GetComponent<RectTransform>();
         previewRect.sizeDelta = new Vector2(320, 395);
         previewRect.anchoredPosition = new Vector2(0, 30);
@@ -423,7 +430,7 @@ public sealed class SkinShopUI : MonoBehaviour
 
     private Button MakeButton(string name, Transform parent, string text, Vector2 position, Vector2 size)
     {
-        GameObject gameObject = Ui(name, parent, new Color(.36f, .15f, .65f, 1f));
+        GameObject gameObject = Ui(name, parent, AccentBlue);
         RectTransform rect = gameObject.GetComponent<RectTransform>();
         rect.sizeDelta = size;
         rect.anchoredPosition = position;
