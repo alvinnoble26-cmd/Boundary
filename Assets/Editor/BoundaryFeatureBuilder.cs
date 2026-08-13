@@ -190,10 +190,18 @@ public static class BoundaryFeatureValidator
         float midpoint = BoundaryMath.TransitionRadius(106f, 68f, 3.5f, 7f);
         Require(Mathf.Abs(midpoint - 87f) < 0.001f, "Ring interpolation is not deterministic.");
         Vector3 airborne = BoundaryMath.PlayerPullAcceleration(
-            Vector3.zero, new Vector3(0f, 32f, 0f), Vector3.zero, -1f, 106f, 5.5f, false, false, 1f);
-        Vector3 braced = BoundaryMath.PlayerPullAcceleration(
-            Vector3.zero, new Vector3(0f, 32f, 0f), Vector3.zero, -1f, 106f, 5.5f, true, true, 0.25f);
-        Require(braced.magnitude < airborne.magnitude * 0.08f, "Anchor resistance is not meaningful.");
+            Vector3.zero, new Vector3(0f, 32f, 0f), Vector3.zero, -1f, 106f, 5.5f, false);
+        Vector3 grounded = BoundaryMath.PlayerPullAcceleration(
+            Vector3.zero, new Vector3(0f, 32f, 0f), Vector3.zero, -1f, 106f, 5.5f, true);
+        Require(grounded.magnitude < airborne.magnitude * 0.2f,
+            "Stable footing must meaningfully reduce singularity pull.");
+        Require(BoundaryMatchController.ArenaMassPopulation == 20,
+            "The arena must begin with twenty interactive masses.");
+        Require(BoundaryMatchController.ArenaMassInnerSurvivors * 4 ==
+                BoundaryMatchController.ArenaMassPopulation,
+            "Exactly one quarter of arena masses must reach the inner ring.");
+        Require(System.Enum.IsDefined(typeof(BoundaryHazardKind), BoundaryHazardKind.ArenaBlackHole),
+            "The arena black-hole sphere kind is missing.");
 
         int disasterCount = 0;
         foreach (BoundaryDisaster value in System.Enum.GetValues(typeof(BoundaryDisaster)))
@@ -205,7 +213,7 @@ public static class BoundaryFeatureValidator
         }
         Require(disasterCount == 9, "Reverse Current must be removed and exactly nine disasters must remain.");
 
-        Debug.Log("[BoundaryFeatureValidator] PASS — open arena, authority, enlarged rings, Anchor, and all 9 events validated.");
+        Debug.Log("[BoundaryFeatureValidator] PASS — wall-jump arena, 20 masses, quarter survival, platform corruption, authority, and all 9 events validated.");
     }
 
     private static void Require(bool condition, string message)
@@ -318,6 +326,7 @@ public static class BoundaryRuntimeSmokeRunner
             BoundaryHUD hud = Object.FindFirstObjectByType<BoundaryHUD>();
             GameObject generated = GameObject.Find("Boundary Generated Stadium");
             GameObject platformRoot = GameObject.Find("Breakaway Platforms");
+            GameObject wallRoot = GameObject.Find("Wall Jump Structures");
             BoundaryArenaPresentation presentation = Object.FindFirstObjectByType<BoundaryArenaPresentation>();
 
             RequireSmoke(controller != null && BoundaryMatchController.Instance == controller,
@@ -332,17 +341,31 @@ public static class BoundaryRuntimeSmokeRunner
             RequireSmoke(presentation != null && presentation.GeneratedPlatformCount >= 340 &&
                          presentation.LegacyArenaHidden && !presentation.HasSideWalls,
                 "Open platform arena did not replace the legacy floor and side walls.");
+            RequireSmoke(wallRoot != null && wallRoot.transform.childCount >= 30,
+                "Purpose-built wall-jump structures were not generated.");
+            foreach (Transform wall in wallRoot.transform)
+                RequireSmoke(wall.CompareTag("Wall"), wall.name + " is not tagged for wall jumping.");
+            RequireSmoke(GameObject.Find("Vertical Combat Routes") == null,
+                "Random elevated stepping routes must not remain in the arena.");
+            RequireSmoke(GameObject.Find("Brace") == null,
+                "The removed Anchor control was still generated.");
             RequireSmoke(presentation.PreviewCollapseWarningForValidation() >= 20,
                 "Breakaway platforms did not pulse dark while remaining collidable.");
             RequireSmoke(presentation.PreviewCollapseFlightForValidation() >= 80,
                 "Breakaway platforms did not release and fly toward the singularity.");
+            RequireSmoke(presentation.PreviewPlatformCorruptionForValidation() == 3,
+                "Three black-hole contacts did not progressively darken and absorb a platform.");
             RequireSmoke(GameObject.Find("Event Horizon") != null, "Visible event horizon was not generated.");
             RequireSmoke(GameObject.Find("Hot Accretion Band") != null,
                 "The upgraded central black-hole accretion disc was not generated.");
+            RequireSmoke(GameObject.Find("White Photon Crown") != null &&
+                         GameObject.Find("North Relativistic Jet") != null &&
+                         GameObject.Find("Accretion Sparks") != null,
+                "The upgraded photon crown, relativistic jets, or accretion particles were not generated.");
             RequireSmoke(RuntimeErrors.Count == 0, "Runtime errors: " + string.Join(" | ", RuntimeErrors));
 
             File.WriteAllText(ResultPath,
-                "PASS\nOpen breakaway arena, elevated routes, upgraded black holes, event horizon, and HUD initialized without runtime errors.\n");
+                "PASS\nOpen breakaway arena, wall-jump cover, upgraded black holes, event horizon, and Anchor-free HUD initialized without runtime errors.\n");
         }
         catch (System.Exception exception)
         {

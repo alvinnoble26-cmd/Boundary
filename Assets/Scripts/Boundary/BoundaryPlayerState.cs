@@ -11,14 +11,12 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
     [SerializeField, Min(1f)] private float horizonHorizontalRadius = 10f;
 
     private readonly SyncVar<BoundaryKnockoutState> state = new(BoundaryKnockoutState.Grounded, ownerAuth: true);
-    private readonly SyncVar<bool> bracing = new(false, ownerAuth: true);
 
     private PlayerMovement movement;
     private float horizonEnteredAt = -1f;
     private bool reportedLoss;
 
     public BoundaryKnockoutState State => state.value;
-    public bool IsBracing => bracing.value;
     public float EscapeProgress => state.value == BoundaryKnockoutState.EventHorizon && horizonEnteredAt >= 0f
         ? Mathf.Clamp01((Time.time - horizonEnteredAt) / escapeWindowSeconds)
         : 0f;
@@ -32,8 +30,6 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
     {
         if (!isOwner || movement == null)
             return;
-
-        bracing.value = movement.IsBracing;
 
         if (state.value == BoundaryKnockoutState.Consumed)
             return;

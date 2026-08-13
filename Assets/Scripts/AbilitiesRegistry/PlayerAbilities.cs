@@ -308,12 +308,6 @@ private void ActivateAbility(AbilityId id)
 void UseSlot(int slotIndex)
 {
     PlayerMovement movement = GetComponent<PlayerMovement>();
-    if (movement != null && movement.IsBracing)
-    {
-        Debug.Log("[PlayerAbilities] Ability blocked while Anchor is held.");
-        return;
-    }
-
     var id = slots[slotIndex];
     if (id == null)
     {

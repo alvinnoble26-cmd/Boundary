@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 [DefaultExecutionOrder(1000)]
@@ -17,12 +16,9 @@ public sealed class BoundaryHUD : MonoBehaviour
     private Text bannerCountdown;
     private Text bannerHint;
     private Text horizonText;
-    private Text anchorStateText;
     private Image phaseFill;
     private Image bannerPanel;
     private Image horizonOverlay;
-    private Image anchorFill;
-    private BoundaryBraceButton anchorButton;
     private AudioSource audioSource;
     private AudioClip phaseCue;
     private AudioClip disasterCue;
@@ -61,7 +57,6 @@ public sealed class BoundaryHUD : MonoBehaviour
         UpdatePhaseHeader();
         UpdateBanner();
         UpdateHorizon();
-        UpdateAnchor();
         PlayStateCues();
     }
 
@@ -122,8 +117,6 @@ public sealed class BoundaryHUD : MonoBehaviour
         horizonText = CreateText(horizonOverlay.transform, "EVENT HORIZON\nESCAPE NOW", 54, TextAnchor.MiddleCenter, Color.white);
         SetRect(horizonText.rectTransform, new Vector2(0.5f, 0.68f), Vector2.zero, new Vector2(900f, 180f));
 
-        BuildAnchorButton(safeArea);
-
         audioSource = gameObject.AddComponent<AudioSource>();
         audioSource.playOnAwake = false;
         audioSource.spatialBlend = 0f;
@@ -133,29 +126,6 @@ public sealed class BoundaryHUD : MonoBehaviour
         horizonCue = CreateTone("Event Horizon Warning", 220f, 0.30f, 0.18f);
         bannerPanel.gameObject.SetActive(false);
         horizonOverlay.gameObject.SetActive(false);
-    }
-
-    private void BuildAnchorButton(Transform parent)
-    {
-        Image root = CreateImage(parent, "Brace", new Color(0.10f, 0.04f, 0.18f, 0.92f));
-        ControlLayoutSettings.ControlEntry layout = ControlLayoutSettings.Load().Find("Brace");
-        Vector2 anchor = layout != null ? new Vector2(layout.x, layout.y) : new Vector2(0.88f, 0.34f);
-        float scale = layout != null ? layout.scale : 1f;
-        SetRect(root.rectTransform, anchor, Vector2.zero, Vector2.one * (150f * scale));
-        anchorButton = root.gameObject.AddComponent<BoundaryBraceButton>();
-
-        anchorFill = CreateImage(root.transform, "Fatigue", Purple);
-        anchorFill.type = Image.Type.Filled;
-        anchorFill.fillMethod = Image.FillMethod.Radial360;
-        anchorFill.fillOrigin = 2;
-        anchorFill.fillClockwise = false;
-        anchorFill.color = new Color(0.62f, 0.18f, 1f, 0.55f);
-        Stretch(anchorFill.rectTransform, 9f);
-
-        Text label = CreateText(root.transform, "ANCHOR", 23, TextAnchor.MiddleCenter, Color.white);
-        Stretch(label.rectTransform);
-        anchorStateText = CreateText(parent, "HOLD SHIFT / L1", 16, TextAnchor.MiddleCenter, new Color(0.76f, 0.70f, 0.88f));
-        SetRect(anchorStateText.rectTransform, anchor, new Vector2(0f, -91f * scale), new Vector2(220f, 34f));
     }
 
     private void UpdatePhaseHeader()
@@ -210,7 +180,7 @@ public sealed class BoundaryHUD : MonoBehaviour
             show = true;
             bannerTitle.text = BoundaryMath.DisasterName(match.Disaster);
             bannerCountdown.text = match.Disaster == BoundaryDisaster.GravitySurge && match.GravitySurgePulse > 0.12f
-                ? "ANCHOR NOW"
+                ? "KEEP YOUR FOOTING"
                 : $"{Mathf.CeilToInt(match.DisasterTimeRemaining)} SECONDS";
             bannerHint.text = BoundaryMath.DisasterHint(match.Disaster);
         }
@@ -242,19 +212,6 @@ public sealed class BoundaryHUD : MonoBehaviour
         horizonOverlay.color = new Color(0.42f, 0.01f, 0.40f, Mathf.Clamp01(pulse));
         horizonText.text = $"EVENT HORIZON\nESCAPE NOW  •  {Mathf.CeilToInt((1f - progress) * 16f) / 10f:0.0}s";
         horizonText.rectTransform.localScale = Vector3.one * (1f + Mathf.Sin(Time.unscaledTime * 10f) * 0.035f);
-    }
-
-    private void UpdateAnchor()
-    {
-        PlayerMovement movement = localState != null ? localState.GetComponent<PlayerMovement>() : null;
-        anchorButton.SetMovement(movement);
-        float fatigue = movement != null ? movement.BraceFatigue : 0f;
-        anchorFill.fillAmount = 1f - fatigue;
-        anchorFill.color = Color.Lerp(Cyan, Danger, fatigue);
-        anchorStateText.text = movement != null && movement.IsBracing
-            ? fatigue > 0.78f ? "ANCHOR FATIGUED" : "ANCHORED"
-            : "HOLD SHIFT / L1";
-        anchorStateText.color = movement != null && movement.IsBracing ? Cyan : new Color(0.76f, 0.70f, 0.88f);
     }
 
     private void PlayStateCues()
@@ -370,35 +327,5 @@ public sealed class BoundaryHUD : MonoBehaviour
         rect.pivot = new Vector2(0.5f, 0.5f);
         rect.offsetMin = Vector2.one * inset;
         rect.offsetMax = Vector2.one * -inset;
-    }
-}
-
-public sealed class BoundaryBraceButton : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerExitHandler
-{
-    private PlayerMovement movement;
-
-    public void SetMovement(PlayerMovement target)
-    {
-        movement = target;
-    }
-
-    public void OnPointerDown(PointerEventData eventData)
-    {
-        movement?.SetBraceHeld(true);
-    }
-
-    public void OnPointerUp(PointerEventData eventData)
-    {
-        movement?.SetBraceHeld(false);
-    }
-
-    public void OnPointerExit(PointerEventData eventData)
-    {
-        movement?.SetBraceHeld(false);
-    }
-
-    private void OnDisable()
-    {
-        movement?.SetBraceHeld(false);
     }
 }

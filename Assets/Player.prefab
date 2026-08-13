@@ -766,11 +766,6 @@ MonoBehaviour:
   backTiltAngle: 0
   orientation: {fileID: 7070120784998569782}
   input: {fileID: 309532525056957705}
-  freshBraceResistance: 0.25
-  fatiguedBraceResistance: 0.72
-  braceFatiguePerSecond: 0.16
-  braceRecoveryPerSecond: 0.34
-  braceMovementMultiplier: 0.34
   maximumBoundaryVerticalSpeed: 26
   rb: {fileID: 0}
   moveInput: {x: 0, y: 0}

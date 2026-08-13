@@ -18,6 +18,8 @@ public class  ForceField : MonoBehaviour
     [SerializeField] private float maxAccel = 120f;          
     [Tooltip("Extra force applied only to player rigidbodies. Physics props remain unchanged.")]
     [SerializeField] private float playerForceMultiplier = 1.5f;
+    [Tooltip("Keeps Attract and Repel tactically decisive against arena masses.")]
+    [SerializeField] private float arenaMassForceMultiplier = 2.15f;
     [SerializeField] private AnimationCurve falloff = AnimationCurve.EaseInOut(0, 1, 1, 0);
     [SerializeField] private bool affectOwner = true;
     [SerializeField] private Rigidbody ownerRb;
@@ -141,6 +143,13 @@ public class  ForceField : MonoBehaviour
                     boundaryState.ServerPushOwner(dir * Mathf.Clamp(accel * 0.105f, 1.35f, 15f));
                     continue;
                 }
+            }
+
+            BoundaryHazard hazard = rb.GetComponent<BoundaryHazard>();
+            if (hazard != null && hazard.IsArenaMass)
+            {
+                hazard.RegisterAbilityInfluence();
+                accel = Mathf.Min(maxAccel * 2f, accel * arenaMassForceMultiplier);
             }
 
             rb.AddForce(dir * accel, ForceMode.Acceleration);

@@ -7,6 +7,8 @@ using UnityEngine;
 public sealed class BoundaryMatchController : NetworkBehaviour
 {
     public static BoundaryMatchController Instance { get; private set; }
+    public const int ArenaMassPopulation = 20;
+    public const int ArenaMassInnerSurvivors = 5;
 
     [Header("Phase timing")]
     [SerializeField, Min(10f)] private float outerRingDuration = 60f;
@@ -54,6 +56,7 @@ public sealed class BoundaryMatchController : NetworkBehaviour
 
     private Collider[] overlapBuffer;
     private readonly HashSet<Rigidbody> uniqueBodies = new HashSet<Rigidbody>();
+    private readonly Dictionary<int, int> platformContactCounts = new Dictionary<int, int>();
     private System.Random disasterRandom;
     private BoundaryDisaster previousDisaster;
     private bool roundStarted;
@@ -61,6 +64,7 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     private bool disasterBegan;
     private bool unstableMassPulsed;
     private bool tornadoStarted;
+    private bool arenaMassesSpawned;
     private int disasterWave;
     private uint nextWaveTick;
     private uint lastContinuousSyncTick;
@@ -112,6 +116,9 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     public float TransitionRemaining => transition.value == BoundaryTransition.None
         ? 0f
         : Mathf.Max(0f, transitionDuration - TransitionElapsed);
+    public float TransitionProgress => transition.value == BoundaryTransition.None
+        ? 0f
+        : Mathf.Clamp01(TransitionElapsed / Mathf.Max(0.1f, transitionDuration));
     public float DisasterElapsed => disasterStage.value == BoundaryDisasterStage.Active
         ? SecondsSince(disasterActiveTick.value)
         : 0f;
@@ -270,6 +277,7 @@ public sealed class BoundaryMatchController : NetworkBehaviour
                 ringRadius.value = outerRadius;
                 pullStrength.value = outerPull;
                 ResetDisaster();
+                SpawnArenaMassPopulation();
                 break;
             case BoundaryPhase.MiddleRing:
                 ringRadius.value = middleRadius;
@@ -538,6 +546,63 @@ public sealed class BoundaryMatchController : NetworkBehaviour
         NetworkIdentity.Spawn(instance, hazardPrefab);
     }
 
+    private void SpawnArenaMassPopulation()
+    {
+        if (arenaMassesSpawned || hazardPrefab == null)
+            return;
+
+        arenaMassesSpawned = true;
+        for (int i = 0; i < ArenaMassPopulation; i++)
+        {
+            bool sphere = i >= ArenaMassPopulation / 2;
+            bool survivesInner = i == 0 || i == 4 || i == 10 || i == 14 || i == 18;
+            float angle = i * 2.399963f + 0.31f;
+            float radius = 24f + (i % 5) * 15.2f + (i / 5) * 1.7f;
+            Vector3 position = new Vector3(
+                ArenaCenter.x + Mathf.Cos(angle) * radius,
+                PlatformSurfaceYAtRadius(radius) + (sphere ? 1.9f : 1.4f),
+                ArenaCenter.z + Mathf.Sin(angle) * radius);
+
+            GameObject instance = Instantiate(hazardPrefab, position, Quaternion.identity);
+            instance.name = sphere ? $"Arena Black Hole {i - 9:00}" : $"Arena Mass Cube {i + 1:00}";
+            instance.transform.localScale = Vector3.one * (sphere ? 1.15f : 1.85f);
+            BoundaryHazard hazard = instance.GetComponent<BoundaryHazard>();
+            if (hazard == null)
+            {
+                Destroy(instance);
+                continue;
+            }
+
+            hazard.ServerConfigureArenaMass(
+                sphere ? BoundaryHazardKind.ArenaBlackHole : BoundaryHazardKind.Cube,
+                CurrentTick,
+                i,
+                survivesInner,
+                position);
+            NetworkIdentity.Spawn(instance, hazardPrefab);
+        }
+    }
+
+    public void ServerRegisterPlatformContact(int platformIndex)
+    {
+        if (!isServer || platformIndex < 0)
+            return;
+
+        platformContactCounts.TryGetValue(platformIndex, out int current);
+        int next = Mathf.Min(3, current + 1);
+        if (next == current)
+            return;
+
+        platformContactCounts[platformIndex] = next;
+        ApplyPlatformContact(platformIndex, next);
+    }
+
+    [ObserversRpc(runLocally: true)]
+    private void ApplyPlatformContact(int platformIndex, int hitCount)
+    {
+        BoundaryArenaPresentation.Instance?.ApplyBlackHoleContact(platformIndex, hitCount);
+    }
+
     private void PulseEveryMass()
     {
         BoundaryHazard[] hazards = FindObjectsByType<BoundaryHazard>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
@@ -581,7 +646,8 @@ public sealed class BoundaryMatchController : NetworkBehaviour
             if (body.GetComponentInParent<PlayerMovement>() != null)
                 continue;
 
-            bool supportedObject = body.GetComponent<BoundaryHazard>() != null ||
+            BoundaryHazard boundaryHazard = body.GetComponent<BoundaryHazard>();
+            bool supportedObject = boundaryHazard != null ||
                                    body.GetComponent<NetworkArenaCubePhysics>() != null ||
                                    body.GetComponent<NetworkProjectilePhysics>() != null;
             if (!supportedObject)
@@ -594,6 +660,13 @@ public sealed class BoundaryMatchController : NetworkBehaviour
             float massResistance = 1f / Mathf.Sqrt(Mathf.Max(0.5f, body.mass));
             float altitude = Mathf.InverseLerp(arenaFloorY, SingularityPosition.y, body.position.y);
             float acceleration = EffectivePullStrength * Mathf.Lerp(0.45f, 1.35f, altitude) * massResistance;
+            if (boundaryHazard != null && boundaryHazard.IsArenaMass)
+            {
+                // Player abilities own the short tactical interaction window.
+                // The overhead singularity resumes only a light environmental
+                // influence after the pulse has visibly moved the mass.
+                acceleration *= boundaryHazard.AbilityInfluenceActive ? 0f : 0.18f;
+            }
             body.AddForce(toSingularity.normalized * acceleration, ForceMode.Acceleration);
 
             if (phase.value == BoundaryPhase.InnerRing)

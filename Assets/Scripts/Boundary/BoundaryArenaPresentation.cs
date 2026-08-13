@@ -4,8 +4,11 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public sealed class BoundaryArenaPresentation : MonoBehaviour
 {
+    public static BoundaryArenaPresentation Instance { get; private set; }
+
     private sealed class PlatformTile
     {
+        public int stableIndex;
         public Transform transform;
         public Renderer renderer;
         public Collider collider;
@@ -15,6 +18,9 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         public int collapseBand;
         public float stagger;
         public bool animated;
+        public bool canCorrupt;
+        public int corruptionHits;
+        public float forcedCollapseAt = -1f;
     }
 
     private sealed class AccretionRing
@@ -30,13 +36,16 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
     [SerializeField, Range(0.35f, 1.5f)] private float platformThickness = 0.85f;
     [SerializeField, Range(0.5f, 3f)] private float collapseWarningSeconds = 1.35f;
 
-    [Header("Vertical combat routes")]
-    [SerializeField, Range(4, 12)] private int routeCountPerTier = 8;
-    [SerializeField, Range(3f, 8f)] private float routePlatformSize = 5.2f;
+    [Header("Wall-jump cover")]
+    [SerializeField, Range(4, 12)] private int wallPairsPerTier = 7;
+    [SerializeField, Range(3f, 8f)] private float wallLength = 5.8f;
+    [SerializeField, Range(2.5f, 6f)] private float wallHeight = 4.2f;
+    [SerializeField, Range(3f, 6f)] private float wallPairGap = 4.3f;
 
     private BoundaryMatchController match;
     private Transform generatedRoot;
     private readonly List<PlatformTile> platforms = new List<PlatformTile>();
+    private readonly Dictionary<int, PlatformTile> breakawayPlatforms = new Dictionary<int, PlatformTile>();
     private readonly List<Renderer> fractureLines = new List<Renderer>();
     private readonly List<LineRenderer> vortexLines = new List<LineRenderer>();
     private readonly List<AccretionRing> accretionRings = new List<AccretionRing>();
@@ -59,6 +68,11 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
     public bool LegacyArenaHidden => disabledLegacyArena.Count > 0;
     public bool HasSideWalls => false;
 
+    private void Awake()
+    {
+        Instance = this;
+    }
+
     private void Start()
     {
         match = GetComponent<BoundaryMatchController>();
@@ -74,6 +88,9 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (Instance == this)
+            Instance = null;
+
         RenderSettings.fog = originalFogEnabled;
         RenderSettings.fogColor = originalFogColor;
         RenderSettings.fogDensity = originalFogDensity;
@@ -126,7 +143,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         coreMaterial = CreateMaterial(Color.black, new Color(0.32f, 0.02f, 0.72f), 6f);
 
         BuildPlatformFloor();
-        BuildVerticalRoutes();
+        BuildWallJumpStructures();
         AlignSpawnsAndExistingPlayers();
         BuildSingularity();
         BuildFractureLines();
@@ -195,20 +212,20 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         }
     }
 
-    private void BuildVerticalRoutes()
+    private void BuildWallJumpStructures()
     {
-        Transform parent = new GameObject("Vertical Combat Routes").transform;
+        Transform parent = new GameObject("Wall Jump Structures").transform;
         parent.SetParent(generatedRoot, false);
 
-        BuildRouteBand(parent, 2, match.MiddleRadius + 9f, match.OuterRadius - 12f,
+        BuildWallBand(parent, 2, match.MiddleRadius + 12f, match.OuterRadius - 15f,
             match.OuterPlatformSurfaceY, 1000);
-        BuildRouteBand(parent, 1, match.InnerRadius + 7f, match.MiddleRadius - 9f,
+        BuildWallBand(parent, 1, match.InnerRadius + 10f, match.MiddleRadius - 11f,
             match.MiddlePlatformSurfaceY, 2000);
-        BuildRouteBand(parent, 0, 10f, match.InnerRadius - 7f,
+        BuildWallBand(parent, 0, 11f, match.InnerRadius - 9f,
             match.InnerPlatformSurfaceY, 3000);
     }
 
-    private void BuildRouteBand(
+    private void BuildWallBand(
         Transform parent,
         int collapseBand,
         float innerDistance,
@@ -219,28 +236,29 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         if (outerDistance <= innerDistance)
             return;
 
-        for (int route = 0; route < routeCountPerTier; route++)
+        for (int pair = 0; pair < wallPairsPerTier; pair++)
         {
-            float angle = Mathf.PI * 2f * route / routeCountPerTier + collapseBand * 0.17f;
-            for (int step = 0; step < 2; step++)
+            float angle = Mathf.PI * 2f * pair / wallPairsPerTier + collapseBand * 0.19f;
+            float lane = pair % 3 / 2f;
+            float radius = Mathf.Lerp(innerDistance, outerDistance, 0.24f + lane * 0.52f);
+            Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+            Vector3 tangent = Vector3.Cross(Vector3.up, radial).normalized;
+            Vector3 center = match.ArenaCenter + radial * radius;
+            Quaternion rotation = Quaternion.Euler(0f, -angle * Mathf.Rad2Deg, 0f);
+
+            for (int side = -1; side <= 1; side += 2)
             {
-                float lane = (route + step) % 3 / 2f;
-                float radius = Mathf.Lerp(innerDistance, outerDistance, 0.28f + lane * 0.44f);
-                float stepAngle = angle + (step == 0 ? -0.035f : 0.055f);
-                float surfaceY = baseSurfaceY + 1.75f + step * 1.65f;
-                Vector3 position = new Vector3(
-                    match.ArenaCenter.x + Mathf.Cos(stepAngle) * radius,
-                    surfaceY - platformThickness * 0.5f,
-                    match.ArenaCenter.z + Mathf.Sin(stepAngle) * radius);
-                Quaternion rotation = Quaternion.Euler(0f, -stepAngle * Mathf.Rad2Deg, 0f);
+                Vector3 position = center + tangent * (wallPairGap * 0.5f * side);
+                position.y = baseSurfaceY + wallHeight * 0.5f;
                 CreatePlatform(
                     parent,
-                    $"Jump Route {collapseBand}-{route:00}-{step}",
+                    $"Wall Pair {collapseBand}-{pair:00}-{(side < 0 ? "L" : "R")}",
                     position,
-                    new Vector3(routePlatformSize, platformThickness, routePlatformSize * 1.35f),
+                    new Vector3(wallLength, wallHeight, 0.72f),
                     rotation,
                     collapseBand,
-                    indexOffset + route * 2 + step);
+                    indexOffset + pair * 2 + (side > 0 ? 1 : 0),
+                    true);
             }
         }
     }
@@ -252,7 +270,8 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         Vector3 scale,
         Quaternion rotation,
         int band,
-        int stableIndex)
+        int stableIndex,
+        bool isWall = false)
     {
         GameObject tile = GameObject.CreatePrimitive(PrimitiveType.Cube);
         tile.name = platformName;
@@ -261,6 +280,8 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         tile.transform.position = position;
         tile.transform.rotation = rotation;
         tile.transform.localScale = scale;
+        if (isWall)
+            tile.tag = "Wall";
 
         Renderer renderer = tile.GetComponent<Renderer>();
         renderer.sharedMaterial = platformMaterial;
@@ -268,8 +289,9 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         collider.material = null;
 
         int hash = BoundaryMath.StableHash(74191 + band * 193, stableIndex);
-        platforms.Add(new PlatformTile
+        PlatformTile platform = new PlatformTile
         {
+            stableIndex = stableIndex,
             transform = tile.transform,
             renderer = renderer,
             collider = collider,
@@ -277,8 +299,17 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             startRotation = rotation,
             startScale = scale,
             collapseBand = band,
-            stagger = (hash % 1000) / 999f
-        });
+            stagger = (hash % 1000) / 999f,
+            canCorrupt = !isWall
+        };
+        platforms.Add(platform);
+
+        if (!isWall)
+        {
+            BoundaryBreakawayPlatform contact = tile.AddComponent<BoundaryBreakawayPlatform>();
+            contact.PlatformIndex = stableIndex;
+            breakawayPlatforms[stableIndex] = platform;
+        }
     }
 
     private int CollapseBand(float radius)
@@ -361,6 +392,11 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
             if (!tile.transform.gameObject.activeSelf)
                 tile.transform.gameObject.SetActive(true);
+            if (tile.forcedCollapseAt >= 0f)
+            {
+                UpdateForcedCollapse(tile, i);
+                continue;
+            }
             if (!transitioning)
             {
                 ResetPlatform(tile);
@@ -380,7 +416,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         tile.transform.rotation = tile.startRotation;
         tile.transform.localScale = tile.startScale;
         tile.collider.enabled = true;
-        SetPlatformColor(tile.renderer, new Color(0.36f, 0.38f, 0.42f));
+        SetPlatformColor(tile.renderer, StablePlatformColor(tile));
         tile.animated = false;
     }
 
@@ -388,8 +424,11 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
     {
         float warningFraction = Mathf.Clamp01(collapseWarningSeconds /
             Mathf.Max(0.1f, match.TransitionElapsed + match.TransitionRemaining));
-        float warningStart = tile.stagger * 0.28f;
-        float flightStart = Mathf.Min(0.58f, warningStart + warningFraction);
+        bool earlyCohort = tile.stagger < 0.28f;
+        float warningStart = earlyCohort ? 0f : 0.10f + tile.stagger * 0.32f;
+        float flightStart = earlyCohort
+            ? 0.16f + tile.stagger * 0.18f
+            : Mathf.Min(0.68f, warningStart + warningFraction);
 
         if (progress < warningStart)
         {
@@ -429,6 +468,70 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         tile.transform.localScale = Vector3.Lerp(tile.startScale, tile.startScale * 0.08f, flight);
     }
 
+    private void UpdateForcedCollapse(PlatformTile tile, int index)
+    {
+        float elapsed = Time.time - tile.forcedCollapseAt;
+        if (elapsed >= 2.15f)
+        {
+            tile.transform.gameObject.SetActive(false);
+            return;
+        }
+
+        tile.animated = true;
+        if (elapsed < 0.52f)
+        {
+            tile.collider.enabled = true;
+            float pulse = 0.5f + 0.5f * Mathf.Sin(elapsed * 28f);
+            SetPlatformColor(tile.renderer, Color.Lerp(
+                new Color(0.045f, 0.048f, 0.058f),
+                new Color(0.16f, 0.17f, 0.19f), pulse));
+            tile.transform.localScale = new Vector3(
+                tile.startScale.x,
+                tile.startScale.y * Mathf.Lerp(1f, 0.68f, pulse * 0.3f),
+                tile.startScale.z);
+            return;
+        }
+
+        tile.collider.enabled = false;
+        SetPlatformColor(tile.renderer, new Color(0.018f, 0.020f, 0.026f));
+        float flight = BoundaryMath.EaseInOut(Mathf.InverseLerp(0.52f, 2.15f, elapsed));
+        Vector3 target = match.SingularityPosition;
+        Vector3 control = Vector3.Lerp(tile.startPosition, target, 0.44f) + Vector3.up * (9f + tile.stagger * 7f);
+        control += Vector3.Cross(Vector3.up, target - tile.startPosition).normalized *
+                   Mathf.Lerp(-6f, 6f, tile.stagger);
+        tile.transform.position = QuadraticBezier(tile.startPosition, control, target, flight);
+        tile.transform.rotation = tile.startRotation * Quaternion.Euler(
+            flight * (270f + index % 5 * 29f),
+            flight * (410f + index % 7 * 21f),
+            flight * 190f);
+        tile.transform.localScale = Vector3.Lerp(tile.startScale, tile.startScale * 0.04f, flight);
+    }
+
+    public void ApplyBlackHoleContact(int platformIndex, int hitCount)
+    {
+        if (!breakawayPlatforms.TryGetValue(platformIndex, out PlatformTile tile) ||
+            tile == null || !tile.canCorrupt || tile.forcedCollapseAt >= 0f)
+        {
+            return;
+        }
+
+        tile.corruptionHits = Mathf.Clamp(hitCount, 0, 3);
+        SetPlatformColor(tile.renderer, StablePlatformColor(tile));
+        if (tile.corruptionHits >= 3)
+            tile.forcedCollapseAt = Time.time;
+    }
+
+    private static Color StablePlatformColor(PlatformTile tile)
+    {
+        switch (tile.corruptionHits)
+        {
+            case 1: return new Color(0.245f, 0.255f, 0.275f);
+            case 2: return new Color(0.115f, 0.122f, 0.138f);
+            case 3: return new Color(0.042f, 0.045f, 0.055f);
+            default: return new Color(0.36f, 0.38f, 0.42f);
+        }
+    }
+
     private void SetPlatformColor(Renderer renderer, Color color)
     {
         renderer.GetPropertyBlock(platformProperties);
@@ -452,7 +555,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             PlatformTile tile = platforms[i];
             if (tile.collapseBand != 2)
                 continue;
-            UpdateCollapsingPlatform(tile, 0.20f, i);
+            UpdateCollapsingPlatform(tile, 0.32f, i);
             tile.renderer.GetPropertyBlock(platformProperties);
             if (tile.collider.enabled && platformProperties.GetColor("_BaseColor").r < 0.30f)
                 pulsing++;
@@ -478,6 +581,37 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             ResetPlatform(tile);
         return flying;
     }
+
+    public int PreviewPlatformCorruptionForValidation()
+    {
+        PlatformTile tile = platforms.Find(candidate => candidate.canCorrupt);
+        if (tile == null)
+            return 0;
+
+        int score = 0;
+        ApplyBlackHoleContact(tile.stableIndex, 1);
+        tile.renderer.GetPropertyBlock(platformProperties);
+        float firstDarkness = platformProperties.GetColor("_BaseColor").r;
+        if (firstDarkness < 0.30f)
+            score++;
+
+        ApplyBlackHoleContact(tile.stableIndex, 2);
+        tile.renderer.GetPropertyBlock(platformProperties);
+        if (platformProperties.GetColor("_BaseColor").r < firstDarkness)
+            score++;
+
+        ApplyBlackHoleContact(tile.stableIndex, 3);
+        tile.forcedCollapseAt = Time.time - 1.1f;
+        UpdateForcedCollapse(tile, 0);
+        if (!tile.collider.enabled && Vector3.Distance(tile.transform.position, tile.startPosition) > 1f)
+            score++;
+
+        tile.transform.gameObject.SetActive(true);
+        tile.corruptionHits = 0;
+        tile.forcedCollapseAt = -1f;
+        ResetPlatform(tile);
+        return score;
+    }
 #endif
 
     private void BuildSingularity()
@@ -493,10 +627,20 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
         CreateAccretionRing(core.transform, "Hot Accretion Band", 2.35f, 0.24f,
             new Color(1f, 0.24f, 0.045f), new Vector3(0.16f, 1f, 0.06f), 46f);
+        CreateAccretionRing(core.transform, "White Photon Crown", 1.92f, 0.12f,
+            new Color(1f, 0.88f, 0.68f), new Vector3(0.04f, 1f, -0.03f), 86f);
         CreateAccretionRing(core.transform, "Violet Lensing Band", 2.8f, 0.13f,
             new Color(0.72f, 0.10f, 1f), new Vector3(-0.08f, 1f, 0.18f), -33f);
         CreateAccretionRing(core.transform, "Blue Photon Band", 3.2f, 0.075f,
             new Color(0.12f, 0.72f, 1f), new Vector3(0.24f, 1f, -0.12f), 25f);
+        CreateAccretionRing(core.transform, "Crimson Outer Disc", 3.65f, 0.06f,
+            new Color(1f, 0.055f, 0.13f), new Vector3(-0.16f, 1f, -0.08f), -19f);
+        CreateAccretionRing(core.transform, "Polar Lensing Arc", 2.72f, 0.055f,
+            new Color(0.34f, 0.9f, 1f), new Vector3(1f, 0.08f, 0.06f), 37f);
+
+        CreatePolarJet(core.transform, "North Relativistic Jet", 1f);
+        CreatePolarJet(core.transform, "South Relativistic Jet", -1f);
+        CreateSingularityParticles(core.transform);
 
         GameObject lightObject = new GameObject("Singularity Rim Light", typeof(Light));
         lightObject.transform.SetParent(core.transform, false);
@@ -506,11 +650,73 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         light.intensity = 6.5f;
         light.range = 34f;
 
+        GameObject blueLightObject = new GameObject("Photon Rim Light", typeof(Light));
+        blueLightObject.transform.SetParent(core.transform, false);
+        Light blueLight = blueLightObject.GetComponent<Light>();
+        blueLight.type = LightType.Point;
+        blueLight.color = new Color(0.08f, 0.68f, 1f);
+        blueLight.intensity = 3.2f;
+        blueLight.range = 22f;
+
         horizonRing = CreateCircleLine("Event Horizon", 96, coreMaterial, 0.18f);
         horizonRing.transform.position = new Vector3(
             match.SingularityPosition.x,
             match.SingularityPosition.y - 5.5f,
             match.SingularityPosition.z);
+    }
+
+    private void CreatePolarJet(Transform parent, string name, float direction)
+    {
+        Material material = CreateMaterial(Color.black, new Color(0.30f, 0.82f, 1f), 9f);
+        LineRenderer jet = new GameObject(name, typeof(LineRenderer)).GetComponent<LineRenderer>();
+        jet.transform.SetParent(parent, false);
+        jet.sharedMaterial = material;
+        jet.useWorldSpace = false;
+        jet.positionCount = 7;
+        jet.startWidth = 0.34f;
+        jet.endWidth = 0.015f;
+        for (int i = 0; i < jet.positionCount; i++)
+        {
+            float t = i / (float)(jet.positionCount - 1);
+            float bend = Mathf.Sin(t * Mathf.PI) * 0.24f;
+            jet.SetPosition(i, new Vector3(bend, direction * Mathf.Lerp(1.4f, 8.5f, t), -bend * 0.45f));
+        }
+    }
+
+    private void CreateSingularityParticles(Transform parent)
+    {
+        GameObject particleObject = new GameObject("Accretion Sparks", typeof(ParticleSystem));
+        particleObject.transform.SetParent(parent, false);
+        ParticleSystem particles = particleObject.GetComponent<ParticleSystem>();
+        ParticleSystem.MainModule main = particles.main;
+        main.loop = true;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.7f, 1.8f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.15f, 0.8f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.035f, 0.15f);
+        main.startColor = new ParticleSystem.MinMaxGradient(
+            new Color(1f, 0.22f, 0.04f, 0.92f),
+            new Color(0.18f, 0.72f, 1f, 0.78f));
+        main.maxParticles = 220;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+
+        ParticleSystem.EmissionModule emission = particles.emission;
+        emission.rateOverTime = 74f;
+        ParticleSystem.ShapeModule shape = particles.shape;
+        shape.shapeType = ParticleSystemShapeType.Circle;
+        shape.radius = 3.35f;
+        shape.radiusThickness = 0.3f;
+        shape.rotation = new Vector3(78f, 0f, 0f);
+
+        ParticleSystem.NoiseModule noise = particles.noise;
+        noise.enabled = true;
+        noise.strength = 0.32f;
+        noise.frequency = 0.75f;
+        noise.scrollSpeed = 0.45f;
+
+        ParticleSystemRenderer particleRenderer = particleObject.GetComponent<ParticleSystemRenderer>();
+        particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+        particleRenderer.sharedMaterial = vortexMaterial;
+        particles.Play();
     }
 
     private void CreateAccretionRing(
@@ -734,4 +940,9 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         generatedMaterials.Add(material);
         return material;
     }
+}
+
+public sealed class BoundaryBreakawayPlatform : MonoBehaviour
+{
+    public int PlatformIndex { get; set; }
 }

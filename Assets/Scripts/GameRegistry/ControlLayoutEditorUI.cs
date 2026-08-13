@@ -71,7 +71,6 @@ public class ControlLayoutEditorUI : MonoBehaviour
         CreateControlWidget("A1", 150f, new Color(0.62f, 0.25f, 0.82f, 0.90f));
         CreateControlWidget("A2", 150f, new Color(0.62f, 0.25f, 0.82f, 0.90f));
         CreateControlWidget("A3", 150f, new Color(0.62f, 0.25f, 0.82f, 0.90f));
-        CreateControlWidget("Brace", 150f, new Color(0.16f, 0.62f, 0.82f, 0.90f));
 
         editorPanel.SetActive(false);
         UpdateEditButtonVisibility();

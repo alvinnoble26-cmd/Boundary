@@ -13,6 +13,8 @@ public sealed class BoundaryHazard : NetworkBehaviour
     private readonly SyncVar<uint> spawnTick = new(0u, ownerAuth: false);
     private readonly SyncVar<float> lifetime = new(20f, ownerAuth: false);
     private readonly SyncVar<int> variant = new(0, ownerAuth: false);
+    private readonly SyncVar<bool> arenaMass = new(false, ownerAuth: false);
+    private readonly SyncVar<bool> survivesInner = new(false, ownerAuth: false);
 
     [Header("Orbit")]
     [SerializeField] private float orbitAcceleration = 18f;
@@ -32,6 +34,14 @@ public sealed class BoundaryHazard : NetworkBehaviour
     private Vector3 serverTarget;
     private Vector3 pendingVelocity;
     private Vector3 initialPosition;
+    private Vector3 absorptionStartPosition;
+    private Vector3 arenaMassStartScale;
+    private bool absorptionStarted;
+    private float absorptionStartedAt;
+    private float absorptionDuration;
+    private float abilityInfluenceUntil;
+    private int lastPlatformIndex = -1;
+    private float lastPlatformContactAt = -10f;
     private bool visualApplied;
     private float desiredOrbitRadius;
     private float desiredOrbitHeight;
@@ -44,7 +54,11 @@ public sealed class BoundaryHazard : NetworkBehaviour
 
     public BoundaryHazardKind Kind => kind.value;
     public int Variant => variant.value;
+    public bool IsArenaMass => arenaMass.value;
+    public bool SurvivesInnerRing => arenaMass.value && survivesInner.value;
+    public bool AbilityInfluenceActive => Time.time < abilityInfluenceUntil;
     public bool IsRealSingularity => kind.value == BoundaryHazardKind.BlackRainSingularity ||
+                                     kind.value == BoundaryHazardKind.ArenaBlackHole ||
                                      (kind.value == BoundaryHazardKind.FalseSingularity && variant.value == 1);
 
     private uint CurrentTick
@@ -119,12 +133,19 @@ public sealed class BoundaryHazard : NetworkBehaviour
         blackHoleRig.SetParent(transform, false);
         CreateBlackHoleRing("Molten Accretion", 2.05f, 0.20f,
             new Color(1f, 0.20f, 0.035f), new Vector3(16f, 0f, 4f), 92f);
+        CreateBlackHoleRing("White Photon Crown", 1.72f, 0.105f,
+            new Color(1f, 0.86f, 0.60f), new Vector3(7f, 0f, -3f), 128f);
         CreateBlackHoleRing("Violet Lensing", 2.45f, 0.12f,
             new Color(0.72f, 0.08f, 1f), new Vector3(-11f, 0f, 18f), -68f);
         CreateBlackHoleRing("Photon Orbit", 2.82f, 0.065f,
             new Color(0.08f, 0.72f, 1f), new Vector3(24f, 0f, -12f), 48f);
         CreateBlackHoleRing("Polar Lens", 2.18f, 0.055f,
             new Color(0.82f, 0.32f, 1f), new Vector3(76f, 0f, 0f), -31f);
+        CreateBlackHoleRing("Crimson Outer Lens", 3.12f, 0.045f,
+            new Color(1f, 0.045f, 0.14f), new Vector3(-19f, 0f, -8f), 27f);
+        CreateBlackHoleJet("North Micro Jet", 1f);
+        CreateBlackHoleJet("South Micro Jet", -1f);
+        CreateBlackHoleParticles();
         blackHoleRig.gameObject.SetActive(false);
     }
 
@@ -158,6 +179,58 @@ public sealed class BoundaryHazard : NetworkBehaviour
         }
         blackHoleRings.Add(line.transform);
         blackHoleRingSpeeds.Add(speed);
+    }
+
+    private void CreateBlackHoleJet(string jetName, float direction)
+    {
+        LineRenderer jet = new GameObject(jetName, typeof(LineRenderer)).GetComponent<LineRenderer>();
+        jet.transform.SetParent(blackHoleRig, false);
+        jet.useWorldSpace = false;
+        jet.positionCount = 5;
+        jet.startWidth = 0.18f;
+        jet.endWidth = 0.012f;
+        Material material = CreateMaterial(Color.black, new Color(0.22f, 0.78f, 1f), 8f);
+        blackHoleMaterials.Add(material);
+        jet.sharedMaterial = material;
+        for (int i = 0; i < jet.positionCount; i++)
+        {
+            float t = i / (float)(jet.positionCount - 1);
+            jet.SetPosition(i, new Vector3(
+                Mathf.Sin(t * Mathf.PI) * 0.10f,
+                direction * Mathf.Lerp(1.1f, 4.4f, t),
+                0f));
+        }
+    }
+
+    private void CreateBlackHoleParticles()
+    {
+        GameObject particleObject = new GameObject("Orbiting Photon Sparks", typeof(ParticleSystem));
+        particleObject.transform.SetParent(blackHoleRig, false);
+        ParticleSystem particles = particleObject.GetComponent<ParticleSystem>();
+        ParticleSystem.MainModule main = particles.main;
+        main.loop = true;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.45f, 1.15f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.08f, 0.35f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.025f, 0.085f);
+        main.startColor = new ParticleSystem.MinMaxGradient(
+            new Color(1f, 0.26f, 0.045f, 0.9f),
+            new Color(0.16f, 0.76f, 1f, 0.82f));
+        main.maxParticles = 64;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+
+        ParticleSystem.EmissionModule emission = particles.emission;
+        emission.rateOverTime = 26f;
+        ParticleSystem.ShapeModule shape = particles.shape;
+        shape.shapeType = ParticleSystemShapeType.Circle;
+        shape.radius = 2.55f;
+        shape.radiusThickness = 0.28f;
+        shape.rotation = new Vector3(76f, 0f, 0f);
+
+        Material material = CreateMaterial(Color.black, new Color(0.20f, 0.72f, 1f), 7f);
+        blackHoleMaterials.Add(material);
+        ParticleSystemRenderer particleRenderer = particleObject.GetComponent<ParticleSystemRenderer>();
+        particleRenderer.sharedMaterial = material;
+        particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
     }
 
     protected override void OnSpawned()
@@ -207,11 +280,40 @@ public sealed class BoundaryHazard : NetworkBehaviour
         spawnTick.value = serverSpawnTick;
         lifetime.value = Mathf.Max(1f, secondsAlive);
         variant.value = hazardVariant;
+        arenaMass.value = false;
+        survivesInner.value = false;
         serverTarget = target;
         pendingVelocity = velocity;
         initialPosition = transform.position;
         ConfigureOrbitLane();
         ApplyVisual();
+    }
+
+    public void ServerConfigureArenaMass(
+        BoundaryHazardKind hazardKind,
+        uint serverSpawnTick,
+        int populationIndex,
+        bool innerRingSurvivor,
+        Vector3 restingPosition)
+    {
+        kind.value = hazardKind;
+        spawnTick.value = serverSpawnTick;
+        lifetime.value = 190f;
+        variant.value = populationIndex;
+        arenaMass.value = true;
+        survivesInner.value = innerRingSurvivor;
+        serverTarget = restingPosition;
+        pendingVelocity = Vector3.zero;
+        initialPosition = transform.position;
+        arenaMassStartScale = transform.localScale;
+        ConfigureOrbitLane();
+        ApplyVisual();
+    }
+
+    public void RegisterAbilityInfluence()
+    {
+        if (isServer && arenaMass.value)
+            abilityInfluenceUntil = Time.time + 1.4f;
     }
 
     public void ServerPulse(bool outward)
@@ -240,9 +342,9 @@ public sealed class BoundaryHazard : NetworkBehaviour
         if (body == null)
             yield break;
 
-        bool kinematicHazard = IsSingularityKind(kind.value);
+        bool kinematicHazard = IsKinematicSingularity(kind.value);
         body.isKinematic = !manager.isServer || kinematicHazard;
-        body.useGravity = manager.isServer && !kinematicHazard;
+        body.useGravity = manager.isServer && !kinematicHazard && !arenaMass.value;
         if (manager.isServer && !body.isKinematic)
         {
             body.linearVelocity = pendingVelocity;
@@ -255,12 +357,22 @@ public sealed class BoundaryHazard : NetworkBehaviour
         if (!visualApplied)
             ApplyVisual();
 
+        BoundaryMatchController activeMatch = BoundaryMatchController.Instance;
+        if (arenaMass.value && activeMatch != null && ShouldAbsorbDuring(activeMatch.Transition))
+            SetCollisionEnabled(false);
+
         if (!isServer)
             return;
 
         if (Age >= lifetime.value)
         {
             Despawn();
+            return;
+        }
+
+        if (arenaMass.value)
+        {
+            TickArenaMass();
             return;
         }
 
@@ -281,6 +393,79 @@ public sealed class BoundaryHazard : NetworkBehaviour
                     body.AddForce(Vector3.down * 11f, ForceMode.Acceleration);
                 break;
         }
+    }
+
+    private void TickArenaMass()
+    {
+        BoundaryMatchController match = BoundaryMatchController.Instance;
+        if (match == null || body == null)
+            return;
+
+        bool absorbingNow = absorptionStarted || ShouldAbsorbDuring(match.Transition);
+
+        if (absorbingNow)
+        {
+            if (!absorptionStarted)
+            {
+                absorptionStarted = true;
+                absorptionStartPosition = body.position;
+                arenaMassStartScale = transform.localScale;
+                absorptionStartedAt = Time.time;
+                absorptionDuration = Mathf.Max(0.6f, match.TransitionRemaining);
+                body.isKinematic = true;
+                body.useGravity = false;
+                SetCollisionEnabled(false);
+            }
+
+            float stagger = (variant.value % 5) * 0.055f;
+            float elapsed = Time.time - absorptionStartedAt;
+            float flight = BoundaryMath.EaseInOut(Mathf.InverseLerp(
+                absorptionDuration * stagger,
+                absorptionDuration,
+                elapsed));
+            Vector3 target = match.SingularityPosition;
+            Vector3 tangent = Vector3.Cross(Vector3.up, target - absorptionStartPosition).normalized;
+            Vector3 control = Vector3.Lerp(absorptionStartPosition, target, 0.52f) +
+                              Vector3.up * (6f + variant.value % 4 * 1.8f) +
+                              tangent * Mathf.Lerp(-6f, 6f, (variant.value % 7) / 6f);
+            body.MovePosition(QuadraticBezier(absorptionStartPosition, control, target, flight));
+            body.MoveRotation(Quaternion.Euler(
+                flight * (320f + variant.value * 7f),
+                flight * (480f + variant.value * 5f),
+                flight * 210f));
+            transform.localScale = Vector3.Lerp(arenaMassStartScale, arenaMassStartScale * 0.025f, flight);
+            if (flight >= 0.995f)
+                Despawn();
+            return;
+        }
+
+        if (body.isKinematic)
+            return;
+
+        Vector3 offset = body.position - match.ArenaCenter;
+        Vector3 flat = new Vector3(offset.x, 0f, offset.z);
+        float maximumRadius = Mathf.Max(8f, match.RingRadius * 0.72f);
+        if (flat.magnitude > maximumRadius)
+        {
+            float inwardForce = Mathf.Min(15f, 2f + (flat.magnitude - maximumRadius) * 0.8f);
+            body.AddForce(-flat.normalized * inwardForce, ForceMode.Acceleration);
+        }
+
+        float desiredY = match.PlatformSurfaceYAtRadius(flat.magnitude) +
+                         (kind.value == BoundaryHazardKind.ArenaBlackHole ? 1.9f : 1.4f);
+        body.AddForce(Vector3.up * ((desiredY - body.position.y) * 5.2f), ForceMode.Acceleration);
+        if (body.linearVelocity.magnitude > 30f)
+            body.linearVelocity = body.linearVelocity.normalized * 30f;
+    }
+
+    private bool ShouldAbsorbDuring(BoundaryTransition activeTransition)
+    {
+        if (!arenaMass.value || survivesInner.value)
+            return false;
+
+        bool absorbInOuter = (variant.value & 1) == 1;
+        return (absorbInOuter && activeTransition == BoundaryTransition.ClosingOuterRing) ||
+               (!absorbInOuter && activeTransition == BoundaryTransition.ClosingMiddleRing);
     }
 
     private void TickRainSingularity()
@@ -379,6 +564,18 @@ public sealed class BoundaryHazard : NetworkBehaviour
         if (collision == null)
             return;
 
+        if (isServer && arenaMass.value && kind.value == BoundaryHazardKind.ArenaBlackHole)
+        {
+            BoundaryBreakawayPlatform platform = collision.collider.GetComponentInParent<BoundaryBreakawayPlatform>();
+            if (platform != null &&
+                (platform.PlatformIndex != lastPlatformIndex || Time.time - lastPlatformContactAt >= 0.45f))
+            {
+                lastPlatformIndex = platform.PlatformIndex;
+                lastPlatformContactAt = Time.time;
+                BoundaryMatchController.Instance?.ServerRegisterPlatformContact(platform.PlatformIndex);
+            }
+        }
+
         PlayerMovement movement = collision.collider.GetComponentInParent<PlayerMovement>();
         if (movement == null || !movement.isOwner)
             return;
@@ -418,22 +615,31 @@ public sealed class BoundaryHazard : NetworkBehaviour
                 continue;
             }
 
-            if (!IsSingularityKind(hazard.kind.value))
+            if (!IsSingularityVisual(hazard.kind.value))
                 continue;
 
             Vector3 delta = hazard.transform.position - movement.rb.position;
-            float radius = (hazard.IsRealSingularity ? 8f : 4f) * Mathf.Max(1f, hazard.transform.localScale.x);
+            bool arenaBlackHole = hazard.kind.value == BoundaryHazardKind.ArenaBlackHole;
+            float baseRadius = arenaBlackHole ? 5.5f : hazard.IsRealSingularity ? 8f : 4f;
+            float radius = baseRadius * Mathf.Max(1f, hazard.transform.localScale.x);
             float distance = delta.magnitude;
             if (distance >= radius || distance < 0.05f)
                 continue;
 
-            float strength = hazard.IsRealSingularity ? 22f : 3f;
+            float strength = arenaBlackHole ? 6f : hazard.IsRealSingularity ? 22f : 3f;
             float falloff = 1f - Mathf.Clamp01(distance / radius);
             movement.rb.AddForce(delta.normalized * strength * falloff, ForceMode.Acceleration);
         }
     }
 
-    private static bool IsSingularityKind(BoundaryHazardKind value)
+    private static bool IsSingularityVisual(BoundaryHazardKind value)
+    {
+        return value == BoundaryHazardKind.BlackRainSingularity ||
+               value == BoundaryHazardKind.FalseSingularity ||
+               value == BoundaryHazardKind.ArenaBlackHole;
+    }
+
+    private static bool IsKinematicSingularity(BoundaryHazardKind value)
     {
         return value == BoundaryHazardKind.BlackRainSingularity ||
                value == BoundaryHazardKind.FalseSingularity;
@@ -460,14 +666,14 @@ public sealed class BoundaryHazard : NetworkBehaviour
         if (cubeRenderer == null || sphereRenderer == null || boxCollider == null || sphereCollider == null)
             return;
 
-        bool sphere = IsSingularityKind(kind.value);
+        bool sphere = IsSingularityVisual(kind.value);
         cubeRenderer.gameObject.SetActive(!sphere);
         sphereRenderer.gameObject.SetActive(sphere);
         if (blackHoleRig != null)
             blackHoleRig.gameObject.SetActive(sphere);
         boxCollider.enabled = !sphere;
         sphereCollider.enabled = sphere;
-        sphereCollider.isTrigger = true;
+        sphereCollider.isTrigger = kind.value != BoundaryHazardKind.ArenaBlackHole;
 
         if (cubeMaterial == null)
             cubeMaterial = CreateMaterial(new Color(0.12f, 0.08f, 0.20f), new Color(0.65f, 0.16f, 1f), 2.5f);
@@ -491,6 +697,9 @@ public sealed class BoundaryHazard : NetworkBehaviour
             case BoundaryHazardKind.FalseSingularity:
                 SetEmission(new Color(0.35f, 0.08f, 0.9f), 4.5f);
                 break;
+            case BoundaryHazardKind.ArenaBlackHole:
+                SetEmission(new Color(0.16f, 0.62f, 1f), 6.5f);
+                break;
         }
 
         visualApplied = true;
@@ -498,7 +707,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
 
     private void SetEmission(Color color, float intensity)
     {
-        Material target = IsSingularityKind(kind.value) ? sphereMaterial : cubeMaterial;
+        Material target = IsSingularityVisual(kind.value) ? sphereMaterial : cubeMaterial;
         if (target == null)
             return;
         target.EnableKeyword("_EMISSION");
@@ -514,5 +723,19 @@ public sealed class BoundaryHazard : NetworkBehaviour
         material.EnableKeyword("_EMISSION");
         material.SetColor("_EmissionColor", emission * intensity);
         return material;
+    }
+
+    private void SetCollisionEnabled(bool enabled)
+    {
+        if (boxCollider != null)
+            boxCollider.enabled = enabled && !IsSingularityVisual(kind.value);
+        if (sphereCollider != null)
+            sphereCollider.enabled = enabled && IsSingularityVisual(kind.value);
+    }
+
+    private static Vector3 QuadraticBezier(Vector3 start, Vector3 control, Vector3 end, float t)
+    {
+        float inverse = 1f - t;
+        return inverse * inverse * start + 2f * inverse * t * control + t * t * end;
     }
 }

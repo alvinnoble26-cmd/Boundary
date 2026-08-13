@@ -113,5 +113,7 @@ MonoBehaviour:
   platformGap: 0.45
   platformThickness: 0.85
   collapseWarningSeconds: 1.35
-  routeCountPerTier: 8
-  routePlatformSize: 5.2
+  wallPairsPerTier: 7
+  wallLength: 5.8
+  wallHeight: 4.2
+  wallPairGap: 4.3

@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 using PurrNet;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -43,12 +42,7 @@ public class PlayerMovement : NetworkBehaviour
     public Transform orientation;
     public PlayerInputReader input;
 
-    [Header("Boundary Anchor")]
-    [SerializeField, Range(0.1f, 0.8f)] private float freshBraceResistance = 0.25f;
-    [SerializeField, Range(0.4f, 1f)] private float fatiguedBraceResistance = 0.72f;
-    [SerializeField, Min(0.05f)] private float braceFatiguePerSecond = 0.16f;
-    [SerializeField, Min(0.05f)] private float braceRecoveryPerSecond = 0.34f;
-    [SerializeField, Range(0.1f, 0.8f)] private float braceMovementMultiplier = 0.34f;
+    [Header("Boundary Physics")]
     [SerializeField, Min(5f)] private float maximumBoundaryVerticalSpeed = 26f;
 
     [HideInInspector] public Rigidbody rb;
@@ -56,8 +50,6 @@ public class PlayerMovement : NetworkBehaviour
 
     public bool IsGrounded => isGrounded;
     public bool IsStableGrounded { get; private set; }
-    public bool IsBracing { get; private set; }
-    public float BraceFatigue => braceFatigue;
     public bool JumpPressedThisFrame { get; private set; }
     public bool MovementSuppressed { get; private set; }
     public float ExternalSpeedCap { get; private set; } = -1f;
@@ -84,8 +76,6 @@ public class PlayerMovement : NetworkBehaviour
 
     private Collider myCol;
     private Vector2 smoothedMoveInput;
-    private bool mobileBraceHeld;
-    private float braceFatigue;
     private BoundaryPlayerState boundaryState;
 
 // Add this field near the top with other private fields
@@ -157,7 +147,7 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
 
         }
         UpdateGrounded();
-        UpdateBrace();
+        UpdateBoundaryFooting();
         HandleWallDetection();
 
         if (MovementSuppressed)
@@ -175,8 +165,6 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         ApplyMasterRotation();
 
         float cap = (ExternalSpeedCap > 0f) ? ExternalSpeedCap : maxSpeed;
-        if (IsBracing)
-            cap *= braceMovementMultiplier;
         ClampHorizontalSpeed(cap);
 
         Vector3 v = rb.linearVelocity;
@@ -237,7 +225,7 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         Vector3 vel = rb.linearVelocity;
         Vector3 flatVel = new Vector3(vel.x, 0f, vel.z);
 
-        float movementMultiplier = IsBracing ? braceMovementMultiplier : 1f;
+        float movementMultiplier = 1f;
         if (boundaryState != null && boundaryState.State == BoundaryKnockoutState.EventHorizon)
             movementMultiplier *= 0.48f;
 
@@ -335,12 +323,6 @@ void HandleJump()
 {
     if (!jumpRequested) return;
 
-    if (IsBracing)
-    {
-        jumpRequested = false;
-        return;
-    }
-
     // Always release suppression on jump regardless of source
     if (MovementSuppressed)
         SetMovementSuppressed(false, -1f);
@@ -364,46 +346,22 @@ void HandleJump()
     exitingSlope = true;
 }
 
-    public void SetBraceHeld(bool held)
-    {
-        if (!isOwner)
-            return;
-        mobileBraceHeld = held;
-    }
-
     public void ApplyBoundaryImpulse(Vector3 velocityChange)
     {
         if (!isOwner || rb == null)
             return;
 
-        if (IsBracing && IsStableGrounded)
-        {
-            float resistance = Mathf.Lerp(freshBraceResistance, fatiguedBraceResistance, braceFatigue);
-            velocityChange *= resistance;
-        }
-
         rb.AddForce(Vector3.ClampMagnitude(velocityChange, 18f), ForceMode.VelocityChange);
     }
 
-    private void UpdateBrace()
+    private void UpdateBoundaryFooting()
     {
-        bool hardwareHeld = (Keyboard.current != null &&
-                             (Keyboard.current.leftShiftKey.isPressed || Keyboard.current.rightShiftKey.isPressed)) ||
-                            (Gamepad.current != null && Gamepad.current.leftShoulder.isPressed);
-        bool wantsBrace = mobileBraceHeld || hardwareHeld;
-
         BoundaryMatchController match = BoundaryMatchController.Instance;
         Vector3 center = match != null ? match.ArenaCenter : transform.position;
         float radius = match != null ? match.RingRadius : float.MaxValue;
         Vector3 flatOffset = transform.position - center;
         flatOffset.y = 0f;
         IsStableGrounded = isGrounded && flatOffset.magnitude <= radius + 0.5f;
-        IsBracing = wantsBrace && IsStableGrounded && !jumpRequested;
-
-        if (IsBracing)
-            braceFatigue = Mathf.Min(1f, braceFatigue + braceFatiguePerSecond * Time.fixedDeltaTime);
-        else
-            braceFatigue = Mathf.Max(0f, braceFatigue - braceRecoveryPerSecond * Time.fixedDeltaTime);
     }
 
     private void ApplyBoundaryForces()
@@ -412,7 +370,6 @@ void HandleJump()
         if (match == null || match.Phase == BoundaryPhase.Waiting || rb == null)
             return;
 
-        float braceResistance = Mathf.Lerp(freshBraceResistance, fatiguedBraceResistance, braceFatigue);
         Vector3 acceleration = BoundaryMath.PlayerPullAcceleration(
             rb.position,
             match.SingularityPosition,
@@ -420,9 +377,7 @@ void HandleJump()
             match.ArenaFloorY,
             match.RingRadius,
             match.EffectivePullStrength,
-            IsStableGrounded,
-            IsBracing,
-            braceResistance);
+            IsStableGrounded);
         rb.AddForce(acceleration, ForceMode.Acceleration);
 
         Vector3 radial = rb.position - match.ArenaCenter;
@@ -431,7 +386,6 @@ void HandleJump()
         {
             Vector3 tangent = Vector3.Cross(Vector3.up, radial.normalized) * match.CurrentDirection;
             float currentStrength = match.Phase == BoundaryPhase.InnerRing ? 4.2f : 3.4f;
-            if (IsBracing) currentStrength *= 0.35f;
             rb.AddForce(tangent * currentStrength, ForceMode.Acceleration);
         }
 
@@ -443,7 +397,6 @@ void HandleJump()
             {
                 Vector3 fracturePush = Vector3.up * (10f * match.FracturePulse) +
                                        radial.normalized * (3f * match.FracturePulse);
-                if (IsBracing) fracturePush *= 0.55f;
                 rb.AddForce(fracturePush, ForceMode.Acceleration);
             }
         }

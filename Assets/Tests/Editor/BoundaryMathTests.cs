@@ -13,20 +13,17 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
-    public void GroundingAndBracing_MeaningfullyReducePull()
+    public void StableGrounding_MeaningfullyReducesPull()
     {
         Vector3 player = Vector3.zero;
         Vector3 singularity = new Vector3(0f, 28f, 0f);
         Vector3 center = Vector3.zero;
         Vector3 airborne = BoundaryMath.PlayerPullAcceleration(
-            player, singularity, center, -1f, 106f, 5.5f, false, false, 1f);
+            player, singularity, center, -1f, 106f, 5.5f, false);
         Vector3 grounded = BoundaryMath.PlayerPullAcceleration(
-            player, singularity, center, -1f, 106f, 5.5f, true, false, 1f);
-        Vector3 braced = BoundaryMath.PlayerPullAcceleration(
-            player, singularity, center, -1f, 106f, 5.5f, true, true, 0.25f);
+            player, singularity, center, -1f, 106f, 5.5f, true);
 
         Assert.That(grounded.magnitude, Is.LessThan(airborne.magnitude * 0.2f));
-        Assert.That(braced.magnitude, Is.LessThan(grounded.magnitude * 0.4f));
     }
 
     [Test]
@@ -39,9 +36,7 @@ public sealed class BoundaryMathTests
             -1f,
             10f,
             12f,
-            true,
-            true,
-            0.25f);
+            true);
 
         Assert.That(acceleration.x, Is.LessThan(-5f));
         Assert.That(acceleration.y, Is.GreaterThan(7f));
@@ -65,9 +60,7 @@ public sealed class BoundaryMathTests
             -0.9f,
             68f,
             2.1f,
-            false,
-            false,
-            1f);
+            false);
 
         Assert.That(acceleration.y, Is.GreaterThan(15f));
         Assert.That(acceleration.x, Is.LessThan(-3f));
@@ -95,6 +88,14 @@ public sealed class BoundaryMathTests
     {
         CollectionAssert.DoesNotContain(System.Enum.GetNames(typeof(BoundaryDisaster)), "ReverseCurrent");
         Assert.That(System.Enum.GetValues(typeof(BoundaryDisaster)).Length - 1, Is.EqualTo(9));
+    }
+
+    [Test]
+    public void ArenaMassPopulation_LeavesExactlyOneQuarterForInnerRing()
+    {
+        Assert.That(BoundaryMatchController.ArenaMassPopulation, Is.EqualTo(20));
+        Assert.That(BoundaryMatchController.ArenaMassInnerSurvivors,
+            Is.EqualTo(BoundaryMatchController.ArenaMassPopulation / 4));
     }
 }
 #endif

@@ -52,7 +52,8 @@ public enum BoundaryHazardKind
     OrbitalDebris,
     Meteor,
     FalseSingularity,
-    TornadoDebris
+    TornadoDebris,
+    ArenaBlackHole
 }
 
 public static class BoundaryMath
@@ -98,9 +99,7 @@ public static class BoundaryMath
         float arenaFloorY,
         float ringRadius,
         float basePull,
-        bool stableGrounded,
-        bool bracing,
-        float braceResistance)
+        bool stableGrounded)
     {
         Vector3 toSingularity = singularityPosition - playerPosition;
         if (toSingularity.sqrMagnitude < 0.01f || basePull <= 0f)
@@ -116,9 +115,6 @@ public static class BoundaryMath
         float edge01 = Mathf.InverseLerp(ringRadius * 0.80f, ringRadius * 1.10f, horizontalDistance);
         float edgeMultiplier = Mathf.Lerp(1f, 1.42f, edge01);
         float footingMultiplier = stableGrounded && !outsideBoundary ? 0.055f : 1f;
-
-        if (bracing && stableGrounded && !outsideBoundary)
-            footingMultiplier *= Mathf.Clamp(braceResistance, 0.18f, 0.85f);
 
         Vector3 pull = toSingularity.normalized *
                        (basePull * altitudeMultiplier * edgeMultiplier * footingMultiplier);
@@ -190,7 +186,7 @@ public static class BoundaryMath
             case BoundaryDisaster.CubeStorm:
                 return "Turn the falling cubes into weapons with Attract and Repel.";
             case BoundaryDisaster.GravitySurge:
-                return "Anchor on each pulse, then punish anyone caught airborne.";
+                return "Keep your footing through each pulse, then punish airborne rivals.";
             case BoundaryDisaster.OrbitalStrike:
                 return "Read the orbit, slide beneath it, or redirect its next pass.";
             case BoundaryDisaster.FractureLines:
