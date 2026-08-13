@@ -110,9 +110,11 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::BoundaryArenaPresentation
   platformSize: 9.2
-  platformGap: 0.45
+  platformSeamOverlap: 0.4
   platformThickness: 0.85
   collapseWarningSeconds: 1.35
+  tierRampLength: 14
+  tierRampArcOverlap: 0.45
   wallPairsPerTier: 7
   wallLength: 8
   wallHeight: 5.8

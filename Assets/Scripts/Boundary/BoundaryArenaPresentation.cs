@@ -32,9 +32,13 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
     [Header("Breakaway platform arena")]
     [SerializeField, Range(7f, 14f)] private float platformSize = 9.2f;
-    [SerializeField, Range(0.1f, 1.5f)] private float platformGap = 0.45f;
+    [SerializeField, Range(0.1f, 1f)] private float platformSeamOverlap = 0.4f;
     [SerializeField, Range(0.35f, 1.5f)] private float platformThickness = 0.85f;
     [SerializeField, Range(0.5f, 3f)] private float collapseWarningSeconds = 1.35f;
+
+    [Header("Tier transitions")]
+    [SerializeField, Range(9f, 18f)] private float tierRampLength = 14f;
+    [SerializeField, Range(0.1f, 1f)] private float tierRampArcOverlap = 0.45f;
 
     [Header("Wall-jump cover")]
     [SerializeField, Range(4, 12)] private int wallPairsPerTier = 7;
@@ -64,10 +68,12 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
     private float originalFogDensity;
     private bool originalFogEnabled;
     private bool built;
+    private int transitionRampCount;
 
     public int GeneratedPlatformCount => platforms.Count;
     public bool LegacyArenaHidden => disabledLegacyArena.Count > 0;
     public bool HasSideWalls => false;
+    public int GeneratedTransitionRampCount => transitionRampCount;
 
     private void Awake()
     {
@@ -144,6 +150,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         coreMaterial = CreateMaterial(Color.black, new Color(0.32f, 0.02f, 0.72f), 6f);
 
         BuildPlatformFloor();
+        BuildTierTransitionRamps();
         BuildWallJumpStructures();
         AlignSpawnsAndExistingPlayers();
         BuildSingularity();
@@ -182,15 +189,16 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         Transform parent = new GameObject("Breakaway Platforms").transform;
         parent.SetParent(generatedRoot, false);
 
-        float spacing = platformSize + platformGap;
+        // An aligned, slightly overlapping grid removes both the visible seams
+        // and the collider-sized catches that previously stopped a slide.
+        float spacing = BoundaryMath.DensePlatformSpacing(platformSize, platformSeamOverlap);
         int extent = Mathf.CeilToInt(match.OuterRadius / spacing);
         int index = 0;
         for (int z = -extent; z <= extent; z++)
         {
-            float rowOffset = (z & 1) == 0 ? 0f : spacing * 0.5f;
             for (int x = -extent; x <= extent; x++)
             {
-                Vector2 flat = new Vector2(x * spacing + rowOffset, z * spacing);
+                Vector2 flat = new Vector2(x * spacing, z * spacing);
                 float distance = flat.magnitude;
                 if (distance > match.OuterRadius - platformSize * 0.32f)
                     continue;
@@ -210,6 +218,64 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
                     band,
                     index++);
             }
+        }
+    }
+
+    private void BuildTierTransitionRamps()
+    {
+        Transform parent = new GameObject("Tier Transition Ramps").transform;
+        parent.SetParent(generatedRoot, false);
+        transitionRampCount = 0;
+
+        BuildTransitionRampRing(
+            parent,
+            match.MiddleRadius,
+            match.MiddlePlatformSurfaceY,
+            match.OuterPlatformSurfaceY,
+            2,
+            4000);
+        BuildTransitionRampRing(
+            parent,
+            match.InnerRadius,
+            match.InnerPlatformSurfaceY,
+            match.MiddlePlatformSurfaceY,
+            1,
+            5000);
+    }
+
+    private void BuildTransitionRampRing(
+        Transform parent,
+        float boundaryRadius,
+        float innerSurfaceY,
+        float outerSurfaceY,
+        int collapseBand,
+        int indexOffset)
+    {
+        float outerEdgeRadius = boundaryRadius + tierRampLength * 0.5f;
+        float targetArcWidth = BoundaryMath.DensePlatformSpacing(platformSize, platformSeamOverlap);
+        int segmentCount = Mathf.Max(16, Mathf.CeilToInt(Mathf.PI * 2f * outerEdgeRadius / targetArcWidth));
+        float arcWidth = Mathf.PI * 2f * outerEdgeRadius / segmentCount + tierRampArcOverlap;
+        float slope = BoundaryMath.TierRampSlopeDegrees(innerSurfaceY - outerSurfaceY, tierRampLength);
+        float centerY = (innerSurfaceY + outerSurfaceY) * 0.5f -
+                        platformThickness * 0.5f * Mathf.Cos(slope * Mathf.Deg2Rad);
+
+        for (int segment = 0; segment < segmentCount; segment++)
+        {
+            float angle = Mathf.PI * 2f * segment / segmentCount;
+            Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+            Vector3 position = match.ArenaCenter + radial * boundaryRadius;
+            position.y = centerY;
+            Quaternion rotation = Quaternion.LookRotation(radial, Vector3.up) *
+                                  Quaternion.Euler(slope, 0f, 0f);
+            CreatePlatform(
+                parent,
+                $"Tier Ramp {collapseBand}-{segment:00}",
+                position,
+                new Vector3(arcWidth, platformThickness, tierRampLength),
+                rotation,
+                collapseBand,
+                indexOffset + segment);
+            transitionRampCount++;
         }
     }
 

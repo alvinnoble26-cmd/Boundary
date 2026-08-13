@@ -115,5 +115,18 @@ public sealed class BoundaryMathTests
         Assert.That(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.ArenaBlackHole, true), Is.True);
         Assert.That(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.ArenaBlackHole, false), Is.False);
     }
+
+    [Test]
+    public void PlatformGrid_OverlapsAndTierRampsRemainSlideable()
+    {
+        float spacing = BoundaryMath.DensePlatformSpacing(9.2f, 0.4f);
+        float outerSlope = BoundaryMath.TierRampSlopeDegrees(2f, 14f);
+        float innerSlope = BoundaryMath.TierRampSlopeDegrees(2.25f, 14f);
+
+        Assert.That(spacing, Is.EqualTo(8.8f).Within(0.001f));
+        Assert.That(spacing, Is.LessThan(9.2f));
+        Assert.That(outerSlope, Is.LessThan(10f));
+        Assert.That(innerSlope, Is.LessThan(10f));
+    }
 }
 #endif

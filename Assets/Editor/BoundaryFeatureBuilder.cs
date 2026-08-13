@@ -210,6 +210,10 @@ public static class BoundaryFeatureValidator
         Require(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.Cube, true) &&
                 BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.ArenaBlackHole, true),
             "Arena cubes and ground black holes must be lethal on contact.");
+        Require(BoundaryMath.DensePlatformSpacing(9.2f, 0.4f) < 9.2f,
+            "Platform colliders must overlap instead of leaving slide-breaking seams.");
+        Require(BoundaryMath.TierRampSlopeDegrees(2.25f, 14f) < 10f,
+            "Raised platform tiers must use a slideable transition slope.");
         Require(System.Enum.IsDefined(typeof(BoundaryHazardKind), BoundaryHazardKind.ArenaBlackHole),
             "The arena black-hole sphere kind is missing.");
 
@@ -223,7 +227,7 @@ public static class BoundaryFeatureValidator
         }
         Require(disasterCount == 9, "Reverse Current must be removed and exactly nine disasters must remain.");
 
-        Debug.Log("[BoundaryFeatureValidator] PASS — lethal void/masses, floating walls, decisive ability physics, quarter survival, corruption, authority, and all 9 events validated.");
+        Debug.Log("[BoundaryFeatureValidator] PASS — seamless sliding floor, continuous tier ramps, lethal masses/void, floating walls, ability physics, corruption, authority, and all 9 events validated.");
     }
 
     private static void Require(bool condition, string message)
@@ -337,6 +341,7 @@ public static class BoundaryRuntimeSmokeRunner
             GameObject generated = GameObject.Find("Boundary Generated Stadium");
             GameObject platformRoot = GameObject.Find("Breakaway Platforms");
             GameObject wallRoot = GameObject.Find("Wall Jump Structures");
+            GameObject rampRoot = GameObject.Find("Tier Transition Ramps");
             BoundaryArenaPresentation presentation = Object.FindFirstObjectByType<BoundaryArenaPresentation>();
 
             RequireSmoke(controller != null && BoundaryMatchController.Instance == controller,
@@ -351,6 +356,9 @@ public static class BoundaryRuntimeSmokeRunner
             RequireSmoke(presentation != null && presentation.GeneratedPlatformCount >= 340 &&
                          presentation.LegacyArenaHidden && !presentation.HasSideWalls,
                 "Open platform arena did not replace the legacy floor and side walls.");
+            RequireSmoke(rampRoot != null && presentation.GeneratedTransitionRampCount >= 70 &&
+                         rampRoot.transform.childCount == presentation.GeneratedTransitionRampCount,
+                "Continuous slide ramps were not generated across both raised tier seams.");
             RequireSmoke(wallRoot != null && wallRoot.transform.childCount >= 30,
                 "Purpose-built wall-jump structures were not generated.");
             foreach (Transform wall in wallRoot.transform)
@@ -387,7 +395,7 @@ public static class BoundaryRuntimeSmokeRunner
             RequireSmoke(RuntimeErrors.Count == 0, "Runtime errors: " + string.Join(" | ", RuntimeErrors));
 
             File.WriteAllText(ResultPath,
-                "PASS\nOpen breakaway arena, wall-jump cover, upgraded black holes, event horizon, and Anchor-free HUD initialized without runtime errors.\n");
+                "PASS\nDense overlapping floor, continuous tier ramps, wall-jump cover, upgraded black holes, and event horizon initialized without Boundary runtime errors.\n");
         }
         catch (System.Exception exception)
         {

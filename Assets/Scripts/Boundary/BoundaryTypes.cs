@@ -108,6 +108,16 @@ public static class BoundaryMath
                (isArenaMass && kind == BoundaryHazardKind.ArenaBlackHole);
     }
 
+    public static float DensePlatformSpacing(float platformSize, float seamOverlap)
+    {
+        return Mathf.Max(0.5f, platformSize - Mathf.Max(0.05f, seamOverlap));
+    }
+
+    public static float TierRampSlopeDegrees(float heightDifference, float rampLength)
+    {
+        return Mathf.Atan2(Mathf.Abs(heightDifference), Mathf.Max(0.1f, rampLength)) * Mathf.Rad2Deg;
+    }
+
     public static Vector3 PlayerPullAcceleration(
         Vector3 playerPosition,
         Vector3 singularityPosition,
