@@ -223,5 +223,45 @@ public sealed class BoundaryMathTests
         Assert.That(controls.b, Is.LessThan(0.25f));
         Assert.That(skins.b, Is.LessThan(0.25f));
     }
+
+    [Test]
+    public void SunDucker_UsesDimensionalRedHairAndSimplifiedDetails()
+    {
+        GameObject root = new GameObject("Sun Ducker Test");
+        try
+        {
+            SunDuckerDemonVisual.Build(root.transform);
+
+            Transform details = root.transform.Find("DemonDetails");
+            Transform hair = details.Find("Crimson 3D Storm Hair");
+            Assert.That(hair, Is.Not.Null);
+
+            Renderer lockRenderer = hair.Find("Center Fringe").GetComponent<Renderer>();
+            Color hairColor = lockRenderer.sharedMaterial.color;
+            Assert.That(hairColor.r, Is.GreaterThan(hairColor.g * 4f));
+            Assert.That(hairColor.r, Is.GreaterThan(hairColor.b * 4f));
+            Assert.That(lockRenderer.GetComponent<MeshFilter>().sharedMesh.bounds.size.z,
+                Is.GreaterThan(0.05f));
+
+            Transform clothes = details.Find("Storm Swordsman Clothing");
+            Assert.That(clothes.Find("Teal Neck Cord"), Is.Null);
+            Assert.That(clothes.Find("Teal Cord Drop Left"), Is.Null);
+            Assert.That(clothes.Find("Teal Cord Drop Right"), Is.Null);
+            Assert.That(clothes.Find("Left White Lapel"), Is.Null);
+            Assert.That(clothes.Find("Right White Lapel"), Is.Null);
+
+            Assert.That(details.Find("Left Black Lightning Tattoo"), Is.Not.Null);
+            Assert.That(details.Find("Right Black Lightning Tattoo"), Is.Not.Null);
+            Assert.That(details.Find("Forehead Black Mark"), Is.Null);
+            Assert.That(details.Find("Left Lower Face Mark"), Is.Null);
+            Assert.That(details.Find("Right Lower Face Mark"), Is.Null);
+            Assert.That(details.Find("Left Brow Mark"), Is.Null);
+            Assert.That(details.Find("Right Brow Mark"), Is.Null);
+        }
+        finally
+        {
+            Object.DestroyImmediate(root);
+        }
+    }
 }
 #endif

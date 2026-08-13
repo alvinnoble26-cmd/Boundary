@@ -21,14 +21,13 @@ public static class SunDuckerDemonVisual
         details.gameObject.layer = layer;
 
         Material skin = Material("Storm Demon Skin", new Color(.58f, .56f, .52f), .48f, .02f);
-        Material hair = Material("Layered Black Hair", new Color(.012f, .014f, .02f), .38f, .08f);
+        Material hair = Material("Dimensional Crimson Hair", new Color(.72f, .018f, .032f), .42f, .06f);
         Material eye = Material("Storm Green Eye", new Color(.08f, .9f, .35f), .3f, .08f, true);
         Material pupil = Material("Eye Symbols", new Color(.005f, .002f, .003f), .15f, .1f);
         Material eyeMarking = Material("Black Eye Marking", new Color(.008f, .006f, .012f), .22f, .04f);
         Material tattoo = Material("Black Facial Tattoos", new Color(.012f, .006f, .015f), .28f, .05f);
         Material robe = Material("Black Storm Robe", new Color(.012f, .014f, .022f), .3f, .06f);
         Material whiteCloth = Material("White Robe Trim", new Color(.86f, .85f, .82f), .42f, .02f);
-        Material teal = Material("Teal Neck Cord", new Color(.02f, .58f, .62f), .5f, .18f);
         Material rope = Material("Blue Rope Belt", new Color(.16f, .3f, .67f), .44f, .08f);
         Material clothingGold = Material("Gold Robe Motifs", new Color(.94f, .56f, .04f), .52f, .2f);
         Material blade = Material("Fire Blade", new Color(1f, .105f, .012f), .72f, .22f, true);
@@ -44,13 +43,13 @@ public static class SunDuckerDemonVisual
         BuildHair(details, hair, layer);
         BuildEyes(details, eye, pupil, eyeMarking, layer);
         BuildTattoos(details, tattoo, layer);
-        BuildClothes(details, robe, whiteCloth, teal, rope, clothingGold, layer);
+        BuildClothes(details, robe, whiteCloth, rope, clothingGold, layer);
         BuildSword(details, blade, bladeEdge, grip, gripWhite, layer);
     }
 
     private static void BuildHair(Transform parent, Material material, int layer)
     {
-        Transform crest = Child("Layered Black Storm Hair", parent, Vector3.zero, Vector3.zero, layer);
+        Transform crest = Child("Crimson 3D Storm Hair", parent, Vector3.zero, Vector3.zero, layer);
         Vector3[] positions =
         {
             new Vector3(0f, 1.02f, .03f), new Vector3(0f, .97f, -.17f),
@@ -127,32 +126,10 @@ public static class SunDuckerDemonVisual
         };
         LightningMark("Left Black Lightning Tattoo", parent, left, material, layer);
         LightningMark("Right Black Lightning Tattoo", parent, right, material, layer);
-        LightningMark("Forehead Black Mark", parent, new[]
-        {
-            new Vector2(-.13f, .72f), new Vector2(0f, .62f), new Vector2(.12f, .73f)
-        }, material, layer);
-        LightningMark("Left Lower Face Mark", parent, new[]
-        {
-            new Vector2(-.46f, .08f), new Vector2(-.35f, -.08f),
-            new Vector2(-.44f, -.22f), new Vector2(-.27f, -.32f)
-        }, material, layer);
-        LightningMark("Right Lower Face Mark", parent, new[]
-        {
-            new Vector2(.46f, .08f), new Vector2(.35f, -.08f),
-            new Vector2(.44f, -.22f), new Vector2(.27f, -.32f)
-        }, material, layer);
-        LightningMark("Left Brow Mark", parent, new[]
-        {
-            new Vector2(-.43f, .64f), new Vector2(-.28f, .7f), new Vector2(-.16f, .64f)
-        }, material, layer);
-        LightningMark("Right Brow Mark", parent, new[]
-        {
-            new Vector2(.43f, .64f), new Vector2(.28f, .7f), new Vector2(.16f, .64f)
-        }, material, layer);
     }
 
     private static void BuildClothes(Transform parent, Material robe, Material whiteCloth,
-        Material teal, Material rope, Material gold, int layer)
+        Material rope, Material gold, int layer)
     {
         Transform clothes = Child("Storm Swordsman Clothing", parent, Vector3.zero, Vector3.zero, layer);
 
@@ -169,24 +146,9 @@ public static class SunDuckerDemonVisual
             new Vector3(.54f, -.27f, -.02f), new Vector3(.28f, .55f, .24f),
             new Vector3(0f, 0f, 18f), robe, layer);
 
-        Primitive("Left White Lapel", PrimitiveType.Cube, clothes,
-            new Vector3(-.2f, .08f, .505f), new Vector3(.16f, .68f, .035f),
-            new Vector3(0f, 0f, -24f), whiteCloth, layer);
-        Primitive("Right White Lapel", PrimitiveType.Cube, clothes,
-            new Vector3(.2f, .08f, .505f), new Vector3(.16f, .68f, .035f),
-            new Vector3(0f, 0f, 24f), whiteCloth, layer);
         Primitive("White Lower Sash", PrimitiveType.Cube, clothes,
             new Vector3(0f, -.25f, .535f), new Vector3(.58f, .13f, .035f),
             Vector3.zero, whiteCloth, layer);
-
-        Torus("Teal Neck Cord", clothes, new Vector3(0f, .29f, .52f),
-            new Vector3(.34f, .18f, .06f), teal, layer, 18, 6);
-        Primitive("Teal Cord Drop Left", PrimitiveType.Cylinder, clothes,
-            new Vector3(-.08f, .05f, .56f), new Vector3(.025f, .22f, .025f),
-            new Vector3(0f, 0f, -12f), teal, layer);
-        Primitive("Teal Cord Drop Right", PrimitiveType.Cylinder, clothes,
-            new Vector3(.08f, .05f, .56f), new Vector3(.025f, .22f, .025f),
-            new Vector3(0f, 0f, 12f), teal, layer);
 
         Torus("Blue Rope Belt", clothes, new Vector3(0f, -.48f, 0f),
             new Vector3(.58f, .13f, .58f), rope, layer, 22, 7);
@@ -295,30 +257,49 @@ public static class SunDuckerDemonVisual
         hair.layer = layer;
         hair.transform.SetParent(parent, false);
         hair.transform.localPosition = position;
-        Vector3[] vertices = new Vector3[(segments + 1) * 2];
+        Vector3[] vertices = new Vector3[(segments + 1) * 4];
         for (int i = 0; i <= segments; i++)
         {
             float t = i / (float)segments;
             float curve = Mathf.Sin(t * Mathf.PI) * (end.x >= 0f ? .08f : -.08f);
             Vector2 center = new Vector2(end.x * t + curve, end.y * t);
             float halfWidth = Mathf.Lerp(width * .5f, .018f, t);
-            vertices[i * 2] = new Vector3(center.x - halfWidth, center.y, 0f);
-            vertices[i * 2 + 1] = new Vector3(center.x + halfWidth, center.y, 0f);
+            float halfDepth = Mathf.Lerp(width * .32f, .014f, t);
+            int vertex = i * 4;
+            vertices[vertex] = new Vector3(center.x - halfWidth, center.y, -halfDepth);
+            vertices[vertex + 1] = new Vector3(center.x + halfWidth, center.y, -halfDepth);
+            vertices[vertex + 2] = new Vector3(center.x - halfWidth, center.y, halfDepth);
+            vertices[vertex + 3] = new Vector3(center.x + halfWidth, center.y, halfDepth);
         }
-        int[] triangles = new int[segments * 12];
+        int[] triangles = new int[segments * 24 + 12];
+        int triangle = 0;
         for (int i = 0; i < segments; i++)
         {
-            int v = i * 2;
-            int t = i * 12;
-            triangles[t] = v; triangles[t + 1] = v + 1; triangles[t + 2] = v + 2;
-            triangles[t + 3] = v + 1; triangles[t + 4] = v + 3; triangles[t + 5] = v + 2;
-            triangles[t + 6] = v + 2; triangles[t + 7] = v + 1; triangles[t + 8] = v;
-            triangles[t + 9] = v + 2; triangles[t + 10] = v + 3; triangles[t + 11] = v + 1;
+            int current = i * 4;
+            int next = current + 4;
+            AddQuad(triangles, ref triangle, current, next, current + 1, next + 1);
+            AddQuad(triangles, ref triangle, current + 2, current + 3, next + 2, next + 3);
+            AddQuad(triangles, ref triangle, current, current + 2, next, next + 2);
+            AddQuad(triangles, ref triangle, current + 1, next + 1, current + 3, next + 3);
         }
+        AddQuad(triangles, ref triangle, 0, 1, 2, 3);
+        int tip = segments * 4;
+        AddQuad(triangles, ref triangle, tip, tip + 2, tip + 1, tip + 3);
         Mesh mesh = new Mesh { name = name + " Mesh", vertices = vertices, triangles = triangles };
         mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
         hair.GetComponent<MeshFilter>().sharedMesh = mesh;
         hair.GetComponent<MeshRenderer>().sharedMaterial = material;
+    }
+
+    private static void AddQuad(int[] triangles, ref int index, int a, int b, int c, int d)
+    {
+        triangles[index++] = a;
+        triangles[index++] = b;
+        triangles[index++] = c;
+        triangles[index++] = c;
+        triangles[index++] = b;
+        triangles[index++] = d;
     }
 
     private static void BuildEyeSymbol(Transform eye, bool left, Material material, int layer)
@@ -426,7 +407,11 @@ public static class SunDuckerDemonVisual
         part.transform.localPosition = position;
         part.transform.localScale = scale;
         part.transform.localEulerAngles = euler;
-        Object.Destroy(part.GetComponent<Collider>());
+        Collider collider = part.GetComponent<Collider>();
+        if (Application.isPlaying)
+            Object.Destroy(collider);
+        else
+            Object.DestroyImmediate(collider);
         part.GetComponent<Renderer>().sharedMaterial = material;
         return part;
     }
