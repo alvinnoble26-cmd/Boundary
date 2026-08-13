@@ -251,6 +251,18 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
+    public void BoundaryEventBanner_UsesCompactReadableDimensions()
+    {
+        Assert.That(BoundaryHUD.EventBannerWidth, Is.EqualTo(650f));
+        Assert.That(BoundaryHUD.EventBannerHeight, Is.EqualTo(142f));
+        Assert.That(BoundaryHUD.EventTitleFontSize, Is.EqualTo(29));
+        Assert.That(BoundaryHUD.EventCountdownFontSize, Is.EqualTo(23));
+        Assert.That(BoundaryHUD.EventHintFontSize, Is.EqualTo(15));
+        Assert.That(BoundaryHUD.EventBannerWidth, Is.LessThan(850f));
+        Assert.That(BoundaryHUD.EventBannerHeight, Is.LessThan(190f));
+    }
+
+    [Test]
     public void SunDucker_UsesDimensionalRedHairAndSimplifiedDetails()
     {
         GameObject root = new GameObject("Sun Ducker Test");

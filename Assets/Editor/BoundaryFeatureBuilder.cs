@@ -389,6 +389,11 @@ public static class BoundaryRuntimeSmokeRunner
                          hazard.transform.Find("BlackHoleAccretion") != null,
                 "Runtime hazard visuals were not generated.");
             RequireSmoke(hud != null, "Boundary HUD was not installed in the Game scene.");
+            RectTransform eventBanner = hud.transform.Find("Safe Area/Event Banner") as RectTransform;
+            RequireSmoke(eventBanner != null &&
+                         Mathf.Approximately(eventBanner.sizeDelta.x, BoundaryHUD.EventBannerWidth) &&
+                         Mathf.Approximately(eventBanner.sizeDelta.y, BoundaryHUD.EventBannerHeight),
+                "Boundary event UI did not use the compact banner layout.");
             RequireSmoke(generated != null && platformRoot != null && platformRoot.transform.childCount >= 300,
                 "Generated breakaway platform floor is incomplete.");
             RequireSmoke(presentation != null && presentation.GeneratedPlatformCount >= 340 &&

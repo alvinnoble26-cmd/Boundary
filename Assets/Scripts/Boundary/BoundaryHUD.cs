@@ -4,6 +4,12 @@ using UnityEngine.UI;
 [DefaultExecutionOrder(1000)]
 public sealed class BoundaryHUD : MonoBehaviour
 {
+    public const float EventBannerWidth = 650f;
+    public const float EventBannerHeight = 142f;
+    public const int EventTitleFontSize = 29;
+    public const int EventCountdownFontSize = 23;
+    public const int EventHintFontSize = 15;
+
     private static readonly Color Deep = new Color(0.025f, 0.008f, 0.05f, 0.94f);
     private static readonly Color Purple = new Color(0.52f, 0.10f, 0.88f, 1f);
     private static readonly Color Cyan = new Color(0.18f, 0.78f, 1f, 1f);
@@ -103,13 +109,17 @@ public sealed class BoundaryHUD : MonoBehaviour
         Stretch(phaseFill.rectTransform);
 
         bannerPanel = CreateImage(safeArea, "Event Banner", new Color(0.06f, 0.01f, 0.09f, 0.96f));
-        SetRect(bannerPanel.rectTransform, new Vector2(0.5f, 0.78f), Vector2.zero, new Vector2(850f, 190f));
-        bannerTitle = CreateText(bannerPanel.transform, string.Empty, 38, TextAnchor.MiddleCenter, Color.white);
-        SetRect(bannerTitle.rectTransform, new Vector2(0.5f, 0.72f), Vector2.zero, new Vector2(790f, 62f));
-        bannerCountdown = CreateText(bannerPanel.transform, string.Empty, 30, TextAnchor.MiddleCenter, Danger);
-        SetRect(bannerCountdown.rectTransform, new Vector2(0.5f, 0.44f), Vector2.zero, new Vector2(790f, 54f));
-        bannerHint = CreateText(bannerPanel.transform, string.Empty, 19, TextAnchor.MiddleCenter, new Color(0.82f, 0.72f, 1f));
-        SetRect(bannerHint.rectTransform, new Vector2(0.5f, 0.15f), Vector2.zero, new Vector2(780f, 58f));
+        SetRect(bannerPanel.rectTransform, new Vector2(0.5f, 0.78f), Vector2.zero,
+            new Vector2(EventBannerWidth, EventBannerHeight));
+        bannerTitle = CreateText(bannerPanel.transform, string.Empty, EventTitleFontSize,
+            TextAnchor.MiddleCenter, Color.white);
+        SetRect(bannerTitle.rectTransform, new Vector2(0.5f, 0.73f), Vector2.zero, new Vector2(606f, 46f));
+        bannerCountdown = CreateText(bannerPanel.transform, string.Empty, EventCountdownFontSize,
+            TextAnchor.MiddleCenter, Danger);
+        SetRect(bannerCountdown.rectTransform, new Vector2(0.5f, 0.44f), Vector2.zero, new Vector2(606f, 39f));
+        bannerHint = CreateText(bannerPanel.transform, string.Empty, EventHintFontSize,
+            TextAnchor.MiddleCenter, new Color(0.82f, 0.72f, 1f));
+        SetRect(bannerHint.rectTransform, new Vector2(0.5f, 0.15f), Vector2.zero, new Vector2(600f, 44f));
 
         horizonOverlay = CreateImage(safeArea, "Event Horizon Distortion", new Color(0.42f, 0.01f, 0.40f, 0f));
         Stretch(horizonOverlay.rectTransform);
