@@ -302,6 +302,39 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
+    public void MainMenuButtons_AreCenteredDespiteScaledParent()
+    {
+        GameObject root = new GameObject("Menu Root", typeof(RectTransform));
+        GameObject menu = new GameObject("MuiltiplayerMenu", typeof(RectTransform));
+        menu.transform.SetParent(root.transform, false);
+        menu.transform.localScale = new Vector3(15f, 2f, 1f);
+        ((RectTransform)menu.transform).anchoredPosition = new Vector2(9.12f, -4.68f);
+
+        string[] names = { "HOST", "JOIN", "PracticeButton", "BackButton (4)" };
+        foreach (string name in names)
+        {
+            GameObject button = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+            button.transform.SetParent(menu.transform, false);
+            RectTransform rect = (RectTransform)button.transform;
+            rect.anchorMin = new Vector2(0.537f, 0.5f);
+            rect.anchorMax = new Vector2(0.537f, 0.5f);
+            rect.anchoredPosition = new Vector2(12f, 20f);
+        }
+
+        MenuButtonTextAlignment alignment = root.AddComponent<MenuButtonTextAlignment>();
+        alignment.CenterMainMenuStack();
+        foreach (string name in names)
+        {
+            RectTransform rect = menu.transform.Find(name) as RectTransform;
+            Assert.That(rect.anchorMin, Is.EqualTo(Vector2.one * 0.5f));
+            Assert.That(rect.anchorMax, Is.EqualTo(Vector2.one * 0.5f));
+            Assert.That(rect.anchoredPosition.x, Is.Zero);
+        }
+        Assert.That(((RectTransform)menu.transform).anchoredPosition.x, Is.Zero);
+        Object.DestroyImmediate(root);
+    }
+
+    [Test]
     public void SunDucker_UsesDimensionalRedHairAndSimplifiedDetails()
     {
         GameObject root = new GameObject("Sun Ducker Test");
