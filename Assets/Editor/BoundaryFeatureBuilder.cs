@@ -430,8 +430,8 @@ public static class BoundaryRuntimeSmokeRunner
             foreach (Transform wall in wallRoot.transform)
             {
                 RequireSmoke(wall.CompareTag("Wall"), wall.name + " is not tagged for wall jumping.");
-                RequireSmoke(wall.localScale.x >= 9.6f && wall.localScale.y >= 6.8f &&
-                             wall.localScale.z >= 1.05f,
+                RequireSmoke(wall.localScale.x >= 10.8f && wall.localScale.y >= 7.7f &&
+                             wall.localScale.z >= 1.18f,
                     wall.name + " is not enlarged across length, height, and thickness.");
                 float tierSurface = wall.name.StartsWith("Wall 2")
                     ? controller.OuterPlatformSurfaceY
@@ -443,7 +443,7 @@ public static class BoundaryRuntimeSmokeRunner
                 float wallBottom = wall.position.y - wall.localScale.y * 0.5f;
                 RequireSmoke(wallBottom >= tierSurface + 1.1f,
                     wall.name + " is not visibly suspended above its platform tier.");
-                if (wallBottom >= tierSurface + 2.25f)
+                if (wallBottom >= tierSurface + 2.75f)
                     substantiallyRaisedWalls++;
                 Vector3 towardCenter = (controller.ArenaCenter - wall.position).normalized;
                 RequireSmoke(Vector3.Dot(wall.forward, towardCenter) >= 0.999f,
@@ -451,7 +451,7 @@ public static class BoundaryRuntimeSmokeRunner
             }
             RequireSmoke(outerWalls == 5 && middleWalls == 7,
                 "Outer wall cover was not reduced by approximately 25 percent.");
-            RequireSmoke(substantiallyRaisedWalls >= 3,
+            RequireSmoke(substantiallyRaisedWalls >= 4,
                 "The randomized wall field did not create enough elevated wall-jump routes.");
             RequireSmoke(GameObject.Find("Vertical Combat Routes") == null,
                 "Random elevated stepping routes must not remain in the arena.");

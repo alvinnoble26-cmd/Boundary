@@ -4,6 +4,10 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public sealed class BoundaryArenaPresentation : MonoBehaviour
 {
+    public const float GeneratedWallSizeMultiplier = 1.12f;
+    public const float GeneratedWallExtraHeightMultiplier = 1.35f;
+    public const float GeneratedWallElevationExponent = 1.05f;
+
     public static BoundaryArenaPresentation Instance { get; private set; }
 
     private sealed class PlatformTile
@@ -316,14 +320,15 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
             Vector3 position = match.ArenaCenter + radial * radius;
 
-            float length = wallLength * Mathf.Lerp(0.92f, 1.32f,
-                BoundaryMath.StableUnit(seed + 3, wallIndex));
-            float height = wallHeight * Mathf.Lerp(0.92f, 1.38f,
-                BoundaryMath.StableUnit(seed + 4, wallIndex));
-            float thickness = wallThickness * Mathf.Lerp(0.92f, 1.28f,
-                BoundaryMath.StableUnit(seed + 5, wallIndex));
-            float extraHeight = wallMaximumExtraHeight *
-                                Mathf.Pow(BoundaryMath.StableUnit(seed + 6, wallIndex), 1.45f);
+            float length = ScaleGeneratedWallDimension(wallLength * Mathf.Lerp(0.92f, 1.32f,
+                BoundaryMath.StableUnit(seed + 3, wallIndex)));
+            float height = ScaleGeneratedWallDimension(wallHeight * Mathf.Lerp(0.92f, 1.38f,
+                BoundaryMath.StableUnit(seed + 4, wallIndex)));
+            float thickness = ScaleGeneratedWallDimension(wallThickness * Mathf.Lerp(0.92f, 1.28f,
+                BoundaryMath.StableUnit(seed + 5, wallIndex)));
+            float extraHeight = GeneratedWallExtraHeight(
+                wallMaximumExtraHeight,
+                BoundaryMath.StableUnit(seed + 6, wallIndex));
             position.y = baseSurfaceY + wallGroundClearance + extraHeight + height * 0.5f;
 
             // The wall's complete forward axis, including pitch, faces the
@@ -350,6 +355,17 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         if (collapseBand == 2)
             return Mathf.RoundToInt(count * 0.75f);
         return count;
+    }
+
+    public static float ScaleGeneratedWallDimension(float value)
+    {
+        return Mathf.Max(0f, value) * GeneratedWallSizeMultiplier;
+    }
+
+    public static float GeneratedWallExtraHeight(float maximumExtraHeight, float stableUnit)
+    {
+        return Mathf.Max(0f, maximumExtraHeight) * GeneratedWallExtraHeightMultiplier *
+               Mathf.Pow(Mathf.Clamp01(stableUnit), GeneratedWallElevationExponent);
     }
 
     private void CreatePlatform(

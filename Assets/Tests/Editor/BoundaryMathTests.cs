@@ -188,6 +188,48 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
+    public void ExposedPlatformSides_AreWallJumpableButFloorTopsAndHazardsAreNot()
+    {
+        GameObject platformRoot = new GameObject("Breakaway Platforms");
+        GameObject platform = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        GameObject hazard = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        GameObject player = new GameObject("Player Root");
+        try
+        {
+            platform.transform.SetParent(platformRoot.transform, false);
+            Collider platformCollider = platform.GetComponent<Collider>();
+            Collider hazardCollider = hazard.GetComponent<Collider>();
+
+            Assert.That(PlayerMovement.IsWallJumpSurface(
+                platformCollider, Vector3.right, player.transform), Is.True);
+            Assert.That(PlayerMovement.IsWallJumpSurface(
+                platformCollider, Vector3.up, player.transform), Is.False,
+                "Standing on a floor top must remain a normal grounded state.");
+            Assert.That(PlayerMovement.IsWallJumpSurface(
+                hazardCollider, Vector3.right, player.transform), Is.False,
+                "Unrelated cubes and hazards must not become wall-jump surfaces.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(platformRoot);
+            Object.DestroyImmediate(hazard);
+            Object.DestroyImmediate(player);
+        }
+    }
+
+    [Test]
+    public void GeneratedWalls_AreLargerAndMoreFrequentlyElevated()
+    {
+        Assert.That(BoundaryArenaPresentation.GeneratedWallSizeMultiplier, Is.EqualTo(1.12f));
+        Assert.That(BoundaryArenaPresentation.ScaleGeneratedWallDimension(10f),
+            Is.EqualTo(11.2f).Within(0.001f));
+        Assert.That(BoundaryArenaPresentation.GeneratedWallExtraHeight(4.5f, 0.75f),
+            Is.GreaterThan(4.4f));
+        Assert.That(BoundaryArenaPresentation.GeneratedWallExtraHeight(4.5f, 1f),
+            Is.EqualTo(6.075f).Within(0.001f));
+    }
+
+    [Test]
     public void ElevatedAbilityLaunch_StaysAbovePlayerCenter()
     {
         Bounds owner = new Bounds(new Vector3(2f, 1f, 3f), new Vector3(1f, 2f, 1f));

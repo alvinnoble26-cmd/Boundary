@@ -280,7 +280,7 @@ void HandleWallDetection()
         return;
     }
 
-    if (TryFindWall(out RaycastHit hit) && hit.normal.y < 0.2f)
+    if (TryFindWall(out RaycastHit hit))
     {
         wallNormal = hit.normal;
         wallStickCounter = wallStickTime;
@@ -460,7 +460,7 @@ void HandleJump()
             if (Physics.SphereCast(transform.position, wallSphereRadius, dirs[i], out RaycastHit hit,
                     wallCheckDistance, groundMask, QueryTriggerInteraction.Ignore))
             {
-                if (!hit.collider || !hit.collider.CompareTag("Wall"))
+                if (!IsWallJumpSurface(hit.collider, hit.normal, transform))
                     continue;
 
                 if (hit.distance < bestDist)
@@ -473,6 +473,31 @@ void HandleJump()
         }
 
         return found;
+    }
+
+    public static bool IsWallJumpSurface(Collider candidate, Vector3 surfaceNormal, Transform playerRoot)
+    {
+        if (candidate == null || candidate.isTrigger || Mathf.Abs(surfaceNormal.y) > 0.25f)
+            return false;
+        if (playerRoot != null && candidate.transform.root == playerRoot.root)
+            return false;
+
+        if (candidate.CompareTag("Wall"))
+            return true;
+
+        // The Boundary floor is generated at runtime and its exposed sides are
+        // legitimate wall-jump routes. Restrict the exception to the two floor
+        // containers so hazards, projectiles, and other players cannot become
+        // accidental wall-jump surfaces merely because they share a layer.
+        Transform current = candidate.transform;
+        while (current != null)
+        {
+            if (current.name == "Breakaway Platforms" || current.name == "Tier Transition Ramps")
+                return true;
+            current = current.parent;
+        }
+
+        return false;
     }
 
     private bool OnSlope()
