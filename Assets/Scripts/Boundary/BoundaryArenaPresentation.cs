@@ -42,10 +42,12 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
     [Header("Wall-jump cover")]
     [SerializeField, Range(4, 12)] private int wallPairsPerTier = 7;
-    [SerializeField, Range(3f, 10f)] private float wallLength = 8f;
-    [SerializeField, Range(2.5f, 8f)] private float wallHeight = 5.8f;
-    [SerializeField, Range(3f, 8f)] private float wallPairGap = 5.2f;
+    [SerializeField, Range(6f, 14f)] private float wallLength = 10.5f;
+    [SerializeField, Range(5f, 12f)] private float wallHeight = 7.5f;
+    [SerializeField, Range(0.7f, 2f)] private float wallThickness = 1.15f;
+    [SerializeField, Range(3f, 10f)] private float wallPairGap = 6.4f;
     [SerializeField, Range(0.5f, 3f)] private float wallGroundClearance = 1.15f;
+    [SerializeField, Range(0f, 6f)] private float wallMaximumExtraHeight = 4.5f;
 
     private BoundaryMatchController match;
     private Transform generatedRoot;
@@ -305,26 +307,40 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
         for (int pair = 0; pair < wallPairsPerTier; pair++)
         {
-            float angle = Mathf.PI * 2f * pair / wallPairsPerTier + collapseBand * 0.19f;
-            float lane = pair % 3 / 2f;
-            float radius = Mathf.Lerp(innerDistance, outerDistance, 0.24f + lane * 0.52f);
-            Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
-            Vector3 tangent = Vector3.Cross(Vector3.up, radial).normalized;
-            Vector3 center = match.ArenaCenter + radial * radius;
-            Quaternion rotation = Quaternion.Euler(0f, -angle * Mathf.Rad2Deg, 0f);
-
             for (int side = -1; side <= 1; side += 2)
             {
-                Vector3 position = center + tangent * (wallPairGap * 0.5f * side);
-                position.y = baseSurfaceY + wallGroundClearance + wallHeight * 0.5f;
+                int wallIndex = pair * 2 + (side > 0 ? 1 : 0);
+                int seed = 81017 + collapseBand * 7919;
+                float sectorJitter = Mathf.Lerp(-0.38f, 0.38f, BoundaryMath.StableUnit(seed, wallIndex));
+                float angle = Mathf.PI * 2f * (pair + 0.5f) / wallPairsPerTier +
+                              collapseBand * 0.19f + sectorJitter;
+                float radius01 = Mathf.Lerp(0.12f, 0.88f, BoundaryMath.StableUnit(seed + 1, wallIndex));
+                float radius = Mathf.Lerp(innerDistance, outerDistance, radius01);
+                Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+                Vector3 tangent = Vector3.Cross(Vector3.up, radial).normalized;
+                float pairOffset = wallPairGap * Mathf.Lerp(0.35f, 0.72f,
+                    BoundaryMath.StableUnit(seed + 2, wallIndex));
+                Vector3 position = match.ArenaCenter + radial * radius + tangent * pairOffset * side;
+
+                float length = wallLength * Mathf.Lerp(0.92f, 1.32f,
+                    BoundaryMath.StableUnit(seed + 3, wallIndex));
+                float height = wallHeight * Mathf.Lerp(0.92f, 1.38f,
+                    BoundaryMath.StableUnit(seed + 4, wallIndex));
+                float thickness = wallThickness * Mathf.Lerp(0.92f, 1.28f,
+                    BoundaryMath.StableUnit(seed + 5, wallIndex));
+                float extraHeight = wallMaximumExtraHeight *
+                                    Mathf.Pow(BoundaryMath.StableUnit(seed + 6, wallIndex), 1.45f);
+                position.y = baseSurfaceY + wallGroundClearance + extraHeight + height * 0.5f;
+                float yawJitter = Mathf.Lerp(-42f, 42f, BoundaryMath.StableUnit(seed + 7, wallIndex));
+                Quaternion rotation = Quaternion.Euler(0f, -angle * Mathf.Rad2Deg + yawJitter, 0f);
                 CreatePlatform(
                     parent,
                     $"Wall Pair {collapseBand}-{pair:00}-{(side < 0 ? "L" : "R")}",
                     position,
-                    new Vector3(wallLength, wallHeight, 0.72f),
+                    new Vector3(length, height, thickness),
                     rotation,
                     collapseBand,
-                    indexOffset + pair * 2 + (side > 0 ? 1 : 0),
+                    indexOffset + wallIndex,
                     true);
             }
         }

@@ -945,6 +945,7 @@ MonoBehaviour:
   throwForce: 20
   throwUpwardForce: 5
   cooldown: 3
+  launchHeightAbovePlayerCenter: 1.35
   projectileMass: 3
   projectileDrag: 0
   projectileAngularDrag: 0.05
@@ -965,6 +966,7 @@ MonoBehaviour:
   throwForce: 20
   throwUpwardForce: 5
   cooldown: 3
+  launchHeightAbovePlayerCenter: 1.35
   projectileMass: 3
   projectileDrag: 0
   projectileAngularDrag: 0.05

@@ -118,6 +118,11 @@ public static class BoundaryMath
         return Mathf.Atan2(Mathf.Abs(heightDifference), Mathf.Max(0.1f, rampLength)) * Mathf.Rad2Deg;
     }
 
+    public static float StableUnit(int seed, int index)
+    {
+        return StableHash(seed, index) / (float)int.MaxValue;
+    }
+
     public static Vector3 PlayerPullAcceleration(
         Vector3 playerPosition,
         Vector3 singularityPosition,

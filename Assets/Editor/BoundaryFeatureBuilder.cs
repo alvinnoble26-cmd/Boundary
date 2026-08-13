@@ -183,6 +183,11 @@ public static class BoundaryFeatureValidator
         Require(player != null && player.GetComponent<BoundaryPlayerState>() != null,
             "Player prefab is missing its owner-authoritative Boundary state.");
         Require(player.GetComponent<PlayerMovement>() != null, "Player prefab has no movement component.");
+        SerializedObject attractThrow = new SerializedObject(player.GetComponent<AttractThrow>());
+        SerializedObject repelThrow = new SerializedObject(player.GetComponent<RepelThrow>());
+        Require(attractThrow.FindProperty("launchHeightAbovePlayerCenter").floatValue >= 1.3f &&
+                repelThrow.FindProperty("launchHeightAbovePlayerCenter").floatValue >= 1.3f,
+            "Attract and Repel must launch above the player's center.");
         Require(registry != null, "Network prefab registry is missing.");
         Require(registry.prefabs.Any(entry => entry.prefab == director), "Director is not in NetworkPrefabs.");
         Require(registry.prefabs.Any(entry => entry.prefab == hazard), "Hazard is not in NetworkPrefabs.");
@@ -361,11 +366,13 @@ public static class BoundaryRuntimeSmokeRunner
                 "Continuous slide ramps were not generated across both raised tier seams.");
             RequireSmoke(wallRoot != null && wallRoot.transform.childCount >= 30,
                 "Purpose-built wall-jump structures were not generated.");
+            int substantiallyRaisedWalls = 0;
             foreach (Transform wall in wallRoot.transform)
             {
                 RequireSmoke(wall.CompareTag("Wall"), wall.name + " is not tagged for wall jumping.");
-                RequireSmoke(wall.localScale.x >= 7.95f && wall.localScale.y >= 5.75f,
-                    wall.name + " is not using the enlarged wall-jump dimensions.");
+                RequireSmoke(wall.localScale.x >= 9.6f && wall.localScale.y >= 6.8f &&
+                             wall.localScale.z >= 1.05f,
+                    wall.name + " is not enlarged across length, height, and thickness.");
                 float tierSurface = wall.name.StartsWith("Wall Pair 2")
                     ? controller.OuterPlatformSurfaceY
                     : wall.name.StartsWith("Wall Pair 1")
@@ -374,7 +381,11 @@ public static class BoundaryRuntimeSmokeRunner
                 float wallBottom = wall.position.y - wall.localScale.y * 0.5f;
                 RequireSmoke(wallBottom >= tierSurface + 1.1f,
                     wall.name + " is not visibly suspended above its platform tier.");
+                if (wallBottom >= tierSurface + 2.25f)
+                    substantiallyRaisedWalls++;
             }
+            RequireSmoke(substantiallyRaisedWalls >= 10,
+                "The randomized wall field did not create enough elevated wall-jump routes.");
             RequireSmoke(GameObject.Find("Vertical Combat Routes") == null,
                 "Random elevated stepping routes must not remain in the arena.");
             RequireSmoke(GameObject.Find("Brace") == null,

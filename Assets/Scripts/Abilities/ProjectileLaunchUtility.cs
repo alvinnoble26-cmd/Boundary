@@ -10,40 +10,76 @@ public static class ProjectileLaunchUtility
     private const float MinimumClearance = 0.2f;
 
     public static GameObject InstantiateSafely(GameObject prefab, Transform owner,
-        Vector3 fallbackPosition, Vector3 direction)
+        Vector3 fallbackPosition, Vector3 direction,
+        float minimumCenterHeightAboveOwner = 0f,
+        bool useHorizontalPlacement = false)
     {
         if (prefab == null)
             return null;
 
         direction = NormalizeDirection(direction, owner);
+        Vector3 placementDirection = useHorizontalPlacement
+            ? HorizontalDirection(direction, owner)
+            : direction;
         Quaternion rotation = Quaternion.LookRotation(direction, Vector3.up);
 
-        if (owner == null || !TryGetSolidBounds(owner, out Bounds ownerBounds))
+        if (owner == null)
             return Object.Instantiate(prefab, fallbackPosition, rotation);
+
+        if (!TryGetSolidBounds(owner, out Bounds ownerBounds))
+        {
+            fallbackPosition.y = Mathf.Max(
+                fallbackPosition.y,
+                owner.position.y + Mathf.Max(0f, minimumCenterHeightAboveOwner));
+            return Object.Instantiate(prefab, fallbackPosition, rotation);
+        }
 
         // Instantiate well clear of the player first. Awake can safely install
         // collision ignores before the projectile is moved to its exact launch
         // point and registered with the network.
         float provisionalDistance = ownerBounds.extents.magnitude + 3f;
-        Vector3 provisionalPosition = ownerBounds.center + direction * provisionalDistance;
+        Vector3 provisionalPosition = ownerBounds.center + placementDirection * provisionalDistance;
         GameObject projectile = Object.Instantiate(prefab, provisionalPosition, rotation);
 
         if (TryGetSolidBounds(projectile.transform, out Bounds projectileBounds))
         {
-            float ownerExtent = ProjectedExtent(ownerBounds, direction);
-            float projectileExtent = ProjectedExtent(projectileBounds, direction);
-            Vector3 desiredProjectileCenter = ownerBounds.center + direction *
+            float ownerExtent = ProjectedExtent(ownerBounds, placementDirection);
+            float projectileExtent = ProjectedExtent(projectileBounds, placementDirection);
+            Vector3 desiredProjectileCenter = ownerBounds.center + placementDirection *
                 (ownerExtent + projectileExtent + MinimumClearance);
+            desiredProjectileCenter = ElevatedLaunchCenter(
+                ownerBounds, desiredProjectileCenter, minimumCenterHeightAboveOwner);
             projectile.transform.position += desiredProjectileCenter - projectileBounds.center;
         }
         else
         {
-            projectile.transform.position = ownerBounds.center + direction *
+            projectile.transform.position = ownerBounds.center + placementDirection *
                 (ownerBounds.extents.magnitude + MinimumClearance);
+            projectile.transform.position = ElevatedLaunchCenter(
+                ownerBounds, projectile.transform.position, minimumCenterHeightAboveOwner);
         }
 
         IgnoreOwnerCollision(projectile, owner);
         return projectile;
+    }
+
+    public static Vector3 ElevatedLaunchCenter(
+        Bounds ownerBounds,
+        Vector3 candidateCenter,
+        float minimumCenterHeightAboveOwner)
+    {
+        candidateCenter.y = Mathf.Max(
+            candidateCenter.y,
+            ownerBounds.center.y + Mathf.Max(0f, minimumCenterHeightAboveOwner));
+        return candidateCenter;
+    }
+
+    private static Vector3 HorizontalDirection(Vector3 direction, Transform owner)
+    {
+        Vector3 horizontal = Vector3.ProjectOnPlane(direction, Vector3.up);
+        if (horizontal.sqrMagnitude < 0.0001f && owner != null)
+            horizontal = Vector3.ProjectOnPlane(owner.forward, Vector3.up);
+        return horizontal.sqrMagnitude > 0.0001f ? horizontal.normalized : Vector3.forward;
     }
 
     private static Vector3 NormalizeDirection(Vector3 direction, Transform owner)

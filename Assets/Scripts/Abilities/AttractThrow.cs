@@ -13,6 +13,7 @@ public class AttractThrow : MonoBehaviour, IAbility
     [SerializeField] private float throwForce = 45f;
     [SerializeField] private float throwUpwardForce = 4f;
     [SerializeField] private float cooldown = 3f;
+    [SerializeField, Min(0.5f)] private float launchHeightAbovePlayerCenter = 1.35f;
 
     [Header("Projectile Physics Boost")]
     [SerializeField] private float projectileMass = 3f;
@@ -89,7 +90,7 @@ public class AttractThrow : MonoBehaviour, IAbility
         PlayerMovement ownerPm = GetComponentInParent<PlayerMovement>();
         Transform owner = ownerPm != null ? ownerPm.transform : transform.root;
         GameObject projectile = ProjectileLaunchUtility.InstantiateSafely(
-            objectToThrow, owner, spawnPos, dir);
+            objectToThrow, owner, spawnPos, dir, launchHeightAbovePlayerCenter, true);
         if (projectile == null)
             return;
 

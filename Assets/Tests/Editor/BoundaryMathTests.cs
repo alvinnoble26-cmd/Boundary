@@ -128,5 +128,24 @@ public sealed class BoundaryMathTests
         Assert.That(outerSlope, Is.LessThan(10f));
         Assert.That(innerSlope, Is.LessThan(10f));
     }
+
+    [Test]
+    public void StableWallVariation_IsDeterministicAndVaried()
+    {
+        Assert.That(BoundaryMath.StableUnit(81017, 3),
+            Is.EqualTo(BoundaryMath.StableUnit(81017, 3)).Within(0.000001f));
+        Assert.That(BoundaryMath.StableUnit(81017, 3),
+            Is.Not.EqualTo(BoundaryMath.StableUnit(81017, 4)));
+    }
+
+    [Test]
+    public void ElevatedAbilityLaunch_StaysAbovePlayerCenter()
+    {
+        Bounds owner = new Bounds(new Vector3(2f, 1f, 3f), new Vector3(1f, 2f, 1f));
+        Vector3 elevated = ProjectileLaunchUtility.ElevatedLaunchCenter(
+            owner, new Vector3(5f, -2f, 4f), 1.35f);
+
+        Assert.That(elevated.y, Is.EqualTo(2.35f).Within(0.001f));
+    }
 }
 #endif
