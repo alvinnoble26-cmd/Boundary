@@ -24,7 +24,6 @@ public enum BoundaryDisaster
     OrbitalStrike,
     FractureLines,
     DarkMatterFog,
-    ReverseCurrent,
     MeteorBreak,
     UnstableMass,
     FalseSingularities
@@ -114,9 +113,9 @@ public static class BoundaryMath
 
         float height01 = Mathf.InverseLerp(arenaFloorY + 1f, singularityPosition.y - 4f, playerPosition.y);
         float altitudeMultiplier = Mathf.Lerp(0.85f, 2.15f, height01);
-        float edge01 = Mathf.InverseLerp(ringRadius * 0.72f, ringRadius * 1.12f, horizontalDistance);
-        float edgeMultiplier = Mathf.Lerp(1f, 1.55f, edge01);
-        float footingMultiplier = stableGrounded && !outsideBoundary ? 0.10f : 1f;
+        float edge01 = Mathf.InverseLerp(ringRadius * 0.80f, ringRadius * 1.10f, horizontalDistance);
+        float edgeMultiplier = Mathf.Lerp(1f, 1.42f, edge01);
+        float footingMultiplier = stableGrounded && !outsideBoundary ? 0.055f : 1f;
 
         if (bracing && stableGrounded && !outsideBoundary)
             footingMultiplier *= Mathf.Clamp(braceResistance, 0.18f, 0.85f);
@@ -131,11 +130,24 @@ public static class BoundaryMath
         {
             Vector3 inward = flatOffset.sqrMagnitude > 0.01f ? -flatOffset.normalized : Vector3.zero;
             float outsideDistance = horizontalDistance - ringRadius;
-            pull += inward * Mathf.Min(12f, 2.5f + outsideDistance * 0.65f);
-            pull += Vector3.up * Mathf.Min(14f, 4f + outsideDistance * 0.8f);
+            pull += inward * Mathf.Min(19f, 5.5f + outsideDistance * 1.05f);
+            pull += Vector3.up * Mathf.Min(22f, 7f + outsideDistance * 1.20f);
         }
 
-        return Vector3.ClampMagnitude(pull, 42f);
+        // With a platform-only floor, falling through a newly opened gap must
+        // remain a combat situation instead of becoming an endless void fall.
+        // The rebound is deliberately strong but gives no horizontal control
+        // advantage: it returns the fighter toward the arena as an airborne
+        // target that the opponent can punish.
+        float voidDepth = arenaFloorY - 2.5f - playerPosition.y;
+        if (voidDepth > 0f)
+        {
+            Vector3 inward = flatOffset.sqrMagnitude > 0.01f ? -flatOffset.normalized : Vector3.zero;
+            pull += Vector3.up * Mathf.Min(34f, 17f + voidDepth * 2.2f);
+            pull += inward * Mathf.Min(12f, 4f + voidDepth * 0.7f);
+        }
+
+        return Vector3.ClampMagnitude(pull, 50f);
     }
 
     public static int StableHash(int seed, int index)
@@ -162,7 +174,6 @@ public static class BoundaryMath
             case BoundaryDisaster.OrbitalStrike: return "ORBITAL STRIKE";
             case BoundaryDisaster.FractureLines: return "FRACTURE LINES";
             case BoundaryDisaster.DarkMatterFog: return "DARK MATTER FOG";
-            case BoundaryDisaster.ReverseCurrent: return "REVERSE CURRENT";
             case BoundaryDisaster.MeteorBreak: return "METEOR BREAK";
             case BoundaryDisaster.UnstableMass: return "UNSTABLE MASS";
             case BoundaryDisaster.FalseSingularities: return "FALSE SINGULARITIES";
@@ -186,8 +197,6 @@ public static class BoundaryMath
                 return "Glowing seams lift in sequence. Force your rival across one.";
             case BoundaryDisaster.DarkMatterFog:
                 return "Silhouettes stay bright. Close distance and hide your throws.";
-            case BoundaryDisaster.ReverseCurrent:
-                return "The current flips often—use it to curve attacks from either side.";
             case BoundaryDisaster.MeteorBreak:
                 return "Impact zones become debris. Bait a rival in, then launch the remains.";
             case BoundaryDisaster.UnstableMass:

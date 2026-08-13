@@ -130,7 +130,7 @@ public class  ForceField : MonoBehaviour
                 {
                     // Airborne targets have less stability in the vortex, so
                     // Repel becomes the intended final-phase knockout tool.
-                    accel *= mode == Mode.Repel ? 1.28f : 1.10f;
+                    accel *= mode == Mode.Repel ? 1.42f : 1.12f;
                 }
 
                 if (boundaryState != null)
@@ -138,7 +138,7 @@ public class  ForceField : MonoBehaviour
                     // Player rigidbodies are owner-authoritative and kinematic
                     // on the server. Send the velocity change to that owner;
                     // applying AddForce here would silently do nothing.
-                    boundaryState.ServerPushOwner(dir * Mathf.Clamp(accel * 0.085f, 1.2f, 13f));
+                    boundaryState.ServerPushOwner(dir * Mathf.Clamp(accel * 0.105f, 1.35f, 15f));
                     continue;
                 }
             }

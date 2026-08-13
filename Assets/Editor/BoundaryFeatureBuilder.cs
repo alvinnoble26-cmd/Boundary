@@ -162,9 +162,16 @@ public static class BoundaryFeatureValidator
         BoundaryMatchController controller = director.GetComponent<BoundaryMatchController>();
         Require(controller != null, "Match director has no BoundaryMatchController.");
         Require(director.GetComponent<BoundaryArenaPresentation>() != null, "Match director has no arena presentation.");
-        Require(controller.OuterRadius > 60f, "Outer ring would trap the existing spawn points.");
-        Require(controller.MiddleRadius < controller.OuterRadius, "Middle ring must be smaller than the outer ring.");
-        Require(controller.InnerRadius < controller.MiddleRadius, "Inner ring must be smaller than the middle ring.");
+        Require(controller.OuterRadius >= 100f, "Outer ring is not meaningfully larger than the original arena.");
+        Require(Mathf.Abs(controller.MiddleRadius - 68f) < 0.1f,
+            "Middle ring must preserve the former outer-ring footprint.");
+        Require(controller.InnerRadius >= 36f && controller.InnerRadius < controller.MiddleRadius,
+            "Inner ring must remain large enough for combat.");
+        Require(controller.OuterPlatformSurfaceY < controller.MiddlePlatformSurfaceY &&
+                controller.MiddlePlatformSurfaceY < controller.InnerPlatformSurfaceY,
+            "Platform tiers must rise toward the singularity.");
+        Require(Mathf.Abs(controller.PlatformSurfaceYAtRadius(68f) - controller.MiddlePlatformSurfaceY) < 0.01f,
+            "The former outer-ring footprint must use the raised middle platform tier.");
 
         Require(hazard != null, "Boundary hazard prefab is missing.");
         Require(hazard.GetComponent<BoundaryHazard>() != null, "Boundary hazard behavior is missing.");
@@ -180,22 +187,25 @@ public static class BoundaryFeatureValidator
         Require(registry.prefabs.Any(entry => entry.prefab == director), "Director is not in NetworkPrefabs.");
         Require(registry.prefabs.Any(entry => entry.prefab == hazard), "Hazard is not in NetworkPrefabs.");
 
-        float midpoint = BoundaryMath.TransitionRadius(68f, 38f, 3.5f, 7f);
-        Require(Mathf.Abs(midpoint - 53f) < 0.001f, "Ring interpolation is not deterministic.");
+        float midpoint = BoundaryMath.TransitionRadius(106f, 68f, 3.5f, 7f);
+        Require(Mathf.Abs(midpoint - 87f) < 0.001f, "Ring interpolation is not deterministic.");
         Vector3 airborne = BoundaryMath.PlayerPullAcceleration(
-            Vector3.zero, new Vector3(0f, 32f, 0f), Vector3.zero, -1f, 68f, 12f, false, false, 1f);
+            Vector3.zero, new Vector3(0f, 32f, 0f), Vector3.zero, -1f, 106f, 5.5f, false, false, 1f);
         Vector3 braced = BoundaryMath.PlayerPullAcceleration(
-            Vector3.zero, new Vector3(0f, 32f, 0f), Vector3.zero, -1f, 68f, 12f, true, true, 0.25f);
+            Vector3.zero, new Vector3(0f, 32f, 0f), Vector3.zero, -1f, 106f, 5.5f, true, true, 0.25f);
         Require(braced.magnitude < airborne.magnitude * 0.08f, "Anchor resistance is not meaningful.");
 
+        int disasterCount = 0;
         foreach (BoundaryDisaster value in System.Enum.GetValues(typeof(BoundaryDisaster)))
         {
             if (value == BoundaryDisaster.None) continue;
+            disasterCount++;
             Require(!string.IsNullOrEmpty(BoundaryMath.DisasterName(value)), value + " has no presentation name.");
             Require(!string.IsNullOrEmpty(BoundaryMath.DisasterHint(value)), value + " has no tactical hint.");
         }
+        Require(disasterCount == 9, "Reverse Current must be removed and exactly nine disasters must remain.");
 
-        Debug.Log("[BoundaryFeatureValidator] PASS — authority, prefabs, rings, Anchor, and all 10 events validated.");
+        Debug.Log("[BoundaryFeatureValidator] PASS — open arena, authority, enlarged rings, Anchor, and all 9 events validated.");
     }
 
     private static void Require(bool condition, string message)
@@ -307,21 +317,32 @@ public static class BoundaryRuntimeSmokeRunner
             BoundaryHazard hazard = Object.FindFirstObjectByType<BoundaryHazard>();
             BoundaryHUD hud = Object.FindFirstObjectByType<BoundaryHUD>();
             GameObject generated = GameObject.Find("Boundary Generated Stadium");
-            GameObject boundary = GameObject.Find("Moving Boundary");
+            GameObject platformRoot = GameObject.Find("Breakaway Platforms");
+            BoundaryArenaPresentation presentation = Object.FindFirstObjectByType<BoundaryArenaPresentation>();
 
             RequireSmoke(controller != null && BoundaryMatchController.Instance == controller,
                 "Runtime director did not initialize.");
             RequireSmoke(hazard != null && hazard.transform.Find("CubeVisual") != null &&
-                         hazard.transform.Find("SphereVisual") != null,
+                         hazard.transform.Find("SphereVisual") != null &&
+                         hazard.transform.Find("BlackHoleAccretion") != null,
                 "Runtime hazard visuals were not generated.");
             RequireSmoke(hud != null, "Boundary HUD was not installed in the Game scene.");
-            RequireSmoke(generated != null && boundary != null && boundary.transform.childCount >= 40,
-                "Generated stadium boundary is incomplete.");
+            RequireSmoke(generated != null && platformRoot != null && platformRoot.transform.childCount >= 300,
+                "Generated breakaway platform floor is incomplete.");
+            RequireSmoke(presentation != null && presentation.GeneratedPlatformCount >= 340 &&
+                         presentation.LegacyArenaHidden && !presentation.HasSideWalls,
+                "Open platform arena did not replace the legacy floor and side walls.");
+            RequireSmoke(presentation.PreviewCollapseWarningForValidation() >= 20,
+                "Breakaway platforms did not pulse dark while remaining collidable.");
+            RequireSmoke(presentation.PreviewCollapseFlightForValidation() >= 80,
+                "Breakaway platforms did not release and fly toward the singularity.");
             RequireSmoke(GameObject.Find("Event Horizon") != null, "Visible event horizon was not generated.");
+            RequireSmoke(GameObject.Find("Hot Accretion Band") != null,
+                "The upgraded central black-hole accretion disc was not generated.");
             RequireSmoke(RuntimeErrors.Count == 0, "Runtime errors: " + string.Join(" | ", RuntimeErrors));
 
             File.WriteAllText(ResultPath,
-                "PASS\nDirector, 40-segment stadium, hazard visuals, event horizon, and HUD initialized without runtime errors.\n");
+                "PASS\nOpen breakaway arena, elevated routes, upgraded black holes, event horizon, and HUD initialized without runtime errors.\n");
         }
         catch (System.Exception exception)
         {

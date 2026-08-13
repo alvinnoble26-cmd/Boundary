@@ -328,8 +328,15 @@ void UseSlot(int slotIndex)
 
     float cooldownDuration = GetCooldownDuration(id.Value);
     BoundaryMatchController match = BoundaryMatchController.Instance;
-    if (match != null && match.Phase == BoundaryPhase.InnerRing)
-        cooldownDuration *= 0.82f;
+    if (match != null)
+    {
+        if (match.Phase == BoundaryPhase.OuterRing)
+            cooldownDuration *= 0.94f;
+        else if (match.Phase == BoundaryPhase.MiddleRing)
+            cooldownDuration *= 0.88f;
+        else if (match.Phase == BoundaryPhase.InnerRing)
+            cooldownDuration *= 0.76f;
+    }
     slotCooldownEnds[slotIndex] = Time.time + cooldownDuration;
     cooldownVisuals[slotIndex]?.BeginCooldown(cooldownDuration);
 

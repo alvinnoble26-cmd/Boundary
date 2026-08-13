@@ -15,17 +15,20 @@ public sealed class BoundaryMatchController : NetworkBehaviour
 
     [Header("Arena")]
     [SerializeField] private float arenaFloorY = -0.9f;
-    [SerializeField, Min(8f)] private float outerRadius = 68f;
-    [SerializeField, Min(6f)] private float middleRadius = 38f;
-    [SerializeField, Min(4f)] private float innerRadius = 16f;
-    [SerializeField, Min(3f)] private float minimumInnerRadius = 8.5f;
-    [SerializeField, Min(0f)] private float innerShrinkPerSecond = 0.10f;
+    [SerializeField, Min(8f)] private float outerRadius = 106f;
+    [SerializeField, Min(6f)] private float middleRadius = 68f;
+    [SerializeField, Min(4f)] private float innerRadius = 38f;
+    [SerializeField, Min(3f)] private float minimumInnerRadius = 38f;
+    [SerializeField, Min(0f)] private float innerShrinkPerSecond;
+    [SerializeField] private float outerPlatformSurfaceY;
+    [SerializeField] private float middlePlatformSurfaceY = 2f;
+    [SerializeField] private float innerPlatformSurfaceY = 4.25f;
 
     [Header("Singularity pull")]
-    [SerializeField, Min(0f)] private float outerPull = 2.2f;
-    [SerializeField, Min(0f)] private float middlePull = 7.2f;
-    [SerializeField, Min(0f)] private float innerPull = 12.5f;
-    [SerializeField, Min(0f)] private float innerPullGrowthPerSecond = 0.12f;
+    [SerializeField, Min(0f)] private float outerPull = 0.65f;
+    [SerializeField, Min(0f)] private float middlePull = 2.1f;
+    [SerializeField, Min(0f)] private float innerPull = 5.5f;
+    [SerializeField, Min(0f)] private float innerPullGrowthPerSecond;
 
     [Header("Boundary event")]
     [SerializeField, Range(1f, 10f)] private float disasterRevealDelay = 5f;
@@ -33,8 +36,8 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     [SerializeField, Range(15f, 25f)] private float disasterDuration = 20f;
 
     [Header("Shared object pull")]
-    [SerializeField, Min(20f)] private float objectPullRadius = 85f;
-    [SerializeField, Min(8)] private int overlapCapacity = 192;
+    [SerializeField, Min(20f)] private float objectPullRadius = 126f;
+    [SerializeField, Min(8)] private int overlapCapacity = 256;
 
     private readonly SyncVar<BoundaryPhase> phase = new(BoundaryPhase.Waiting, ownerAuth: false);
     private readonly SyncVar<BoundaryTransition> transition = new(BoundaryTransition.None, ownerAuth: false);
@@ -46,8 +49,8 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     private readonly SyncVar<uint> disasterActiveTick = new(0u, ownerAuth: false);
     private readonly SyncVar<uint> disasterEndTick = new(0u, ownerAuth: false);
     private readonly SyncVar<int> disasterSeed = new(0, ownerAuth: false);
-    private readonly SyncVar<float> ringRadius = new(68f, 0.1f, ownerAuth: false);
-    private readonly SyncVar<float> pullStrength = new(2.2f, 0.1f, ownerAuth: false);
+    private readonly SyncVar<float> ringRadius = new(106f, 0.1f, ownerAuth: false);
+    private readonly SyncVar<float> pullStrength = new(0.65f, 0.05f, ownerAuth: false);
 
     private Collider[] overlapBuffer;
     private readonly HashSet<Rigidbody> uniqueBodies = new HashSet<Rigidbody>();
@@ -71,12 +74,24 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     public float OuterRadius => outerRadius;
     public float MiddleRadius => middleRadius;
     public float InnerRadius => innerRadius;
+    public float OuterPlatformSurfaceY => outerPlatformSurfaceY;
+    public float MiddlePlatformSurfaceY => middlePlatformSurfaceY;
+    public float InnerPlatformSurfaceY => innerPlatformSurfaceY;
     public float BasePullStrength => pullStrength.value;
     public float ArenaFloorY => arenaFloorY;
     public Vector3 SingularityPosition => transform.position;
     public Vector3 ArenaCenter => new Vector3(transform.position.x, arenaFloorY, transform.position.z);
     public int DisasterSeed => disasterSeed.value;
     public bool IsDisasterActive => disasterStage.value == BoundaryDisasterStage.Active;
+
+    public float PlatformSurfaceYAtRadius(float horizontalDistance)
+    {
+        if (horizontalDistance <= innerRadius)
+            return innerPlatformSurfaceY;
+        if (horizontalDistance <= middleRadius)
+            return middlePlatformSurfaceY;
+        return outerPlatformSurfaceY;
+    }
 
     public double NetworkTime
     {
@@ -137,19 +152,9 @@ public sealed class BoundaryMatchController : NetworkBehaviour
 
     public float EffectivePullStrength => pullStrength.value * (1f + GravitySurgePulse * 1.85f);
 
-    public float GravityDominance => Mathf.InverseLerp(5f, innerPull, EffectivePullStrength);
+    public float GravityDominance => Mathf.InverseLerp(3.5f, Mathf.Max(5f, innerPull), EffectivePullStrength);
 
-    public float CurrentDirection
-    {
-        get
-        {
-            if (!IsDisasterActive || disaster.value != BoundaryDisaster.ReverseCurrent)
-                return 1f;
-
-            int directionIndex = Mathf.FloorToInt(DisasterElapsed / 3.25f);
-            return (directionIndex & 1) == 0 ? 1f : -1f;
-        }
-    }
+    public float CurrentDirection => 1f;
 
     public float FracturePulse
     {
@@ -420,7 +425,10 @@ public sealed class BoundaryMatchController : NetworkBehaviour
         for (int i = 0; i < count; i++)
         {
             Vector2 point = RandomPointInRing(0.25f, 0.88f);
-            Vector3 landing = ArenaCenter + new Vector3(point.x, 1.4f, point.y);
+            Vector3 landing = new Vector3(
+                ArenaCenter.x + point.x,
+                PlatformSurfaceYAtRadius(point.magnitude) + 1.2f,
+                ArenaCenter.z + point.y);
             Vector3 spawn = new Vector3(landing.x, SingularityPosition.y - 3f, landing.z);
             SpawnHazard(BoundaryHazardKind.BlackRainSingularity, spawn, Vector3.zero, landing, 10f, 0, 1.15f);
         }
@@ -431,7 +439,10 @@ public sealed class BoundaryMatchController : NetworkBehaviour
         for (int i = 0; i < count; i++)
         {
             Vector2 point = RandomPointInRing(0.15f, 0.90f);
-            Vector3 spawn = ArenaCenter + new Vector3(point.x, 20f + NextFloat(0f, 10f), point.y);
+            Vector3 spawn = new Vector3(
+                ArenaCenter.x + point.x,
+                PlatformSurfaceYAtRadius(point.magnitude) + 20f + NextFloat(0f, 10f),
+                ArenaCenter.z + point.y);
             Vector3 velocity = new Vector3(NextFloat(-3f, 3f), NextFloat(-6f, -2f), NextFloat(-3f, 3f));
             float size = scale * NextFloat(0.75f, 1.25f);
             SpawnHazard(kind, spawn, velocity, ArenaCenter, 24f, 0, size);
@@ -447,7 +458,10 @@ public sealed class BoundaryMatchController : NetworkBehaviour
                 lane == 1 ? Mathf.Max(8f, ringRadius.value * 0.82f) : Mathf.Max(10f, ringRadius.value * 1.05f);
             float angle = (Mathf.PI * 2f * i / count) + NextFloat(-0.18f, 0.18f);
             float height = lane == 0 ? 1.4f : lane == 1 ? 6f : 12f;
-            Vector3 spawn = ArenaCenter + new Vector3(Mathf.Cos(angle) * laneRadius, height, Mathf.Sin(angle) * laneRadius);
+            Vector3 spawn = new Vector3(
+                ArenaCenter.x + Mathf.Cos(angle) * laneRadius,
+                PlatformSurfaceYAtRadius(laneRadius) + height,
+                ArenaCenter.z + Mathf.Sin(angle) * laneRadius);
             Vector3 tangent = new Vector3(-Mathf.Sin(angle), 0f, Mathf.Cos(angle));
             SpawnHazard(
                 tornado ? BoundaryHazardKind.TornadoDebris : BoundaryHazardKind.OrbitalDebris,
@@ -467,7 +481,10 @@ public sealed class BoundaryMatchController : NetworkBehaviour
         {
             float angle = Mathf.PI * 2f * i / count + NextFloat(-0.2f, 0.2f);
             float radius = ringRadius.value * 0.76f;
-            Vector3 position = ArenaCenter + new Vector3(Mathf.Cos(angle) * radius, 1.7f, Mathf.Sin(angle) * radius);
+            Vector3 position = new Vector3(
+                ArenaCenter.x + Mathf.Cos(angle) * radius,
+                PlatformSurfaceYAtRadius(radius) + 1.7f,
+                ArenaCenter.z + Mathf.Sin(angle) * radius);
             SpawnHazard(BoundaryHazardKind.FalseSingularity, position, Vector3.zero, position, 23f, i == realIndex ? 1 : 0, 1.2f);
         }
     }
@@ -579,8 +596,7 @@ public sealed class BoundaryMatchController : NetworkBehaviour
             float acceleration = EffectivePullStrength * Mathf.Lerp(0.45f, 1.35f, altitude) * massResistance;
             body.AddForce(toSingularity.normalized * acceleration, ForceMode.Acceleration);
 
-            if (phase.value == BoundaryPhase.InnerRing ||
-                (IsDisasterActive && disaster.value == BoundaryDisaster.ReverseCurrent))
+            if (phase.value == BoundaryPhase.InnerRing)
             {
                 Vector3 radial = body.position - ArenaCenter;
                 radial.y = 0f;

@@ -37,6 +37,10 @@ public sealed class BoundaryHazard : NetworkBehaviour
     private float desiredOrbitHeight;
     private Material cubeMaterial;
     private Material sphereMaterial;
+    private Transform blackHoleRig;
+    private readonly List<Transform> blackHoleRings = new List<Transform>();
+    private readonly List<float> blackHoleRingSpeeds = new List<float>();
+    private readonly List<Material> blackHoleMaterials = new List<Material>();
 
     public BoundaryHazardKind Kind => kind.value;
     public int Variant => variant.value;
@@ -87,6 +91,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
             GameObject sphere = CreateRuntimeVisual(PrimitiveType.Sphere, "SphereVisual", Vector3.one * 1.65f);
             sphere.SetActive(false);
         }
+        EnsureBlackHoleRig();
     }
 
     private GameObject CreateRuntimeVisual(PrimitiveType primitive, string visualName, Vector3 scale)
@@ -99,6 +104,60 @@ public sealed class BoundaryHazard : NetworkBehaviour
         if (visualCollider != null)
             Destroy(visualCollider);
         return visual;
+    }
+
+    private void EnsureBlackHoleRig()
+    {
+        Transform existing = transform.Find("BlackHoleAccretion");
+        if (existing != null)
+        {
+            blackHoleRig = existing;
+            return;
+        }
+
+        blackHoleRig = new GameObject("BlackHoleAccretion").transform;
+        blackHoleRig.SetParent(transform, false);
+        CreateBlackHoleRing("Molten Accretion", 2.05f, 0.20f,
+            new Color(1f, 0.20f, 0.035f), new Vector3(16f, 0f, 4f), 92f);
+        CreateBlackHoleRing("Violet Lensing", 2.45f, 0.12f,
+            new Color(0.72f, 0.08f, 1f), new Vector3(-11f, 0f, 18f), -68f);
+        CreateBlackHoleRing("Photon Orbit", 2.82f, 0.065f,
+            new Color(0.08f, 0.72f, 1f), new Vector3(24f, 0f, -12f), 48f);
+        CreateBlackHoleRing("Polar Lens", 2.18f, 0.055f,
+            new Color(0.82f, 0.32f, 1f), new Vector3(76f, 0f, 0f), -31f);
+        blackHoleRig.gameObject.SetActive(false);
+    }
+
+    private void CreateBlackHoleRing(
+        string ringName,
+        float radius,
+        float width,
+        Color emission,
+        Vector3 tilt,
+        float speed)
+    {
+        LineRenderer line = new GameObject(ringName, typeof(LineRenderer)).GetComponent<LineRenderer>();
+        line.transform.SetParent(blackHoleRig, false);
+        line.transform.localRotation = Quaternion.Euler(tilt);
+        line.useWorldSpace = false;
+        line.loop = true;
+        line.positionCount = 72;
+        line.startWidth = width;
+        line.endWidth = width * 0.55f;
+        Material material = CreateMaterial(Color.black, emission, 7.5f);
+        blackHoleMaterials.Add(material);
+        line.sharedMaterial = material;
+        for (int i = 0; i < line.positionCount; i++)
+        {
+            float angle = Mathf.PI * 2f * i / line.positionCount;
+            float noise = 1f + Mathf.Sin(angle * 5f + blackHoleRings.Count) * 0.06f;
+            line.SetPosition(i, new Vector3(
+                Mathf.Cos(angle) * radius * noise,
+                Mathf.Sin(angle * 3f) * 0.055f,
+                Mathf.Sin(angle) * radius * noise));
+        }
+        blackHoleRings.Add(line.transform);
+        blackHoleRingSpeeds.Add(speed);
     }
 
     protected override void OnSpawned()
@@ -114,6 +173,26 @@ public sealed class BoundaryHazard : NetworkBehaviour
         ActiveHazards.Remove(this);
         if (cubeMaterial != null) Destroy(cubeMaterial);
         if (sphereMaterial != null) Destroy(sphereMaterial);
+        foreach (Material material in blackHoleMaterials)
+        {
+            if (material != null)
+                Destroy(material);
+        }
+    }
+
+    private void Update()
+    {
+        if (blackHoleRig == null || !blackHoleRig.gameObject.activeSelf)
+            return;
+
+        for (int i = 0; i < blackHoleRings.Count; i++)
+            blackHoleRings[i].Rotate(Vector3.up, blackHoleRingSpeeds[i] * Time.deltaTime, Space.Self);
+
+        if (sphereRenderer != null)
+        {
+            float pulse = 1f + Mathf.Sin(Time.time * 4.1f + variant.value) * 0.045f;
+            sphereRenderer.transform.localScale = Vector3.one * (1.65f * pulse);
+        }
     }
 
     public void ServerConfigure(
@@ -384,6 +463,8 @@ public sealed class BoundaryHazard : NetworkBehaviour
         bool sphere = IsSingularityKind(kind.value);
         cubeRenderer.gameObject.SetActive(!sphere);
         sphereRenderer.gameObject.SetActive(sphere);
+        if (blackHoleRig != null)
+            blackHoleRig.gameObject.SetActive(sphere);
         boxCollider.enabled = !sphere;
         sphereCollider.enabled = sphere;
         sphereCollider.isTrigger = true;

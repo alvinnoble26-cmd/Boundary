@@ -427,9 +427,7 @@ void HandleJump()
 
         Vector3 radial = rb.position - match.ArenaCenter;
         radial.y = 0f;
-        if (radial.sqrMagnitude > 0.1f &&
-            (match.Phase == BoundaryPhase.InnerRing ||
-             (match.IsDisasterActive && match.Disaster == BoundaryDisaster.ReverseCurrent)))
+        if (radial.sqrMagnitude > 0.1f && match.Phase == BoundaryPhase.InnerRing)
         {
             Vector3 tangent = Vector3.Cross(Vector3.up, radial.normalized) * match.CurrentDirection;
             float currentStrength = match.Phase == BoundaryPhase.InnerRing ? 4.2f : 3.4f;

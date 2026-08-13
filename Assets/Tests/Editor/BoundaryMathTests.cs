@@ -7,9 +7,9 @@ public sealed class BoundaryMathTests
     [Test]
     public void TransitionRadius_IsSmoothAndHitsBothEndpoints()
     {
-        Assert.That(BoundaryMath.TransitionRadius(40f, 22f, 0f, 7f), Is.EqualTo(40f).Within(0.001f));
-        Assert.That(BoundaryMath.TransitionRadius(40f, 22f, 7f, 7f), Is.EqualTo(22f).Within(0.001f));
-        Assert.That(BoundaryMath.TransitionRadius(40f, 22f, 3.5f, 7f), Is.EqualTo(31f).Within(0.001f));
+        Assert.That(BoundaryMath.TransitionRadius(106f, 68f, 0f, 7f), Is.EqualTo(106f).Within(0.001f));
+        Assert.That(BoundaryMath.TransitionRadius(106f, 68f, 7f, 7f), Is.EqualTo(68f).Within(0.001f));
+        Assert.That(BoundaryMath.TransitionRadius(106f, 68f, 3.5f, 7f), Is.EqualTo(87f).Within(0.001f));
     }
 
     [Test]
@@ -19,11 +19,11 @@ public sealed class BoundaryMathTests
         Vector3 singularity = new Vector3(0f, 28f, 0f);
         Vector3 center = Vector3.zero;
         Vector3 airborne = BoundaryMath.PlayerPullAcceleration(
-            player, singularity, center, -1f, 40f, 12f, false, false, 1f);
+            player, singularity, center, -1f, 106f, 5.5f, false, false, 1f);
         Vector3 grounded = BoundaryMath.PlayerPullAcceleration(
-            player, singularity, center, -1f, 40f, 12f, true, false, 1f);
+            player, singularity, center, -1f, 106f, 5.5f, true, false, 1f);
         Vector3 braced = BoundaryMath.PlayerPullAcceleration(
-            player, singularity, center, -1f, 40f, 12f, true, true, 0.25f);
+            player, singularity, center, -1f, 106f, 5.5f, true, true, 0.25f);
 
         Assert.That(grounded.magnitude, Is.LessThan(airborne.magnitude * 0.2f));
         Assert.That(braced.magnitude, Is.LessThan(grounded.magnitude * 0.4f));
@@ -43,8 +43,8 @@ public sealed class BoundaryMathTests
             true,
             0.25f);
 
-        Assert.That(acceleration.x, Is.LessThan(-2f));
-        Assert.That(acceleration.y, Is.GreaterThan(4f));
+        Assert.That(acceleration.x, Is.LessThan(-5f));
+        Assert.That(acceleration.y, Is.GreaterThan(7f));
     }
 
     [Test]
@@ -53,6 +53,24 @@ public sealed class BoundaryMathTests
         Assert.That(BoundaryMath.RhythmicPulse(0.5f, 4f, 1f, 1f), Is.Zero);
         Assert.That(BoundaryMath.RhythmicPulse(1.5f, 4f, 1f, 1f), Is.EqualTo(1f).Within(0.001f));
         Assert.That(BoundaryMath.RhythmicPulse(2.5f, 4f, 1f, 1f), Is.Zero);
+    }
+
+    [Test]
+    public void PlatformVoid_ReboundsFighterTowardCombatSpace()
+    {
+        Vector3 acceleration = BoundaryMath.PlayerPullAcceleration(
+            new Vector3(22f, -8f, 0f),
+            new Vector3(0f, 32f, 0f),
+            Vector3.zero,
+            -0.9f,
+            68f,
+            2.1f,
+            false,
+            false,
+            1f);
+
+        Assert.That(acceleration.y, Is.GreaterThan(15f));
+        Assert.That(acceleration.x, Is.LessThan(-3f));
     }
 
     [Test]
@@ -70,6 +88,13 @@ public sealed class BoundaryMathTests
     {
         Assert.That(BoundaryMath.DisasterName(disaster), Is.EqualTo(expectedName));
         Assert.That(BoundaryMath.DisasterHint(disaster), Is.Not.Empty);
+    }
+
+    [Test]
+    public void ReverseCurrent_IsNotInTheDisasterPool()
+    {
+        CollectionAssert.DoesNotContain(System.Enum.GetNames(typeof(BoundaryDisaster)), "ReverseCurrent");
+        Assert.That(System.Enum.GetValues(typeof(BoundaryDisaster)).Length - 1, Is.EqualTo(9));
     }
 }
 #endif

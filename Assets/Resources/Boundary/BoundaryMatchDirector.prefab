@@ -80,20 +80,23 @@ MonoBehaviour:
   middleRingDuration: 50
   transitionDuration: 7
   arenaFloorY: -0.9
-  outerRadius: 68
-  middleRadius: 38
-  innerRadius: 16
-  minimumInnerRadius: 8.5
-  innerShrinkPerSecond: 0.1
-  outerPull: 2.2
-  middlePull: 7.2
-  innerPull: 12.5
-  innerPullGrowthPerSecond: 0.12
+  outerRadius: 106
+  middleRadius: 68
+  innerRadius: 38
+  minimumInnerRadius: 38
+  innerShrinkPerSecond: 0
+  outerPlatformSurfaceY: 0
+  middlePlatformSurfaceY: 2
+  innerPlatformSurfaceY: 4.25
+  outerPull: 0.65
+  middlePull: 2.1
+  innerPull: 5.5
+  innerPullGrowthPerSecond: 0
   disasterRevealDelay: 5
   disasterWarningDuration: 3
   disasterDuration: 20
-  objectPullRadius: 85
-  overlapCapacity: 192
+  objectPullRadius: 126
+  overlapCapacity: 256
 --- !u!114 &968004671836366239
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -106,7 +109,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 16df51c3778584702a386df937092c97, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::BoundaryArenaPresentation
-  boundarySegments: 40
-  debrisTilesPerRing: 24
-  boundaryHeight: 1.25
-  boundaryThickness: 0.7
+  platformSize: 9.2
+  platformGap: 0.45
+  platformThickness: 0.85
+  collapseWarningSeconds: 1.35
+  routeCountPerTier: 8
+  routePlatformSize: 5.2
