@@ -4,6 +4,7 @@ using PurrNet;
 public class AttractThrow : MonoBehaviour, IAbility
 {
     public AbilityId Id => AbilityId.AttractThrow;
+    public float CooldownDuration => cooldown;
 
     [Header("Projectile Prefab")]
     [SerializeField] private GameObject objectToThrow;
@@ -11,7 +12,7 @@ public class AttractThrow : MonoBehaviour, IAbility
     [Header("Throw Power")]
     [SerializeField] private float throwForce = 45f;
     [SerializeField] private float throwUpwardForce = 4f;
-    [SerializeField] private float cooldown = 0.5f;
+    [SerializeField] private float cooldown = 3f;
 
     [Header("Projectile Physics Boost")]
     [SerializeField] private float projectileMass = 3f;
@@ -85,9 +86,13 @@ public class AttractThrow : MonoBehaviour, IAbility
         if (dir.sqrMagnitude < 0.0001f)
             dir = transform.forward;
         dir.Normalize();
-        Quaternion spawnRot = Quaternion.LookRotation(dir, Vector3.up);
+        PlayerMovement ownerPm = GetComponentInParent<PlayerMovement>();
+        Transform owner = ownerPm != null ? ownerPm.transform : transform.root;
+        GameObject projectile = ProjectileLaunchUtility.InstantiateSafely(
+            objectToThrow, owner, spawnPos, dir);
+        if (projectile == null)
+            return;
 
-        GameObject projectile = Instantiate(objectToThrow, spawnPos, spawnRot);
         NetworkIdentity.Spawn(projectile, objectToThrow);
 
         Rigidbody rb = projectile.GetComponent<Rigidbody>();

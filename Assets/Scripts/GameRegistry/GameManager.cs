@@ -65,7 +65,11 @@ public class GameManager : MonoBehaviour
     private bool receivedMatchResult;
     private bool isBusy;
     private bool isEndingGame;
+    private bool isPracticeMode;
+    private bool returnToServerSelector;
     private Coroutine roundStartGateRoutine;
+
+    public bool IsPracticeMode => isPracticeMode;
 
     private void Awake()
     {
@@ -561,7 +565,8 @@ private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
 
 private IEnumerator WaitForBothLoadedPlayers()
 {
-    Debug.Log("[GameManager] Round paused until both player objects are loaded.");
+    int requiredPlayers = isPracticeMode ? 1 : 2;
+    Debug.Log("[GameManager] Round paused until " + requiredPlayers + " player object(s) are loaded.");
 
     while (SceneManager.GetActiveScene().name == gameSceneName)
     {
@@ -569,7 +574,7 @@ private IEnumerator WaitForBothLoadedPlayers()
         int connectedPlayers = net != null ? net.playerCount : 0;
         int loadedPlayers = FindObjectsByType<PlayerMovement>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
 
-        if (connectedPlayers >= 2 && loadedPlayers >= 2)
+        if (connectedPlayers >= requiredPlayers && loadedPlayers >= requiredPlayers)
             break;
 
         yield return new WaitForSecondsRealtime(0.1f);
@@ -580,7 +585,7 @@ private IEnumerator WaitForBothLoadedPlayers()
     if (SceneManager.GetActiveScene().name == gameSceneName)
     {
         Time.timeScale = 1f;
-        Debug.Log("[GameManager] Both players loaded. Round started.");
+        Debug.Log("[GameManager] Required players loaded. Round started.");
     }
 
     roundStartGateRoutine = null;
@@ -683,12 +688,88 @@ Debug.LogWarning("[GameManager] Connected, but Game scene was not confirmed with
 isBusy = false;
     }
 
-    public void PlayOffline()
+    public void PlayPractice()
     {
         if (isBusy)
             return;
 
-        SceneManager.LoadScene(gameSceneName);
+        StartCoroutine(StartPracticeRoutine());
+    }
+
+    // Retained for existing menu bindings and older callers.
+    public void PlayOffline()
+    {
+        PlayPractice();
+    }
+
+    private IEnumerator StartPracticeRoutine()
+    {
+        isBusy = true;
+        isEndingGame = false;
+        isPracticeMode = true;
+        returnToServerSelector = false;
+        hasLoadedGameScene = false;
+        receivedMatchResult = false;
+        currentLobbyCode = "";
+        localLobbyRole = "";
+        lastMatchResult = MatchResult.None;
+        lastEndReason = "";
+        StopListeningForMatchResult();
+        StopListeningForRematch();
+        SetRematchStatus("");
+        SetState(GameState.Connecting);
+
+        ResolveNetworkManager();
+        ResolveUdpTransport();
+
+        if (net == null)
+        {
+            Debug.LogError("[GameManager] Cannot start Practice. NetworkManager was not found.");
+            isPracticeMode = false;
+            isBusy = false;
+            SetState(GameState.Menu);
+            yield break;
+        }
+
+        if (net.isClient || net.isServer)
+        {
+            try { net.StopClient(); } catch { }
+            try { net.StopServer(); } catch { }
+            yield return null;
+        }
+
+        if (!SetTransportAddressAndPort("127.0.0.1", 7777))
+        {
+            Debug.LogError("[GameManager] Cannot start Practice. Local transport setup failed.");
+            isPracticeMode = false;
+            isBusy = false;
+            SetState(GameState.Menu);
+            yield break;
+        }
+
+        Debug.Log("[GameManager] Starting local Practice host on 127.0.0.1:7777.");
+        net.StartHost();
+
+        float startWait = 0f;
+        while ((!net.isServer || !net.isClient) && startWait < 8f)
+        {
+            startWait += 0.1f;
+            yield return new WaitForSecondsRealtime(0.1f);
+        }
+
+        if (!net.isServer || !net.isClient || net.sceneModule == null)
+        {
+            Debug.LogError("[GameManager] Practice host failed to start.");
+            try { net.StopClient(); } catch { }
+            try { net.StopServer(); } catch { }
+            isPracticeMode = false;
+            isBusy = false;
+            SetState(GameState.Menu);
+            yield break;
+        }
+
+        SetState(GameState.Loading);
+        net.sceneModule.LoadSceneAsync(gameSceneName, LoadSceneMode.Single);
     }
 
     public void DisconnectToMenu()
@@ -745,8 +826,19 @@ isBusy = false;
         if (FirebaseManager.I != null && !string.IsNullOrEmpty(currentLobbyCode))
             FirebaseManager.I.RecordMatchResult(currentLobbyCode, rematchRound);
 
-        lastMatchResult = result;
-        lastEndReason = reason;
+        if (isPracticeMode)
+        {
+            // Practice deaths return directly to the server selector rather
+            // than showing the competitive loss/rematch screen.
+            lastMatchResult = MatchResult.None;
+            lastEndReason = "";
+            returnToServerSelector = true;
+        }
+        else
+        {
+            lastMatchResult = result;
+            lastEndReason = reason;
+        }
 
         SetState(GameState.GameOver);
 
@@ -759,6 +851,8 @@ isBusy = false;
     private IEnumerator ReturnToMenuAfterDelay()
     {
         yield return new WaitForSeconds(returnToMenuDelay);
+
+        bool wasPractice = isPracticeMode;
 
         StopListeningForMatchResult();
 
@@ -780,13 +874,40 @@ isBusy = false;
             yield return null;
         }
 
+        if (wasPractice && net != null && net.isServer)
+        {
+            Debug.Log("[GameManager] Stopping local Practice server.");
+            net.StopServer();
+
+            float serverCleanupWait = 0f;
+            while (net.serverState.ToString() != "Disconnected" && serverCleanupWait < 5f)
+            {
+                serverCleanupWait += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            // PurrNet reports Disconnecting while it restores its original
+            // Boot scene. Only load Menu after that cleanup is fully done so
+            // Boot cannot overwrite the requested destination afterward.
+            yield return null;
+            yield return null;
+        }
+
         currentLobbyCode = "";
         localLobbyRole = "";
         receivedMatchResult = false;
         hasLoadedGameScene = false;
         isBusy = false;
+        isPracticeMode = false;
 
         SceneManager.LoadScene(menuSceneName);
+    }
+
+    public bool ConsumeReturnToServerSelector()
+    {
+        bool shouldReturn = returnToServerSelector;
+        returnToServerSelector = false;
+        return shouldReturn;
     }
 
     public async void RequestPlayAgain()

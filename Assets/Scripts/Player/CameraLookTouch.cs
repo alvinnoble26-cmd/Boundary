@@ -8,9 +8,18 @@ public class CameraLookTouch : MonoBehaviour
 
     float pitch;
 
+    void Awake()
+    {
+        sensitivity = 0.12f * (ControlLayoutSettings.LoadCameraSensitivity() /
+            ControlLayoutSettings.DefaultCameraSensitivity);
+    }
+
     void Update()
     {
         if (playerBody == null || swipe == null) return;
+
+        sensitivity = 0.12f * (ControlLayoutSettings.LoadCameraSensitivity() /
+            ControlLayoutSettings.DefaultCameraSensitivity);
 
         Vector2 d = swipe.LookDelta;
 

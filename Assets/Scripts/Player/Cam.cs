@@ -46,6 +46,10 @@ public class Cam : NetworkBehaviour
 
 private IEnumerator SetupCameraRoutine()
 {
+    float savedSensitivity = ControlLayoutSettings.LoadCameraSensitivity();
+    xSens = savedSensitivity;
+    ySens = savedSensitivity;
+
     float t = 0f;
     while (!isOwner && t < 10f)
     {
@@ -130,6 +134,12 @@ private IEnumerator SetupCameraRoutine()
 
         Vector2 lookDelta = swipe != null ? swipe.LookDelta : Vector2.zero;
 
+        // Read the cached live preference so a camera that survives a menu or
+        // networking transition still receives newly saved sensitivity values.
+        float activeSensitivity = ControlLayoutSettings.LoadCameraSensitivity();
+        xSens = activeSensitivity;
+        ySens = activeSensitivity;
+
         // Apply sensitivity and time smoothing
         yaw += lookDelta.x * Time.deltaTime * xSens;
         pitch -= lookDelta.y * Time.deltaTime * ySens;
@@ -168,6 +178,12 @@ private IEnumerator SetupCameraRoutine()
         {
             Collider hitCollider = collisionHits[i].collider;
             if (hitCollider == null || hitCollider.transform.root == transform.root)
+                continue;
+
+            // Thrown abilities are gameplay objects, not camera-obstructing
+            // level geometry. Ignoring them prevents a spawn or fly-by from
+            // snapping the third-person camera into the player.
+            if (hitCollider.GetComponentInParent<NetworkProjectilePhysics>() != null)
                 continue;
 
             if (collisionHits[i].distance < nearestHitDistance)

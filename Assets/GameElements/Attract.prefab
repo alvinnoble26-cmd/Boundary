@@ -178,6 +178,7 @@ MonoBehaviour:
   radius: 75
   strength: 7000
   maxAccel: 1000
+  playerForceMultiplier: 1.5
   falloff:
     serializedVersion: 2
     m_Curve:

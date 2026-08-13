@@ -802,7 +802,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 74f8fb172e6a741f9803b26143a59a3d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TeleportAbility
-  cooldownSeconds: 0.5
+  cooldownSeconds: 4
   orientation: {fileID: 7070120784998569782}
   rb: {fileID: 6916516881404474788}
   capsule: {fileID: 3094438047682749186}
@@ -817,7 +817,6 @@ MonoBehaviour:
   snapToGround: 1
   groundRayUp: 1
   groundRayDown: 3
-  wallTag: Wall
 --- !u!114 &3796896326780223965
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -867,7 +866,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0526c2639a2314fc09bcc35541a69e02, type: 3}
   m_Name: 
   m_EditorClassIdentifier: '::'
-  cooldownSeconds: 0.5
+  cooldownSeconds: 2.5
   pm: {fileID: 8139484412278518173}
   visuals: {fileID: 9128806296215731779}
   tiltVisual: {fileID: 4331584949348465641}
@@ -893,7 +892,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5b26ccffca3d14ec8bb22d377e833fbc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: '::'
-  cooldownSeconds: 0.5
+  cooldownSeconds: 2.5
   pm: {fileID: 8139484412278518173}
   rb: {fileID: 6916516881404474788}
   orientation: {fileID: 7070120784998569782}
@@ -925,7 +924,7 @@ MonoBehaviour:
   attackPoint: {fileID: 7610936173283765613}
   objectToThrow: {fileID: 1573405947621632370, guid: 5c0a8df551a6b43dfa5991b87b5bb1f5, type: 3}
   totalThrows: 100
-  throwCooldown: 0.5
+  throwCooldown: 3.5
   throwForce: 20
   throwUpwardForce: 5
 --- !u!114 &4444250755395784126
@@ -943,7 +942,7 @@ MonoBehaviour:
   objectToThrow: {fileID: 5380649617664587886, guid: d82507865fb064c5e93cd29965798bb3, type: 3}
   throwForce: 20
   throwUpwardForce: 5
-  cooldown: 0.5
+  cooldown: 3
   projectileMass: 3
   projectileDrag: 0
   projectileAngularDrag: 0.05
@@ -963,7 +962,7 @@ MonoBehaviour:
   objectToThrow: {fileID: 5883653943848685551, guid: 0316e51d9f81b4e5b9df63b1ea59ac4e, type: 3}
   throwForce: 20
   throwUpwardForce: 5
-  cooldown: 0.5
+  cooldown: 3
   projectileMass: 3
   projectileDrag: 0
   projectileAngularDrag: 0.05

@@ -3,9 +3,10 @@ using UnityEngine;
 public class DashAbility : MonoBehaviour, IAbility
 {
     public AbilityId Id => AbilityId.Dash;
+    public float CooldownDuration => cooldownSeconds;
 
     [Header("Cooldown")]
-    [SerializeField] private float cooldownSeconds = 1f;
+    [SerializeField] private float cooldownSeconds = 2.5f;
     private float nextReadyTime;
 
     [Header("Refs")]

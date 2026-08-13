@@ -5,6 +5,7 @@ public class MenuUIController : MonoBehaviour
 {
     [Header("Panels")]
     [SerializeField] private GameObject mainMenuPanel;
+    [SerializeField] private GameObject serverSelectorPanel;
     [SerializeField] private GameObject losePanel;
     [SerializeField] private GameObject winPanel;
 
@@ -22,7 +23,11 @@ public class MenuUIController : MonoBehaviour
             return;
         }
 
-        if (GameManager.I.lastMatchResult == GameManager.MatchResult.Loss)
+        if (GameManager.I.ConsumeReturnToServerSelector())
+        {
+            ShowServerSelector();
+        }
+        else if (GameManager.I.lastMatchResult == GameManager.MatchResult.Loss)
         {
             ShowLose(GameManager.I.lastEndReason);
         }
@@ -52,6 +57,24 @@ public class MenuUIController : MonoBehaviour
     {
         if (mainMenuPanel != null)
             mainMenuPanel.SetActive(true);
+
+        if (serverSelectorPanel != null)
+            serverSelectorPanel.SetActive(false);
+
+        if (losePanel != null)
+            losePanel.SetActive(false);
+
+        if (winPanel != null)
+            winPanel.SetActive(false);
+    }
+
+    private void ShowServerSelector()
+    {
+        if (mainMenuPanel != null)
+            mainMenuPanel.SetActive(false);
+
+        if (serverSelectorPanel != null)
+            serverSelectorPanel.SetActive(true);
 
         if (losePanel != null)
             losePanel.SetActive(false);

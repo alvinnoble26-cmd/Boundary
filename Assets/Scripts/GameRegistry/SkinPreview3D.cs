@@ -6,7 +6,8 @@ using UnityEngine.UI;
 public sealed class SkinPreview3D : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IDragHandler
 {
     private const int PreviewLayer = 30;
-    private const float DragSpeed = 0.42f;
+    private const float DragSpeed = 0.22f;
+    private const float AutomaticRotationSpeed = 2.5f;
     private static int nextPreviewIndex;
 
     private RenderTexture texture;
@@ -42,10 +43,13 @@ public sealed class SkinPreview3D : MonoBehaviour, IPointerDownHandler, IPointer
         SetLayer(modelPivot);
 
         if (skinId == "sun_ducker") BuildSunDucker();
+        else if (skinId == "turtle") BuildTurtle();
         else BuildBeard();
 
         CreateLightingAndCamera();
         ApplyRotation();
+        if (!isActiveAndEnabled && previewCamera != null)
+            previewCamera.enabled = false;
     }
 
     private void Update()
@@ -53,17 +57,25 @@ public sealed class SkinPreview3D : MonoBehaviour, IPointerDownHandler, IPointer
         if (modelPivot == null) return;
         if (!dragging)
         {
-            yaw += 8f * Time.unscaledDeltaTime;
+            yaw += AutomaticRotationSpeed * Time.unscaledDeltaTime;
             ApplyRotation();
         }
     }
 
-    public void OnPointerDown(PointerEventData eventData) => dragging = true;
+    public void OnPointerDown(PointerEventData eventData)
+    {
+        dragging = true;
+    }
 
-    public void OnPointerUp(PointerEventData eventData) => dragging = false;
+    public void OnPointerUp(PointerEventData eventData)
+    {
+        dragging = false;
+    }
 
     public void OnDrag(PointerEventData eventData)
     {
+        // This rectangle is exclusively for rotating the displayed character.
+        // Swipe between skins on the surrounding purple panel instead.
         if (modelPivot == null) return;
         yaw -= eventData.delta.x * DragSpeed;
         pitch = Mathf.Clamp(pitch - eventData.delta.y * DragSpeed * .45f, -22f, 22f);
@@ -98,6 +110,52 @@ public sealed class SkinPreview3D : MonoBehaviour, IPointerDownHandler, IPointer
         CreatePrimitive("Top Crown", PrimitiveType.Cube, new Vector3(0f, .65f, 0f),
             new Vector3(.7f, .5f, .7f), Vector3.zero, red);
         SunDuckerDemonVisual.Build(modelPivot.transform, PreviewLayer);
+    }
+
+    private void BuildTurtle()
+    {
+        SkinAssetCatalog catalog = SkinAssetCatalog.Load();
+        if (catalog == null || catalog.turtleModel == null)
+        {
+            Debug.LogError("[SkinPreview] Turtle scene model is missing from SkinAssetCatalog.");
+            BuildBeard();
+            return;
+        }
+
+        Material bodyMaterial = catalog.turtleBodyMaterial != null
+            ? catalog.turtleBodyMaterial
+            : MakeMaterial("Turtle Body Fallback", new Color(.32f, .48f, .3f), .45f, 0f);
+        CreatePrimitive("Turtle Body", PrimitiveType.Capsule, Vector3.zero,
+            Vector3.one, Vector3.zero, bodyMaterial);
+
+        // These are the exact child transforms and material override serialized
+        // under Game.unity's skins/Turtle object.
+        CreateTurtleScenePiece(catalog, "Turtle",
+            new Vector3(-.007f, -.2f, .53f), new Vector3(.73f, 1.12f, .7f),
+            new Vector3(-90f, 0f, 0f));
+        CreateTurtleScenePiece(catalog, "Turtle (1)",
+            new Vector3(-.007f, -.24f, .17f), new Vector3(.58f, 1f, .2f),
+            new Vector3(9f, 0f, 0f));
+    }
+
+    private GameObject CreateTurtleScenePiece(SkinAssetCatalog catalog, string objectName,
+        Vector3 position, Vector3 scale, Vector3 euler)
+    {
+        GameObject piece = UnityEngine.Object.Instantiate(
+            catalog.turtleModel, modelPivot.transform, false);
+        piece.name = objectName;
+        piece.transform.localPosition = position;
+        piece.transform.localScale = scale;
+        piece.transform.localEulerAngles = euler;
+        SetLayer(piece);
+        foreach (Collider collider in piece.GetComponentsInChildren<Collider>(true))
+            Destroy(collider);
+        if (catalog.turtleAccentMaterial != null)
+        {
+            foreach (Renderer renderer in piece.GetComponentsInChildren<Renderer>(true))
+                renderer.sharedMaterial = catalog.turtleAccentMaterial;
+        }
+        return piece;
     }
 
     private void CreateLightingAndCamera()

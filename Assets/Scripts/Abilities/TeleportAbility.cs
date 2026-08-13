@@ -4,9 +4,10 @@ using PurrNet;
 public class TeleportAbility : MonoBehaviour, IAbility
 {
     public AbilityId Id => AbilityId.Teleport;
+    public float CooldownDuration => cooldownSeconds;
 
     [Header("Cooldown")]
-    [SerializeField] private float cooldownSeconds = 1f;
+    [SerializeField] private float cooldownSeconds = 4f;
     private float nextReadyTime;
 
     [Header("Refs")]
@@ -30,9 +31,6 @@ public class TeleportAbility : MonoBehaviour, IAbility
     [SerializeField] private bool snapToGround = true;
     [SerializeField] private float groundRayUp = 1.0f;
     [SerializeField] private float groundRayDown = 3.0f;
-
-    [Header("Tags")]
-    [SerializeField] private string wallTag = "Wall";
 
     private PlayerAbilities playerAbilities;
 
@@ -102,11 +100,13 @@ public class TeleportAbility : MonoBehaviour, IAbility
     {
         Vector3 intended = start + dir * maxDistance;
 
-        if (Physics.Raycast(start, dir, out RaycastHit hit, maxDistance, ~0, QueryTriggerInteraction.Ignore))
-        {
-            if (hit.collider != null && hit.collider.CompareTag(wallTag))
-                intended = hit.point - dir * (capsule.radius + skin);
-        }
+        // Interior walls, movable cubes, players, and black holes are meant to
+        // be phased through. Only an explicitly marked perimeter wall can
+        // shorten the horizontal teleport.
+        if (TryFindBoundaryHit(start, dir, maxDistance,
+                TeleportArenaBoundary.SurfaceType.OuterWall, WorldCapsuleRadius(),
+                out RaycastHit wallHit))
+            intended = start + dir * Mathf.Max(0f, wallHit.distance - skin);
 
         if (snapToGround)
             intended = SnapToGround(intended);
@@ -142,7 +142,7 @@ public class TeleportAbility : MonoBehaviour, IAbility
             Collider c = hits[i];
             if (c == null) continue;
             if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
-            if (c.CompareTag(wallTag)) return false;
+            if (FindBoundary(c) != null) return false;
         }
         return true;
     }
@@ -150,14 +150,66 @@ public class TeleportAbility : MonoBehaviour, IAbility
     private Vector3 SnapToGround(Vector3 pos)
     {
         Vector3 origin = pos + Vector3.up * groundRayUp;
-        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit,
-            groundRayUp + groundRayDown, ~0, QueryTriggerInteraction.Ignore))
+        if (TryFindBoundaryHit(origin, Vector3.down, groundRayUp + groundRayDown,
+                TeleportArenaBoundary.SurfaceType.Floor, 0f, out RaycastHit hit))
         {
-            if (hit.collider != null && hit.collider.CompareTag(wallTag))
-                return pos;
-            pos.y = hit.point.y + 0.02f;
+            // rb.position is at the capsule transform, not at its feet.
+            pos.y = hit.point.y - CapsuleBottomOffset() + skin;
         }
         return pos;
+    }
+
+    private bool TryFindBoundaryHit(Vector3 origin, Vector3 direction, float distance,
+        TeleportArenaBoundary.SurfaceType requiredSurface, float castRadius,
+        out RaycastHit closestHit)
+    {
+        RaycastHit[] hits = castRadius > 0f
+            ? Physics.SphereCastAll(origin, castRadius, direction, distance, ~0,
+                QueryTriggerInteraction.Ignore)
+            : Physics.RaycastAll(origin, direction, distance, ~0,
+                QueryTriggerInteraction.Ignore);
+        float closestDistance = float.PositiveInfinity;
+        closestHit = default;
+        bool found = false;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            RaycastHit candidate = hits[i];
+            TeleportArenaBoundary boundary = FindBoundary(candidate.collider);
+            if (boundary == null || boundary.Surface != requiredSurface ||
+                candidate.distance >= closestDistance)
+            {
+                continue;
+            }
+
+            closestDistance = candidate.distance;
+            closestHit = candidate;
+            found = true;
+        }
+
+        return found;
+    }
+
+    private static TeleportArenaBoundary FindBoundary(Collider collider)
+    {
+        return collider != null
+            ? collider.GetComponentInParent<TeleportArenaBoundary>()
+            : null;
+    }
+
+    private float WorldCapsuleRadius()
+    {
+        Vector3 scale = capsule.transform.lossyScale;
+        return capsule.radius * Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.z));
+    }
+
+    private float CapsuleBottomOffset()
+    {
+        Vector3 scale = capsule.transform.lossyScale;
+        float radius = WorldCapsuleRadius();
+        float height = Mathf.Max(capsule.height * Mathf.Abs(scale.y), radius * 2f);
+        float centerY = capsule.center.y * scale.y;
+        return centerY - height * 0.5f;
     }
 
     private void SpawnVFX(ParticleSystem prefab, Vector3 pos, Vector3 dir)

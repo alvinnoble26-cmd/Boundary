@@ -26,6 +26,11 @@ const ABANDONED_DEPLOYMENT_MS = 10 * 60 * 1000;
 const MAX_DEPLOYMENT_LIFETIME_MS = 10 * 60 * 1000;
 const APPLE_BUNDLE_ID = "com.alvin.entropy";
 const SUN_DUCKER_PRODUCT_ID = "com.alvin.entropy.skin.sunducker";
+const TURTLE_PRODUCT_ID = "com.alvin.entropy.skin.turtle";
+const SKIN_PRODUCTS = Object.freeze({
+  [SUN_DUCKER_PRODUCT_ID]: "sun_ducker",
+  [TURTLE_PRODUCT_ID]: "turtle",
+});
 
 function sendJson(res, status, body) {
   res.status(status).set("Content-Type", "application/json").send(JSON.stringify(body));
@@ -309,40 +314,42 @@ exports.verifyAppleSkinPurchase = onRequest({
     const unityReceipt = JSON.parse(String(req.body && req.body.receipt || ""));
     if (unityReceipt.Store !== "AppleAppStore" || !unityReceipt.Payload)
       throw new Error("An Apple App Store receipt is required");
+    const productId = String(req.body && req.body.productId || SUN_DUCKER_PRODUCT_ID);
+    const skinId = SKIN_PRODUCTS[productId];
+    if (!skinId) throw new Error("Unsupported skin product ID");
 
     const verification = await verifyAppleReceipt(unityReceipt.Payload);
     if (verification.status !== 0) throw new Error(`Apple receipt status ${verification.status}`);
     const receipt = verification.receipt || {};
     if (receipt.bundle_id !== APPLE_BUNDLE_ID) throw new Error("Receipt bundle ID does not match");
     const purchases = Array.isArray(receipt.in_app) ? receipt.in_app : [];
-    const sunDuckerPurchases = purchases.filter((item) =>
-      item.product_id === SUN_DUCKER_PRODUCT_ID);
-    const purchase = sunDuckerPurchases.filter((item) =>
+    const skinPurchases = purchases.filter((item) => item.product_id === productId);
+    const purchase = skinPurchases.filter((item) =>
       !item.cancellation_date).sort((a, b) =>
       Number(b.purchase_date_ms || 0) - Number(a.purchase_date_ms || 0))[0];
 
-    // A validated Apple receipt with only cancelled/refunded Sun Ducker
+    // A validated Apple receipt with only cancelled/refunded transactions
     // transactions is authoritative. Remove the entitlement from this Firebase
     // profile so refunded content is not left playable indefinitely.
     if (!purchase || !purchase.transaction_id) {
-      if (sunDuckerPurchases.some((item) => item.cancellation_date)) {
+      if (skinPurchases.some((item) => item.cancellation_date)) {
         const profileRef = db.collection("players").doc(caller.uid);
         await db.runTransaction(async (transaction) => {
-          transaction.delete(profileRef.collection("skins").doc("sun_ducker"));
+          transaction.delete(profileRef.collection("skins").doc(skinId));
           transaction.set(profileRef, {
             selectedSkin: "beard",
             purchaseRevokedAt: FieldValue.serverTimestamp(),
           }, {merge: true});
         });
-        logger.info("Removed refunded Sun Ducker entitlement", {uid: caller.uid});
-        return sendJson(res, 200, {owned: false, skinId: "sun_ducker", revoked: true});
+        logger.info("Removed refunded skin entitlement", {uid: caller.uid, skinId});
+        return sendJson(res, 200, {owned: false, skinId, revoked: true});
       }
-      throw new Error("Sun Ducker purchase not found");
+      throw new Error("Skin purchase not found");
     }
 
     const transactionId = String(purchase.original_transaction_id || purchase.transaction_id);
     const entitlementRef = db.collection("purchaseEntitlements").doc(transactionId);
-    const skinRef = db.collection("players").doc(caller.uid).collection("skins").doc("sun_ducker");
+    const skinRef = db.collection("players").doc(caller.uid).collection("skins").doc(skinId);
     await db.runTransaction(async (transaction) => {
       const existing = await transaction.get(entitlementRef);
       transaction.set(entitlementRef, {
@@ -351,7 +358,7 @@ exports.verifyAppleSkinPurchase = onRequest({
         // reinstall, but Apple's original transaction remains authoritative.
         uid: caller.uid,
         uids: FieldValue.arrayUnion(caller.uid),
-        productId: SUN_DUCKER_PRODUCT_ID,
+        productId,
         store: "apple",
         environment: verification.environment || "unknown",
         verifiedAt: FieldValue.serverTimestamp(),
@@ -359,12 +366,12 @@ exports.verifyAppleSkinPurchase = onRequest({
       transaction.set(skinRef, {
         owned: true,
         acquisitionType: "apple_iap",
-        productId: SUN_DUCKER_PRODUCT_ID,
+        productId,
         transactionId,
         acquiredAt: FieldValue.serverTimestamp(),
       }, {merge: true});
     });
-    return sendJson(res, 200, {owned: true, skinId: "sun_ducker"});
+    return sendJson(res, 200, {owned: true, skinId});
   } catch (error) {
     logger.warn("Apple skin purchase rejected", {uid: caller.uid, error: error.message});
     return sendJson(res, 400, {error: error.message});

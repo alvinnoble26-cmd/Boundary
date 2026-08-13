@@ -3,10 +3,11 @@ using UnityEngine;
 public class SlideAbility : MonoBehaviour, IAbility
 {
     public AbilityId Id => AbilityId.Slide;
+    public float CooldownDuration => cooldownSeconds;
     public bool IsActive => active;
 
     [Header("Cooldown")]
-    [SerializeField] private float cooldownSeconds = 1f;
+    [SerializeField] private float cooldownSeconds = 2.5f;
     private float nextReadyTime;
 
     [Header("Refs")]

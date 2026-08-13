@@ -8,16 +8,20 @@ using Unity.Services.Core;
 public sealed class SkinPurchaseManager : MonoBehaviour
 {
     public const string SunDuckerProductId = "com.alvin.entropy.skin.sunducker";
+    public const string TurtleProductId = "com.alvin.entropy.skin.turtle";
     public static SkinPurchaseManager I { get; private set; }
     public event Action Changed;
-    public string DisplayPrice { get; private set; } = "$4.99";
+    public string SunDuckerDisplayPrice { get; private set; } = "$4.99";
+    public string TurtleDisplayPrice { get; private set; } = "$0.29";
+    public string DisplayPrice => SunDuckerDisplayPrice;
     public bool StoreReady => controller != null &&
-                              controller.GetProductById(SunDuckerProductId) != null;
+                              controller.GetProductById(SunDuckerProductId) != null &&
+                              controller.GetProductById(TurtleProductId) != null;
     public bool PurchaseBusy { get; private set; }
     public string StatusMessage { get; private set; } = "";
 
     private StoreController controller;
-    private bool purchaseRequested;
+    private string requestedProductId;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void Create()
@@ -54,11 +58,12 @@ public sealed class SkinPurchaseManager : MonoBehaviour
             await controller.Connect();
             var catalog = new CatalogProvider();
             catalog.AddProduct(SunDuckerProductId, ProductType.NonConsumable);
+            catalog.AddProduct(TurtleProductId, ProductType.NonConsumable);
             catalog.FetchProducts(products => controller.FetchProducts(products));
         }
         catch (Exception e)
         {
-            purchaseRequested = false;
+            requestedProductId = null;
             StatusMessage = "APP STORE INITIALIZATION FAILED — TRY AGAIN";
             Debug.LogWarning("[SkinShop] Store initialization failed: " + e.Message);
             Changed?.Invoke();
@@ -80,13 +85,23 @@ public sealed class SkinPurchaseManager : MonoBehaviour
 
     public void PurchaseSunDucker()
     {
+        PurchaseSkin(SunDuckerProductId);
+    }
+
+    public void PurchaseTurtle()
+    {
+        PurchaseSkin(TurtleProductId);
+    }
+
+    private void PurchaseSkin(string productId)
+    {
         if (PurchaseBusy) return;
 #if UNITY_IOS && !UNITY_EDITOR
-        purchaseRequested = true;
+        requestedProductId = productId;
         StatusMessage = "CONNECTING TO APP STORE...";
         Changed?.Invoke();
 
-        Product product = controller?.GetProductById(SunDuckerProductId);
+        Product product = controller?.GetProductById(productId);
         if (product == null || !product.availableToPurchase)
         {
             // StoreKit can still be fetching its catalog when the shop first opens.
@@ -95,6 +110,7 @@ public sealed class SkinPurchaseManager : MonoBehaviour
             {
                 var catalog = new CatalogProvider();
                 catalog.AddProduct(SunDuckerProductId, ProductType.NonConsumable);
+                catalog.AddProduct(TurtleProductId, ProductType.NonConsumable);
                 catalog.FetchProducts(products => controller.FetchProducts(products));
             }
             else
@@ -114,7 +130,7 @@ public sealed class SkinPurchaseManager : MonoBehaviour
     private void BeginPurchase(Product product)
     {
         if (PurchaseBusy || product == null || !product.availableToPurchase) return;
-        purchaseRequested = false;
+        requestedProductId = null;
         PurchaseBusy = true;
         StatusMessage = "PURCHASING...";
         SfxManager.PlaySkinPurchase();
@@ -147,20 +163,31 @@ public sealed class SkinPurchaseManager : MonoBehaviour
 
     private void OnProductsFetched(List<Product> products)
     {
-        Product product = products.FirstOrDefault(p => p.definition.id == SunDuckerProductId);
-        if (Application.platform == RuntimePlatform.IPhonePlayer && product?.metadata != null &&
-            !string.IsNullOrWhiteSpace(product.metadata.localizedPriceString))
-            DisplayPrice = product.metadata.localizedPriceString;
+        Product sunProduct = products.FirstOrDefault(p => p.definition.id == SunDuckerProductId);
+        Product turtleProduct = products.FirstOrDefault(p => p.definition.id == TurtleProductId);
+        if (Application.platform == RuntimePlatform.IPhonePlayer)
+        {
+            if (sunProduct?.metadata != null &&
+                !string.IsNullOrWhiteSpace(sunProduct.metadata.localizedPriceString))
+                SunDuckerDisplayPrice = sunProduct.metadata.localizedPriceString;
+            if (turtleProduct?.metadata != null &&
+                !string.IsNullOrWhiteSpace(turtleProduct.metadata.localizedPriceString))
+                TurtleDisplayPrice = turtleProduct.metadata.localizedPriceString;
+        }
         controller.FetchPurchases();
         StatusMessage = "";
         Changed?.Invoke();
-        if (purchaseRequested && product != null && product.availableToPurchase)
-            BeginPurchase(product);
+        if (!string.IsNullOrEmpty(requestedProductId))
+        {
+            Product requested = controller.GetProductById(requestedProductId);
+            if (requested != null && requested.availableToPurchase)
+                BeginPurchase(requested);
+        }
     }
 
     private void OnProductsFetchFailed(ProductFetchFailed failure)
     {
-        purchaseRequested = false;
+        requestedProductId = null;
         StatusMessage = "UNAVAILABLE — CHECK APP STORE SETUP";
         Debug.LogWarning("[SkinShop] Product fetch failed: " + failure);
         Changed?.Invoke();
@@ -168,7 +195,7 @@ public sealed class SkinPurchaseManager : MonoBehaviour
 
     private void OnStoreDisconnected(StoreConnectionFailureDescription failure)
     {
-        purchaseRequested = false;
+        requestedProductId = null;
         StatusMessage = "APP STORE CONNECTION FAILED — TRY AGAIN";
         Debug.LogWarning("[SkinShop] Store disconnected: " + failure);
         Changed?.Invoke();
@@ -182,27 +209,29 @@ public sealed class SkinPurchaseManager : MonoBehaviour
         StatusMessage = "";
         foreach (ConfirmedOrder order in orders.ConfirmedOrders)
         {
-            if (ContainsSunDucker(order)) VerifyRestoredOrderAsync(order);
+            if (GetSupportedProductId(order) != null) VerifyRestoredOrderAsync(order);
         }
     }
 
     private void OnPurchasePending(PendingOrder order)
     {
-        if (ContainsSunDucker(order)) VerifyAndFinishAsync(order);
+        if (GetSupportedProductId(order) != null) VerifyAndFinishAsync(order);
         else controller.ConfirmPurchase(order);
     }
 
     private async void VerifyAndFinishAsync(PendingOrder order)
     {
+        string productId = GetSupportedProductId(order);
         try
         {
-            bool granted = FirebaseManager.I != null &&
-                           await FirebaseManager.I.VerifyAppleSkinPurchaseAsync(order.Info.Receipt);
+            bool granted = productId != null && FirebaseManager.I != null &&
+                           await FirebaseManager.I.VerifyAppleSkinPurchaseAsync(
+                               order.Info.Receipt, productId);
             if (granted)
             {
                 controller.ConfirmPurchase(order);
                 StatusMessage = "OWNED";
-                Debug.Log("[SkinShop] Sun Ducker purchase verified and saved.");
+                Debug.Log("[SkinShop] Purchase verified and saved: " + productId);
             }
             else
             {
@@ -227,9 +256,11 @@ public sealed class SkinPurchaseManager : MonoBehaviour
     private async void VerifyRestoredOrderAsync(ConfirmedOrder order)
     {
         if (FirebaseManager.I == null) return;
+        string productId = GetSupportedProductId(order);
+        if (productId == null) return;
         try
         {
-            await FirebaseManager.I.VerifyAppleSkinPurchaseAsync(order.Info.Receipt);
+            await FirebaseManager.I.VerifyAppleSkinPurchaseAsync(order.Info.Receipt, productId);
         }
         catch (Exception e)
         {
@@ -244,7 +275,7 @@ public sealed class SkinPurchaseManager : MonoBehaviour
     private void OnPurchaseFailed(FailedOrder order)
     {
         PurchaseBusy = false;
-        purchaseRequested = false;
+        requestedProductId = null;
         StatusMessage = "PURCHASE CANCELLED OR FAILED — TRY AGAIN";
         Debug.LogWarning("[SkinShop] Purchase failed: " + order.FailureReason + " " + order.Details);
         Changed?.Invoke();
@@ -253,16 +284,21 @@ public sealed class SkinPurchaseManager : MonoBehaviour
     private void OnPurchaseDeferred(DeferredOrder order)
     {
         PurchaseBusy = false;
-        purchaseRequested = false;
+        requestedProductId = null;
         StatusMessage = "WAITING FOR PURCHASE APPROVAL";
         Debug.Log("[SkinShop] Purchase is waiting for approval.");
         Changed?.Invoke();
     }
 
-    private static bool ContainsSunDucker(Order order)
+    private static string GetSupportedProductId(Order order)
     {
-        return order?.CartOrdered?.Items() != null &&
-               order.CartOrdered.Items().Any(item =>
-                   item?.Product?.definition?.id == SunDuckerProductId);
+        if (order?.CartOrdered?.Items() == null) return null;
+        foreach (var item in order.CartOrdered.Items())
+        {
+            string productId = item?.Product?.definition?.id;
+            if (productId == SunDuckerProductId || productId == TurtleProductId)
+                return productId;
+        }
+        return null;
     }
 }

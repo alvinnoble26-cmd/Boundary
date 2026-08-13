@@ -40,6 +40,6 @@ public class MainMenu : MonoBehaviour
             return;
         }
 
-        GameManager.I.PlayOffline();
+        GameManager.I.PlayPractice();
     }
 }

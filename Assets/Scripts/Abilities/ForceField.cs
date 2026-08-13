@@ -1,3 +1,4 @@
+using PurrNet;
 using UnityEngine;
 
 public class  ForceField : MonoBehaviour
@@ -15,6 +16,8 @@ public class  ForceField : MonoBehaviour
     [SerializeField] private float radius = 6f;
     [SerializeField] private float strength = 25f;            
     [SerializeField] private float maxAccel = 120f;          
+    [Tooltip("Extra force applied only to player rigidbodies. Physics props remain unchanged.")]
+    [SerializeField] private float playerForceMultiplier = 1.5f;
     [SerializeField] private AnimationCurve falloff = AnimationCurve.EaseInOut(0, 1, 1, 0);
     [SerializeField] private bool affectOwner = true;
     [SerializeField] private Rigidbody ownerRb;
@@ -78,6 +81,16 @@ public class  ForceField : MonoBehaviour
 
         Vector3 center = transform.position;
 
+        // The projectile and its VFX exist on every peer, but physics must
+        // have one source of truth. Clients receive rigidbody movement through
+        // each affected object's server-authoritative NetworkTransform.
+        NetworkManager net = NetworkManager.main;
+        if (net == null || !net.isServer)
+        {
+            Destroy(gameObject, destroyAfterPulse);
+            return;
+        }
+
         int count = Physics.OverlapSphereNonAlloc(center, radius, hits, affectMask, triggerInteraction);
 
         for (int i = 0; i < count; i++)
@@ -104,6 +117,9 @@ public class  ForceField : MonoBehaviour
             float t = Mathf.Clamp01(dist / radius); 
             float f = Mathf.Clamp01(falloff.Evaluate(t));
             float accel = Mathf.Min(strength * f, maxAccel);
+
+            if (rb.GetComponentInParent<PlayerMovement>() != null)
+                accel *= playerForceMultiplier;
 
             rb.AddForce(dir * accel, ForceMode.Acceleration);
         }

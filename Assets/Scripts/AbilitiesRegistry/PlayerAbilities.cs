@@ -19,6 +19,9 @@ public class PlayerAbilities : NetworkBehaviour
     private Button abilityButton3;
 
     private AbilityId?[] slots = new AbilityId?[3];
+    private readonly float[] slotCooldownEnds = new float[3];
+    private readonly AbilityCooldownButton[] cooldownVisuals = new AbilityCooldownButton[3];
+    private bool hasStartedSkinLoad;
 
 
     protected override void OnSpawned()
@@ -71,23 +74,37 @@ private void SetupLocalPlayer()
 
 private async void LoadAndSyncSelectedSkin()
 {
+    if (hasStartedSkinLoad)
+        return;
+
+    hasStartedSkinLoad = true;
+    string selectedSkin = FirebaseManager.I != null
+        ? FirebaseManager.I.SelectedSkin
+        : "beard";
+
     try
     {
-        if (FirebaseManager.I == null) return;
-        await FirebaseManager.I.RefreshSkinDataAsync();
-        RequestSelectedSkin(FirebaseManager.I.SelectedSkin);
+        if (FirebaseManager.I != null)
+        {
+            await FirebaseManager.I.RefreshSkinDataAsync();
+            selectedSkin = FirebaseManager.I.SelectedSkin;
+        }
     }
     catch (System.Exception e)
     {
-        Debug.LogError("[PlayerAbilities] Could not load equipped skin: " + e.Message);
-        RequestSelectedSkin("beard");
+        // FirebaseManager starts with the locally confirmed selection. Keep it
+        // if a profile refresh fails instead of broadcasting the beard skin.
+        Debug.LogWarning("[PlayerAbilities] Could not refresh equipped skin; using local selection '" +
+                         selectedSkin + "': " + e.Message);
     }
+
+    RequestSelectedSkin(selectedSkin);
 }
 
 [ServerRpc]
 private void RequestSelectedSkin(string skinId)
 {
-    SyncSelectedSkin(skinId == "sun_ducker" ? "sun_ducker" : "beard");
+    SyncSelectedSkin(NormalizeSkinId(skinId));
 }
 
 [ObserversRpc(bufferLast: true, runLocally: true)]
@@ -102,35 +119,62 @@ private void ApplySkinVisual(string skinId)
     Transform tilt = visual != null ? visual.Find("Tilt") : null;
     Transform beardBody = tilt != null ? tilt.Find("Capsule") : null;
     Transform beardEye = transform.Find("eye");
-    Transform oldSun = tilt != null ? tilt.Find("EquippedSunDucker") : null;
-    if (oldSun != null) Destroy(oldSun.gameObject);
+    RemovePreviouslyEquippedSkins(tilt);
 
     bool useSun = skinId == "sun_ducker";
-    if (beardBody != null) beardBody.gameObject.SetActive(!useSun);
-    if (beardEye != null) beardEye.gameObject.SetActive(!useSun);
-    if (!useSun || tilt == null) return;
+    bool useTurtle = skinId == "turtle";
+    bool useCustomSkin = useSun || useTurtle;
+    if (beardBody != null) beardBody.gameObject.SetActive(!useCustomSkin);
+    if (beardEye != null) beardEye.gameObject.SetActive(!useCustomSkin);
+    if (!useCustomSkin || tilt == null) return;
 
     GameObject templates = GameObject.Find("skins");
-    Transform source = templates != null ? templates.transform.Find("Sun Ducker") : null;
+    string templateName = useTurtle ? "Turtle" : "Sun Ducker";
+    Transform source = templates != null ? templates.transform.Find(templateName) : null;
     if (source == null)
     {
-        Debug.LogError("[PlayerAbilities] Game scene skin template 'skins/Sun Ducker' was not found.");
+        Debug.LogError($"[PlayerAbilities] Game scene skin template 'skins/{templateName}' was not found.");
         if (beardBody != null) beardBody.gameObject.SetActive(true);
         if (beardEye != null) beardEye.gameObject.SetActive(true);
         return;
     }
 
     GameObject clone = Instantiate(source.gameObject, tilt);
-    clone.name = "EquippedSunDucker";
+    clone.name = "EquippedSkin";
     clone.SetActive(true);
     clone.transform.localPosition = Vector3.zero;
     clone.transform.localRotation = Quaternion.identity;
     clone.transform.localScale = Vector3.one;
-    SunDuckerDemonVisual.Build(clone.transform, clone.layer);
+    if (useSun)
+        SunDuckerDemonVisual.Build(clone.transform, clone.layer);
     foreach (Collider collider in clone.GetComponentsInChildren<Collider>(true))
         Destroy(collider);
     foreach (Rigidbody body in clone.GetComponentsInChildren<Rigidbody>(true))
         Destroy(body);
+}
+
+private static string NormalizeSkinId(string skinId)
+{
+    return skinId == "sun_ducker" || skinId == "turtle" ? skinId : "beard";
+}
+
+private static void RemovePreviouslyEquippedSkins(Transform tilt)
+{
+    if (tilt == null) return;
+
+    // More than one buffered/network update can arrive in one frame. Unity's
+    // Destroy is deferred, so hide every old clone immediately and then remove
+    // it. Iterating backwards also handles legacy clone names safely.
+    for (int i = tilt.childCount - 1; i >= 0; i--)
+    {
+        Transform child = tilt.GetChild(i);
+        if (child.name != "EquippedSkin" && child.name != "EquippedSunDucker" &&
+            !child.name.StartsWith("EquippedTurtle"))
+            continue;
+
+        child.gameObject.SetActive(false);
+        Destroy(child.gameObject);
+    }
 }
 
   private void FindUIButtons()
@@ -243,6 +287,13 @@ private void ActivateAbility(AbilityId id)
         if (btn == null) return;
         btn.onClick.RemoveAllListeners();
 
+        AbilityCooldownButton cooldownVisual = btn.GetComponent<AbilityCooldownButton>();
+        if (cooldownVisual == null)
+            cooldownVisual = btn.gameObject.AddComponent<AbilityCooldownButton>();
+
+        cooldownVisual.Initialize(btn);
+        cooldownVisuals[slotIndex] = cooldownVisual;
+
         var id = slots[slotIndex];
         if (id == null)
         {
@@ -263,17 +314,37 @@ void UseSlot(int slotIndex)
         return;
     }
 
+    if (Time.time < slotCooldownEnds[slotIndex])
+        return;
+
     Debug.Log($"[PlayerAbilities] UseSlot {slotIndex} id={id}");
+
+    float cooldownDuration = GetCooldownDuration(id.Value);
+    slotCooldownEnds[slotIndex] = Time.time + cooldownDuration;
+    cooldownVisuals[slotIndex]?.BeginCooldown(cooldownDuration);
 
     PlayerMovement movement = GetComponent<PlayerMovement>();
     Transform aim = movement != null && movement.orientation != null
         ? movement.orientation
         : transform;
+    Camera ownerCamera = GetComponentInChildren<Camera>(true);
     ThrowPoint point = transform.root.GetComponentInChildren<ThrowPoint>(true);
     Vector3 spawnPosition = point != null ? point.transform.position : transform.position + aim.forward;
-    Vector3 aimDirection = aim.forward.sqrMagnitude > 0.0001f ? aim.forward.normalized : transform.forward;
+    Vector3 cameraDirection = ownerCamera != null ? ownerCamera.transform.forward : aim.forward;
+    Vector3 aimDirection = cameraDirection.sqrMagnitude > 0.0001f
+        ? cameraDirection.normalized
+        : transform.forward;
 
     RequestActivateAbility(id.Value, spawnPosition, aimDirection);
+}
+
+private float GetCooldownDuration(AbilityId id)
+{
+    if (registry != null && registry.TryGet(id, out var ability))
+        return Mathf.Max(0f, ability.CooldownDuration);
+
+    Debug.LogWarning($"[PlayerAbilities] No cooldown source found for {id}.");
+    return 0f;
 }
     // =========================================================
 // Networked Throw

@@ -14,7 +14,7 @@ public class PlayerMovement : NetworkBehaviour
     public float maxSpeed = 7f;
     public float deceleration = 20f;
     public float jumpForce = 7f;
-    public float fallGravityMultiplier = 2.5f;
+    public float fallGravityMultiplier = 12f;
 
     [Header("Mobile Input")]
     public float deadzone = 0.15f;

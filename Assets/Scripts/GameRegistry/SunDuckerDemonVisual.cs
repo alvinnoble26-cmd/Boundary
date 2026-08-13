@@ -31,10 +31,10 @@ public static class SunDuckerDemonVisual
         Material teal = Material("Teal Neck Cord", new Color(.02f, .58f, .62f), .5f, .18f);
         Material rope = Material("Blue Rope Belt", new Color(.16f, .3f, .67f), .44f, .08f);
         Material clothingGold = Material("Gold Robe Motifs", new Color(.94f, .56f, .04f), .52f, .2f);
-        Material blade = Material("Storm Katana Blade", new Color(.56f, .62f, .68f), .86f, .8f);
-        Material bladeEdge = Material("Storm Katana Edge", new Color(.72f, .78f, .84f), .92f, .9f);
-        Material grip = Material("Katana Black Wrap", new Color(.015f, .017f, .022f), .42f, .12f);
-        Material gold = Material("Katana Yellow Wrap", new Color(.95f, .68f, .06f), .62f, .45f);
+        Material blade = Material("Fire Blade", new Color(1f, .105f, .012f), .72f, .22f, true);
+        Material bladeEdge = Material("White Hot Blade Edge", new Color(1f, .72f, .055f), .82f, .18f, true);
+        Material grip = Material("Black Sword Grip", new Color(.008f, .009f, .014f), .38f, .08f);
+        Material gripWhite = Material("White Sword Wrap", new Color(.94f, .94f, .91f), .58f, .12f);
 
         Renderer bodyRenderer = root.GetComponent<Renderer>();
         if (bodyRenderer == null && root.Find("Body") != null)
@@ -45,7 +45,7 @@ public static class SunDuckerDemonVisual
         BuildEyes(details, eye, pupil, eyeMarking, layer);
         BuildTattoos(details, tattoo, layer);
         BuildClothes(details, robe, whiteCloth, teal, rope, clothingGold, layer);
-        BuildSword(details, blade, bladeEdge, grip, gold, layer);
+        BuildSword(details, blade, bladeEdge, grip, gripWhite, layer);
     }
 
     private static void BuildHair(Transform parent, Material material, int layer)
@@ -228,29 +228,29 @@ public static class SunDuckerDemonVisual
     }
 
     private static void BuildSword(Transform parent, Material blade, Material edge,
-        Material grip, Material gold, int layer)
+        Material grip, Material gripWhite, int layer)
     {
-        Transform sword = Child("Storm Pattern Katana", parent,
+        Transform sword = Child("Firebrand Sword", parent,
             new Vector3(.05f, .08f, -.59f), new Vector3(6f, 0f, -34f), layer);
 
-        Primitive("Slim Katana Blade", PrimitiveType.Cube, sword, new Vector3(0f, .42f, 0f),
+        Primitive("Fiery Red Blade", PrimitiveType.Cube, sword, new Vector3(0f, .42f, 0f),
             new Vector3(.105f, 1.42f, .045f), Vector3.zero, blade, layer);
-        Primitive("Bright Katana Edge", PrimitiveType.Cube, sword, new Vector3(-.06f, .42f, -.028f),
+        Primitive("White Hot Fire Edge", PrimitiveType.Cube, sword, new Vector3(-.06f, .42f, -.028f),
             new Vector3(.018f, 1.43f, .012f), Vector3.zero, edge, layer);
-        Cone("Katana Point", sword, new Vector3(0f, 1.2f, 0f),
+        Cone("Flame Point", sword, new Vector3(0f, 1.2f, 0f),
             new Vector3(.115f, .28f, .055f), Vector3.zero, blade, layer, 4);
 
-        Primitive("Round Katana Guard", PrimitiveType.Cylinder, sword, new Vector3(0f, -.33f, 0f),
-            new Vector3(.27f, .035f, .27f), new Vector3(90f, 0f, 0f), gold, layer);
+        Primitive("White Sword Guard", PrimitiveType.Cylinder, sword, new Vector3(0f, -.33f, 0f),
+            new Vector3(.27f, .035f, .27f), new Vector3(90f, 0f, 0f), gripWhite, layer);
 
         Primitive("Long Black Handle", PrimitiveType.Cylinder, sword, new Vector3(0f, -.64f, 0f),
             new Vector3(.085f, .3f, .085f), Vector3.zero, grip, layer);
         for (int i = 0; i < 5; i++)
-            Primitive("Yellow Diamond Wrap " + i, PrimitiveType.Cube, sword,
+            Primitive("White Diamond Wrap " + i, PrimitiveType.Cube, sword,
                 new Vector3(0f, -.43f - i * .105f, -.09f), new Vector3(.105f, .065f, .018f),
-                new Vector3(0f, 0f, 45f), gold, layer);
-        Primitive("Katana Pommel", PrimitiveType.Cylinder, sword, new Vector3(0f, -.96f, 0f),
-            new Vector3(.11f, .055f, .11f), Vector3.zero, gold, layer);
+                new Vector3(0f, 0f, 45f), gripWhite, layer);
+        Primitive("White Sword Pommel", PrimitiveType.Cylinder, sword, new Vector3(0f, -.96f, 0f),
+            new Vector3(.11f, .055f, .11f), Vector3.zero, gripWhite, layer);
     }
 
     private static GameObject Star(string name, Transform parent, Vector3 localPosition,
@@ -323,32 +323,15 @@ public static class SunDuckerDemonVisual
 
     private static void BuildEyeSymbol(Transform eye, bool left, Material material, int layer)
     {
-        Transform symbol = Child(left ? "Left Rank Symbol" : "Right Rank Symbol",
+        Transform symbol = Child(left ? "Left Hashtag Eye" : "Right Hashtag Eye",
             eye, new Vector3(0f, 0f, .54f), Vector3.zero, layer);
-        if (left)
-        {
-            SymbolStroke(symbol, new Vector2(-.31f, .34f), new Vector2(-.31f, -.34f), material, layer);
-            SymbolStroke(symbol, new Vector2(-.31f, .3f), new Vector2(-.05f, .3f), material, layer);
-            SymbolStroke(symbol, new Vector2(-.05f, .3f), new Vector2(-.05f, -.05f), material, layer);
-            SymbolStroke(symbol, new Vector2(-.31f, .08f), new Vector2(-.08f, .08f), material, layer);
-            SymbolStroke(symbol, new Vector2(-.28f, -.08f), new Vector2(-.08f, -.28f), material, layer);
-            SymbolStroke(symbol, new Vector2(.05f, .25f), new Vector2(.32f, .25f), material, layer);
-            SymbolStroke(symbol, new Vector2(.18f, .34f), new Vector2(.18f, -.32f), material, layer);
-            SymbolStroke(symbol, new Vector2(.03f, .02f), new Vector2(.34f, .02f), material, layer);
-            SymbolStroke(symbol, new Vector2(.05f, -.28f), new Vector2(.33f, -.28f), material, layer);
-        }
-        else
-        {
-            SymbolStroke(symbol, new Vector2(-.29f, .34f), new Vector2(-.29f, -.34f), material, layer);
-            SymbolStroke(symbol, new Vector2(-.29f, .29f), new Vector2(-.04f, .29f), material, layer);
-            SymbolStroke(symbol, new Vector2(-.29f, .04f), new Vector2(-.07f, .04f), material, layer);
-            SymbolStroke(symbol, new Vector2(-.29f, -.25f), new Vector2(-.04f, -.25f), material, layer);
-            SymbolStroke(symbol, new Vector2(.06f, .31f), new Vector2(.06f, -.31f), material, layer);
-            SymbolStroke(symbol, new Vector2(.06f, .26f), new Vector2(.33f, .26f), material, layer);
-            SymbolStroke(symbol, new Vector2(.06f, .02f), new Vector2(.31f, .02f), material, layer);
-            SymbolStroke(symbol, new Vector2(.06f, -.28f), new Vector2(.34f, -.28f), material, layer);
-            SymbolStroke(symbol, new Vector2(.23f, .25f), new Vector2(.23f, -.27f), material, layer);
-        }
+
+        // Four simple strokes form an original, readable hashtag in each eye.
+        // The uprights lean slightly so the mark remains distinct at small sizes.
+        SymbolStroke(symbol, new Vector2(-.19f, -.34f), new Vector2(-.09f, .34f), material, layer);
+        SymbolStroke(symbol, new Vector2(.08f, -.34f), new Vector2(.18f, .34f), material, layer);
+        SymbolStroke(symbol, new Vector2(-.32f, .12f), new Vector2(.31f, .12f), material, layer);
+        SymbolStroke(symbol, new Vector2(-.31f, -.13f), new Vector2(.32f, -.13f), material, layer);
     }
 
     private static void SymbolStroke(Transform parent, Vector2 start, Vector2 end,

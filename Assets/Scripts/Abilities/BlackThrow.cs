@@ -4,6 +4,7 @@ using PurrNet;
 public class BlackThrow : MonoBehaviour, IAbility
 {
     public AbilityId Id => AbilityId.BlackThrow;
+    public float CooldownDuration => throwCooldown;
 
     [Header("References")]
     [SerializeField] private Transform aimTransform;      
@@ -12,7 +13,7 @@ public class BlackThrow : MonoBehaviour, IAbility
 
     [Header("Settings")]
     [SerializeField] private int totalThrows = 5;
-    [SerializeField] private float throwCooldown = 0.5f;
+    [SerializeField] private float throwCooldown = 3.5f;
 
     [Header("Throwing Force")]
     [SerializeField] private float throwForce = 20f;
@@ -56,10 +57,18 @@ public class BlackThrow : MonoBehaviour, IAbility
             direction = transform.forward;
         direction.Normalize();
 
-       GameObject projectile = Instantiate(objectToThrow, spawnPosition, Quaternion.LookRotation(direction, Vector3.up));
-       NetworkIdentity.Spawn(projectile, objectToThrow);
-
         var ownerPm = GetComponentInParent<PlayerMovement>();
+        Transform owner = ownerPm != null ? ownerPm.transform : transform.root;
+        GameObject projectile = ProjectileLaunchUtility.InstantiateSafely(
+            objectToThrow, owner, spawnPosition, direction);
+        if (projectile == null)
+        {
+            readyToThrow = true;
+            return;
+        }
+
+        NetworkIdentity.Spawn(projectile, objectToThrow);
+
         var kill = projectile.GetComponentInChildren<BlackHoleKill>();
         if (kill != null && ownerPm != null)
             kill.Init(ownerPm, 0.75f);

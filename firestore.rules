@@ -99,7 +99,9 @@ service cloud.firestore {
         && (request.resource.data.selectedSkin == resource.data.selectedSkin
           || request.resource.data.selectedSkin == 'beard'
           || (request.resource.data.selectedSkin == 'sun_ducker'
-            && exists(/databases/$(database)/documents/players/$(uid)/skins/sun_ducker)));
+            && exists(/databases/$(database)/documents/players/$(uid)/skins/sun_ducker))
+          || (request.resource.data.selectedSkin == 'turtle'
+            && exists(/databases/$(database)/documents/players/$(uid)/skins/turtle)));
 
       allow delete: if false;
 

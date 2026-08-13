@@ -24,13 +24,19 @@ public class FirebaseManager : MonoBehaviour
         "https://us-central1-entropy-7c113.cloudfunctions.net/verifyAppleSkinPurchase";
     private const string DeleteAccountUrl =
         "https://us-central1-entropy-7c113.cloudfunctions.net/deletePlayerAccount";
+    private const string SelectedSkinPreferenceKey = "entropy.selectedSkin";
+    private const string PendingSkinSyncPreferenceKey = "entropy.selectedSkin.pendingSync";
 
     public string SelectedSkin { get; private set; } = "beard";
     public bool OwnsSunDucker { get; private set; }
+    public bool OwnsTurtle { get; private set; }
     public event Action SkinDataChanged;
 #if UNITY_EDITOR
     private bool editorSunDuckerPreview;
+    private bool editorTurtlePreview;
+    private bool editorSkinSelectionActive;
 #endif
+    private bool hasPendingSkinSync;
 
     [Serializable]
     private class MatchResultRequest
@@ -49,6 +55,12 @@ public class FirebaseManager : MonoBehaviour
 
         I = this;
         DontDestroyOnLoad(gameObject);
+
+        // The last successfully chosen skin is available immediately when the
+        // game scene opens, even while Firebase is still loading.
+        SelectedSkin = NormalizeSkinId(PlayerPrefs.GetString(
+            SelectedSkinPreferenceKey, "beard"));
+        hasPendingSkinSync = PlayerPrefs.GetInt(PendingSkinSyncPreferenceKey, 0) == 1;
     }
 
     private async void Start()
@@ -192,33 +204,78 @@ public class FirebaseManager : MonoBehaviour
 
         DocumentReference profile = Db.Collection("players").Document(user.UserId);
         DocumentSnapshot profileSnapshot = await profile.GetSnapshotAsync();
-        string selected = profileSnapshot.Exists && profileSnapshot.ContainsField("selectedSkin")
+        string remoteSelected = profileSnapshot.Exists && profileSnapshot.ContainsField("selectedSkin")
             ? profileSnapshot.GetValue<string>("selectedSkin") : "beard";
-        SelectedSkin = selected == "sun_ducker" ? "sun_ducker" : "beard";
+        remoteSelected = NormalizeSkinId(remoteSelected);
 
         DocumentSnapshot paid = await profile.Collection("skins").Document("sun_ducker")
             .GetSnapshotAsync();
         OwnsSunDucker = paid.Exists && paid.ContainsField("owned") &&
                          paid.GetValue<bool>("owned");
+        DocumentSnapshot turtle = await profile.Collection("skins").Document("turtle")
+            .GetSnapshotAsync();
+        OwnsTurtle = turtle.Exists && turtle.ContainsField("owned") &&
+                     turtle.GetValue<bool>("owned");
 #if UNITY_EDITOR
         if (editorSunDuckerPreview)
         {
             OwnsSunDucker = true;
-            SelectedSkin = "sun_ducker";
+        }
+        if (editorTurtlePreview)
+        {
+            OwnsTurtle = true;
         }
 #endif
-        if (!OwnsSunDucker && SelectedSkin == "sun_ducker")
-            SelectedSkin = "beard";
-        SkinDataChanged?.Invoke();
+        string selected = hasPendingSkinSync ? SelectedSkin : remoteSelected;
+#if UNITY_EDITOR
+        if (editorSkinSelectionActive)
+            selected = SelectedSkin;
+#endif
+        if (!IsOwnedSkin(selected))
+        {
+            selected = "beard";
+            hasPendingSkinSync = false;
+        }
+
+        // If a previous equip worked locally while the network save failed,
+        // retry it before accepting an older remote selection.
+        if (hasPendingSkinSync)
+        {
+            try
+            {
+                await profile.UpdateAsync(new Dictionary<string, object>
+                    { { "selectedSkin", selected } });
+                hasPendingSkinSync = false;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[FirebaseManager] Equipped skin is active locally but still " +
+                                 "waiting to sync: " + e.Message);
+            }
+        }
+
+        SaveSelectedSkinLocally(selected, hasPendingSkinSync, true);
     }
 
 #if UNITY_EDITOR
     public void PreviewSunDuckerInEditor()
     {
         editorSunDuckerPreview = true;
+        editorSkinSelectionActive = true;
         OwnsSunDucker = true;
         SelectedSkin = "sun_ducker";
         Debug.Log("[SkinShop] Sun Ducker preview enabled for this Editor run. " +
+                  "No purchase or Firestore entitlement was created.");
+        SkinDataChanged?.Invoke();
+    }
+
+    public void PreviewTurtleInEditor()
+    {
+        editorTurtlePreview = true;
+        editorSkinSelectionActive = true;
+        OwnsTurtle = true;
+        SelectedSkin = "turtle";
+        Debug.Log("[SkinShop] Turtle preview enabled for this Editor run. " +
                   "No purchase or Firestore entitlement was created.");
         SkinDataChanged?.Invoke();
     }
@@ -226,36 +283,64 @@ public class FirebaseManager : MonoBehaviour
 
     public async Task<bool> EquipSkinAsync(string skinId)
     {
-        skinId = skinId == "sun_ducker" ? "sun_ducker" : "beard";
+        skinId = NormalizeSkinId(skinId);
 #if UNITY_EDITOR
         if (skinId == "sun_ducker" && editorSunDuckerPreview)
         {
+            editorSkinSelectionActive = true;
             SelectedSkin = "sun_ducker";
             SkinDataChanged?.Invoke();
             return true;
         }
+        if (skinId == "turtle" && editorTurtlePreview)
+        {
+            editorSkinSelectionActive = true;
+            SelectedSkin = "turtle";
+            SkinDataChanged?.Invoke();
+            return true;
+        }
 #endif
-        if (skinId == "sun_ducker" && !OwnsSunDucker) return false;
-        FirebaseUser user = await EnsureSignedInAsync();
-        if (user == null || Db == null) return false;
-        await Db.Collection("players").Document(user.UserId).UpdateAsync(
-            new Dictionary<string, object> { { "selectedSkin", skinId } });
-        SelectedSkin = skinId;
-        SkinDataChanged?.Invoke();
+        if (!IsOwnedSkin(skinId)) return false;
+
+        // Equip immediately. A temporary Firestore problem must not silently
+        // cancel the player's choice and put the beard skin back on.
+        SaveSelectedSkinLocally(skinId, true, true);
+
+        try
+        {
+            FirebaseUser user = await EnsureSignedInAsync();
+            if (user == null || Db == null)
+            {
+                Debug.LogWarning("[FirebaseManager] Skin equipped locally; cloud sync will retry later.");
+                return true;
+            }
+
+            await Db.Collection("players").Document(user.UserId).UpdateAsync(
+                new Dictionary<string, object> { { "selectedSkin", skinId } });
+            SaveSelectedSkinLocally(skinId, false, false);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("[FirebaseManager] Skin equipped locally; cloud sync will retry later: " +
+                             e.Message);
+        }
+
         return true;
     }
 
-    public async Task<bool> VerifyAppleSkinPurchaseAsync(string receipt)
+    public async Task<bool> VerifyAppleSkinPurchaseAsync(string receipt, string productId)
     {
-        if (string.IsNullOrWhiteSpace(receipt)) return false;
+        if (string.IsNullOrWhiteSpace(receipt) || string.IsNullOrWhiteSpace(productId)) return false;
         string token = await GetIdTokenAsync();
         string escaped = receipt.Replace("\\", "\\\\").Replace("\"", "\\\"")
             .Replace("\n", "\\n").Replace("\r", "\\r");
+        string escapedProductId = productId.Replace("\\", "\\\\").Replace("\"", "\\\"");
         using (UnityWebRequest request = new UnityWebRequest(
                    VerifyPurchaseUrl, UnityWebRequest.kHttpVerbPOST))
         {
             request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(
-                "{\"receipt\":\"" + escaped + "\"}"));
+                "{\"receipt\":\"" + escaped + "\",\"productId\":\"" +
+                escapedProductId + "\"}"));
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
             request.SetRequestHeader("Authorization", "Bearer " + token);
@@ -270,7 +355,7 @@ public class FirebaseManager : MonoBehaviour
             }
         }
         await RefreshSkinDataAsync();
-        return OwnsSunDucker;
+        return productId == SkinPurchaseManager.TurtleProductId ? OwnsTurtle : OwnsSunDucker;
     }
 
     public async Task DeletePlayerAccountAsync()
@@ -292,13 +377,36 @@ public class FirebaseManager : MonoBehaviour
         }
 
         OwnsSunDucker = false;
-        SelectedSkin = "beard";
-        SkinDataChanged?.Invoke();
+        OwnsTurtle = false;
+        SaveSelectedSkinLocally("beard", false, true);
         Auth?.SignOut();
         signInTask = null;
         FirebaseUser replacement = await EnsureSignedInAsync();
         await EnsurePlayerProfileAsync(replacement);
         await RefreshSkinDataAsync();
+    }
+
+    private static string NormalizeSkinId(string skinId)
+    {
+        return skinId == "sun_ducker" || skinId == "turtle" ? skinId : "beard";
+    }
+
+    private bool IsOwnedSkin(string skinId)
+    {
+        return skinId == "beard" ||
+               (skinId == "sun_ducker" && OwnsSunDucker) ||
+               (skinId == "turtle" && OwnsTurtle);
+    }
+
+    private void SaveSelectedSkinLocally(string skinId, bool pendingSync, bool notify)
+    {
+        SelectedSkin = NormalizeSkinId(skinId);
+        hasPendingSkinSync = pendingSync;
+        PlayerPrefs.SetString(SelectedSkinPreferenceKey, SelectedSkin);
+        PlayerPrefs.SetInt(PendingSkinSyncPreferenceKey, pendingSync ? 1 : 0);
+        PlayerPrefs.Save();
+        if (notify)
+            SkinDataChanged?.Invoke();
     }
 
     public async void RecordMatchResult(string lobbyCode, int round)

@@ -21,6 +21,12 @@ public class MultiplayerMenu : MonoBehaviour
     public void PlayOffline()
     {
         if (GameManager.I == null) return;
-        GameManager.I.PlayOffline();
+        GameManager.I.PlayPractice();
+    }
+
+    public void PlayPractice()
+    {
+        if (GameManager.I == null) return;
+        GameManager.I.PlayPractice();
     }
 }

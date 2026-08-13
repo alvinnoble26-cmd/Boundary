@@ -14,6 +14,11 @@ public class MenuButtons : MonoBehaviour
 
     public void PlayOffline()
     {
-        GameManager.I.PlayOffline();
+        GameManager.I.PlayPractice();
+    }
+
+    public void PlayPractice()
+    {
+        GameManager.I.PlayPractice();
     }
 }
