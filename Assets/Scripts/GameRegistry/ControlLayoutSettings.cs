@@ -9,10 +9,15 @@ public static class ControlLayoutSettings
     public const float DefaultCameraSensitivity = 20f;
     public const float MinimumCameraSensitivity = 5f;
     public const float MaximumCameraSensitivity = 50f;
+    public const float DefaultCameraFieldOfView = 85f;
+    public const float MinimumCameraFieldOfView = 60f;
+    public const float MaximumCameraFieldOfView = 110f;
 
     private const string PreferenceKey = "settings.mobileControlLayout.v1";
     private const string SensitivityPreferenceKey = "settings.cameraSensitivity";
+    private const string FieldOfViewPreferenceKey = "settings.cameraFieldOfView";
     private static float cachedCameraSensitivity = float.NaN;
+    private static float cachedCameraFieldOfView = float.NaN;
 
     [Serializable]
     public class ControlEntry
@@ -40,6 +45,7 @@ public static class ControlLayoutSettings
     public class LayoutData
     {
         public float cameraSensitivity = DefaultCameraSensitivity;
+        public float cameraFieldOfView = DefaultCameraFieldOfView;
         public List<ControlEntry> controls = new List<ControlEntry>();
 
         public ControlEntry Find(string id)
@@ -49,7 +55,11 @@ public static class ControlLayoutSettings
 
         public LayoutData Copy()
         {
-            var copy = new LayoutData { cameraSensitivity = cameraSensitivity };
+            var copy = new LayoutData
+            {
+                cameraSensitivity = cameraSensitivity,
+                cameraFieldOfView = cameraFieldOfView
+            };
             foreach (ControlEntry entry in controls)
                 copy.controls.Add(entry.Copy());
             return copy;
@@ -61,6 +71,7 @@ public static class ControlLayoutSettings
         return new LayoutData
         {
             cameraSensitivity = DefaultCameraSensitivity,
+            cameraFieldOfView = DefaultCameraFieldOfView,
             controls = new List<ControlEntry>
             {
                 new ControlEntry("Move", 0.150f, 0.266f),
@@ -89,6 +100,7 @@ public static class ControlLayoutSettings
                 data.cameraSensitivity,
                 MinimumCameraSensitivity,
                 MaximumCameraSensitivity);
+            data.cameraFieldOfView = NormalizeCameraFieldOfView(data.cameraFieldOfView);
             return data;
         }
         catch (Exception exception)
@@ -108,9 +120,12 @@ public static class ControlLayoutSettings
             data.cameraSensitivity,
             MinimumCameraSensitivity,
             MaximumCameraSensitivity);
+        data.cameraFieldOfView = NormalizeCameraFieldOfView(data.cameraFieldOfView);
         cachedCameraSensitivity = data.cameraSensitivity;
+        cachedCameraFieldOfView = data.cameraFieldOfView;
         PlayerPrefs.SetString(PreferenceKey, JsonUtility.ToJson(data));
         PlayerPrefs.SetFloat(SensitivityPreferenceKey, cachedCameraSensitivity);
+        PlayerPrefs.SetFloat(FieldOfViewPreferenceKey, cachedCameraFieldOfView);
         PlayerPrefs.Save();
     }
 
@@ -127,6 +142,28 @@ public static class ControlLayoutSettings
             MinimumCameraSensitivity,
             MaximumCameraSensitivity);
         return cachedCameraSensitivity;
+    }
+
+    public static float LoadCameraFieldOfView()
+    {
+        if (!float.IsNaN(cachedCameraFieldOfView))
+            return cachedCameraFieldOfView;
+
+        float savedValue = PlayerPrefs.HasKey(FieldOfViewPreferenceKey)
+            ? PlayerPrefs.GetFloat(FieldOfViewPreferenceKey)
+            : Load().cameraFieldOfView;
+        cachedCameraFieldOfView = NormalizeCameraFieldOfView(savedValue);
+        return cachedCameraFieldOfView;
+    }
+
+    public static float NormalizeCameraFieldOfView(float value)
+    {
+        // Layout JSON saved before FOV existed deserializes the new float as
+        // zero. Treat that as an old save and migrate it to the intended default.
+        if (value <= 0f || float.IsNaN(value) || float.IsInfinity(value))
+            return DefaultCameraFieldOfView;
+
+        return Mathf.Clamp(value, MinimumCameraFieldOfView, MaximumCameraFieldOfView);
     }
 
     public static void ApplyToGameCanvas(Canvas canvas)

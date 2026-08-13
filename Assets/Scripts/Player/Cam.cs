@@ -127,6 +127,7 @@ public class Cam : NetworkBehaviour
         }
 
         cam.gameObject.SetActive(true);
+        firstPersonFieldOfView = ControlLayoutSettings.LoadCameraFieldOfView();
         ConfigureFirstPersonCamera(unityCamera, firstPersonNearClip, firstPersonFieldOfView);
         unityCamera.gameObject.tag = "MainCamera";
         unityCamera.targetDisplay = 0;
@@ -182,6 +183,12 @@ public class Cam : NetworkBehaviour
         ySens = activeSensitivity;
         float sensitivityScale = activeSensitivity / ControlLayoutSettings.DefaultCameraSensitivity;
         float degreesPerPixel = lookDegreesPerPixelAtDefault * sensitivityScale;
+
+        if (cam.TryGetComponent<Camera>(out Camera unityCamera))
+        {
+            firstPersonFieldOfView = ControlLayoutSettings.LoadCameraFieldOfView();
+            unityCamera.fieldOfView = firstPersonFieldOfView;
+        }
 
         yaw += lookDelta.x * degreesPerPixel;
         pitch = Mathf.Clamp(

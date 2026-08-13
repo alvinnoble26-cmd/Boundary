@@ -349,6 +349,23 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
+    public void CameraFieldOfView_DefaultsAndClampsToComfortableFirstPersonRange()
+    {
+        ControlLayoutSettings.LayoutData defaults = ControlLayoutSettings.CreateDefault();
+
+        Assert.That(defaults.cameraFieldOfView,
+            Is.EqualTo(ControlLayoutSettings.DefaultCameraFieldOfView));
+        Assert.That(ControlLayoutSettings.NormalizeCameraFieldOfView(0f),
+            Is.EqualTo(ControlLayoutSettings.DefaultCameraFieldOfView),
+            "Old layouts without an FOV value must migrate to the default.");
+        Assert.That(ControlLayoutSettings.NormalizeCameraFieldOfView(35f),
+            Is.EqualTo(ControlLayoutSettings.MinimumCameraFieldOfView));
+        Assert.That(ControlLayoutSettings.NormalizeCameraFieldOfView(140f),
+            Is.EqualTo(ControlLayoutSettings.MaximumCameraFieldOfView));
+        Assert.That(ControlLayoutSettings.NormalizeCameraFieldOfView(96f), Is.EqualTo(96f));
+    }
+
+    [Test]
     public void FirstPersonOwner_HidesOnlyItsBodyRenderersAndRestoresTheirState()
     {
         GameObject player = new GameObject("First Person Player Test");

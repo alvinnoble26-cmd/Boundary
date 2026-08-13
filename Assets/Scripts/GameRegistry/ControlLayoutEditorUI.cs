@@ -19,6 +19,8 @@ public class ControlLayoutEditorUI : MonoBehaviour
     private RectTransform workspace;
     private Slider sensitivitySlider;
     private Text sensitivityValue;
+    private Slider fieldOfViewSlider;
+    private Text fieldOfViewValue;
     private readonly Dictionary<string, EditableControlWidget> widgets = new Dictionary<string, EditableControlWidget>();
 
     public void Build(GameObject optionsPanel)
@@ -47,26 +49,37 @@ public class ControlLayoutEditorUI : MonoBehaviour
         topBar.anchorMax = new Vector2(1f, 1f);
         topBar.pivot = new Vector2(0.5f, 1f);
         topBar.anchoredPosition = Vector2.zero;
-        topBar.sizeDelta = new Vector2(0f, 155f);
+        topBar.sizeDelta = new Vector2(0f, 225f);
 
         CreateButton(topBar, "Cancel", new Vector2(0f, 1f), new Vector2(90f, -52f), new Vector2(150f, 58f), new Color(0.08f, 0.16f, 0.28f, 1f), Cancel);
         CreateButton(topBar, "Save", new Vector2(1f, 1f), new Vector2(-90f, -52f), new Vector2(150f, 58f), AccentBlue, Save);
         CreateButton(topBar, "Reset", new Vector2(1f, 1f), new Vector2(-90f, -116f), new Vector2(150f, 45f), new Color(0.08f, 0.16f, 0.28f, 1f), ResetToDefaults);
 
-        CreateText(topBar, "CAMERA SENSITIVITY", 24, TextAnchor.MiddleCenter, Color.white,
-            new Vector2(0.5f, 1f), new Vector2(0f, -31f), new Vector2(420f, 38f));
+        CreateText(topBar, "CAMERA SENSITIVITY", 22, TextAnchor.MiddleCenter, Color.white,
+            new Vector2(0.5f, 1f), new Vector2(0f, -24f), new Vector2(420f, 34f));
 
-        sensitivitySlider = CreateSlider(topBar);
+        sensitivitySlider = CreateSlider(topBar, "SensitivitySlider", new Vector2(0f, -64f));
         sensitivitySlider.minValue = ControlLayoutSettings.MinimumCameraSensitivity;
         sensitivitySlider.maxValue = ControlLayoutSettings.MaximumCameraSensitivity;
         sensitivitySlider.wholeNumbers = false;
         sensitivitySlider.onValueChanged.AddListener(UpdateSensitivityLabel);
         sensitivityValue = CreateText(topBar, string.Empty, 22, TextAnchor.MiddleLeft, Color.white,
-            new Vector2(0.5f, 1f), new Vector2(292f, -81f), new Vector2(100f, 40f));
+            new Vector2(0.5f, 1f), new Vector2(292f, -64f), new Vector2(100f, 40f));
+
+        CreateText(topBar, "FIELD OF VIEW", 22, TextAnchor.MiddleCenter, Color.white,
+            new Vector2(0.5f, 1f), new Vector2(0f, -105f), new Vector2(420f, 34f));
+
+        fieldOfViewSlider = CreateSlider(topBar, "FieldOfViewSlider", new Vector2(0f, -145f));
+        fieldOfViewSlider.minValue = ControlLayoutSettings.MinimumCameraFieldOfView;
+        fieldOfViewSlider.maxValue = ControlLayoutSettings.MaximumCameraFieldOfView;
+        fieldOfViewSlider.wholeNumbers = true;
+        fieldOfViewSlider.onValueChanged.AddListener(UpdateFieldOfViewLabel);
+        fieldOfViewValue = CreateText(topBar, string.Empty, 22, TextAnchor.MiddleLeft, Color.white,
+            new Vector2(0.5f, 1f), new Vector2(292f, -145f), new Vector2(100f, 40f));
 
         CreateText(topBar, "Drag controls to move them. The centered crosshair is size-only.", 18,
             TextAnchor.MiddleCenter, new Color(0.68f, 0.84f, 1f, 1f),
-            new Vector2(0.5f, 1f), new Vector2(0f, -126f), new Vector2(620f, 32f));
+            new Vector2(0.5f, 1f), new Vector2(0f, -201f), new Vector2(620f, 32f));
 
         CreateControlWidget("Move", 175f, new Color(0.20f, 0.55f, 0.86f, 0.88f));
         CreateControlWidget("Jump", 250f, new Color(0.92f, 0.45f, 0.20f, 0.88f));
@@ -107,6 +120,7 @@ public class ControlLayoutEditorUI : MonoBehaviour
         var data = new ControlLayoutSettings.LayoutData
         {
             cameraSensitivity = sensitivitySlider.value,
+            cameraFieldOfView = fieldOfViewSlider.value,
             controls = new List<ControlLayoutSettings.ControlEntry>()
         };
 
@@ -138,6 +152,8 @@ public class ControlLayoutEditorUI : MonoBehaviour
     {
         sensitivitySlider.SetValueWithoutNotify(data.cameraSensitivity);
         UpdateSensitivityLabel(data.cameraSensitivity);
+        fieldOfViewSlider.SetValueWithoutNotify(data.cameraFieldOfView);
+        UpdateFieldOfViewLabel(data.cameraFieldOfView);
 
         foreach (KeyValuePair<string, EditableControlWidget> pair in widgets)
             pair.Value.Apply(data.Find(pair.Key));
@@ -147,6 +163,12 @@ public class ControlLayoutEditorUI : MonoBehaviour
     {
         if (sensitivityValue != null)
             sensitivityValue.text = value.ToString("0.0");
+    }
+
+    private void UpdateFieldOfViewLabel(float value)
+    {
+        if (fieldOfViewValue != null)
+            fieldOfViewValue.text = Mathf.RoundToInt(value) + "°";
     }
 
     private void CreateControlWidget(string id, float baseSize, Color color)
@@ -284,16 +306,16 @@ public class ControlLayoutEditorUI : MonoBehaviour
         return uiText;
     }
 
-    private static Slider CreateSlider(Transform parent)
+    private static Slider CreateSlider(Transform parent, string name, Vector2 position)
     {
-        var root = new GameObject("SensitivitySlider", typeof(RectTransform), typeof(Slider));
+        var root = new GameObject(name, typeof(RectTransform), typeof(Slider));
         root.layer = 5;
         root.transform.SetParent(parent, false);
         RectTransform rootRect = (RectTransform)root.transform;
         rootRect.anchorMin = new Vector2(0.5f, 1f);
         rootRect.anchorMax = new Vector2(0.5f, 1f);
         rootRect.pivot = new Vector2(0.5f, 0.5f);
-        rootRect.anchoredPosition = new Vector2(0f, -81f);
+        rootRect.anchoredPosition = position;
         rootRect.sizeDelta = new Vector2(500f, 34f);
 
         Image background = CreateImage(root.transform, "Background", new Color(0.012f, 0.03f, 0.075f, 1f));
