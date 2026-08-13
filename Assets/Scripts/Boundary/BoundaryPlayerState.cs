@@ -103,7 +103,7 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
         if (!isOwner || movement == null)
             return;
 
-        movement.ApplyBoundaryImpulse(velocityChange);
+        movement.ApplyAbilityImpulse(velocityChange);
     }
 
     private void SetState(BoundaryKnockoutState next)

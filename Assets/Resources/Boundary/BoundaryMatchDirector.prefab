@@ -115,10 +115,9 @@ MonoBehaviour:
   collapseWarningSeconds: 1.35
   tierRampLength: 14
   tierRampArcOverlap: 0.45
-  wallPairsPerTier: 7
+  wallCountPerTier: 7
   wallLength: 10.5
   wallHeight: 7.5
   wallThickness: 1.15
-  wallPairGap: 6.4
   wallGroundClearance: 1.15
   wallMaximumExtraHeight: 4.5

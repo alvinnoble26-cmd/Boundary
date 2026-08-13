@@ -155,6 +155,8 @@ public static class BoundaryFeatureValidator
         GameObject director = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Resources/Boundary/BoundaryMatchDirector.prefab");
         GameObject hazard = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Resources/Boundary/BoundaryHazard.prefab");
         GameObject player = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Player.prefab");
+        GameObject attractPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/GameElements/Attract.prefab");
+        GameObject repelPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/GameElements/Repel.prefab");
         NetworkPrefabs registry = AssetDatabase.LoadAssetAtPath<NetworkPrefabs>("Assets/NetworkPrefabs.asset");
 
         Require(director != null, "Match director prefab is missing.");
@@ -188,6 +190,15 @@ public static class BoundaryFeatureValidator
         Require(attractThrow.FindProperty("launchHeightAbovePlayerCenter").floatValue >= 1.3f &&
                 repelThrow.FindProperty("launchHeightAbovePlayerCenter").floatValue >= 1.3f,
             "Attract and Repel must launch above the player's center.");
+        Require(attractPrefab != null && repelPrefab != null,
+            "Attract or Repel projectile prefab is missing.");
+        SerializedObject attractField = new SerializedObject(attractPrefab.GetComponent<ForceField>());
+        SerializedObject repelField = new SerializedObject(repelPrefab.GetComponent<ForceField>());
+        Require(attractField.FindProperty("radius").floatValue >= 110f &&
+                repelField.FindProperty("radius").floatValue >= 110f &&
+                attractField.FindProperty("maxAccel").floatValue >= 1500f &&
+                repelField.FindProperty("maxAccel").floatValue >= 1500f,
+            "Attract and Repel must retain their expanded radius and power.");
         Require(registry != null, "Network prefab registry is missing.");
         Require(registry.prefabs.Any(entry => entry.prefab == director), "Director is not in NetworkPrefabs.");
         Require(registry.prefabs.Any(entry => entry.prefab == hazard), "Hazard is not in NetworkPrefabs.");
@@ -364,8 +375,8 @@ public static class BoundaryRuntimeSmokeRunner
             RequireSmoke(rampRoot != null && presentation.GeneratedTransitionRampCount >= 70 &&
                          rampRoot.transform.childCount == presentation.GeneratedTransitionRampCount,
                 "Continuous slide ramps were not generated across both raised tier seams.");
-            RequireSmoke(wallRoot != null && wallRoot.transform.childCount >= 30,
-                "Purpose-built wall-jump structures were not generated.");
+            RequireSmoke(wallRoot != null && wallRoot.transform.childCount == 21,
+                "The arena must generate exactly one wall at each of seven positions per tier.");
             int substantiallyRaisedWalls = 0;
             foreach (Transform wall in wallRoot.transform)
             {
@@ -373,9 +384,9 @@ public static class BoundaryRuntimeSmokeRunner
                 RequireSmoke(wall.localScale.x >= 9.6f && wall.localScale.y >= 6.8f &&
                              wall.localScale.z >= 1.05f,
                     wall.name + " is not enlarged across length, height, and thickness.");
-                float tierSurface = wall.name.StartsWith("Wall Pair 2")
+                float tierSurface = wall.name.StartsWith("Wall 2")
                     ? controller.OuterPlatformSurfaceY
-                    : wall.name.StartsWith("Wall Pair 1")
+                    : wall.name.StartsWith("Wall 1")
                         ? controller.MiddlePlatformSurfaceY
                         : controller.InnerPlatformSurfaceY;
                 float wallBottom = wall.position.y - wall.localScale.y * 0.5f;
@@ -383,8 +394,11 @@ public static class BoundaryRuntimeSmokeRunner
                     wall.name + " is not visibly suspended above its platform tier.");
                 if (wallBottom >= tierSurface + 2.25f)
                     substantiallyRaisedWalls++;
+                Vector3 towardCenter = (controller.ArenaCenter - wall.position).normalized;
+                RequireSmoke(Vector3.Dot(wall.forward, towardCenter) >= 0.999f,
+                    wall.name + " does not point toward the arena center on all axes.");
             }
-            RequireSmoke(substantiallyRaisedWalls >= 10,
+            RequireSmoke(substantiallyRaisedWalls >= 5,
                 "The randomized wall field did not create enough elevated wall-jump routes.");
             RequireSmoke(GameObject.Find("Vertical Combat Routes") == null,
                 "Random elevated stepping routes must not remain in the arena.");

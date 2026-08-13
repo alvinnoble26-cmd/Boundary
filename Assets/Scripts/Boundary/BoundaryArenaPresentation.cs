@@ -41,11 +41,10 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
     [SerializeField, Range(0.1f, 1f)] private float tierRampArcOverlap = 0.45f;
 
     [Header("Wall-jump cover")]
-    [SerializeField, Range(4, 12)] private int wallPairsPerTier = 7;
+    [SerializeField, Range(4, 12)] private int wallCountPerTier = 7;
     [SerializeField, Range(6f, 14f)] private float wallLength = 10.5f;
     [SerializeField, Range(5f, 12f)] private float wallHeight = 7.5f;
     [SerializeField, Range(0.7f, 2f)] private float wallThickness = 1.15f;
-    [SerializeField, Range(3f, 10f)] private float wallPairGap = 6.4f;
     [SerializeField, Range(0.5f, 3f)] private float wallGroundClearance = 1.15f;
     [SerializeField, Range(0f, 6f)] private float wallMaximumExtraHeight = 4.5f;
 
@@ -305,44 +304,40 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         if (outerDistance <= innerDistance)
             return;
 
-        for (int pair = 0; pair < wallPairsPerTier; pair++)
+        for (int wallIndex = 0; wallIndex < wallCountPerTier; wallIndex++)
         {
-            for (int side = -1; side <= 1; side += 2)
-            {
-                int wallIndex = pair * 2 + (side > 0 ? 1 : 0);
-                int seed = 81017 + collapseBand * 7919;
-                float sectorJitter = Mathf.Lerp(-0.38f, 0.38f, BoundaryMath.StableUnit(seed, wallIndex));
-                float angle = Mathf.PI * 2f * (pair + 0.5f) / wallPairsPerTier +
-                              collapseBand * 0.19f + sectorJitter;
-                float radius01 = Mathf.Lerp(0.12f, 0.88f, BoundaryMath.StableUnit(seed + 1, wallIndex));
-                float radius = Mathf.Lerp(innerDistance, outerDistance, radius01);
-                Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
-                Vector3 tangent = Vector3.Cross(Vector3.up, radial).normalized;
-                float pairOffset = wallPairGap * Mathf.Lerp(0.35f, 0.72f,
-                    BoundaryMath.StableUnit(seed + 2, wallIndex));
-                Vector3 position = match.ArenaCenter + radial * radius + tangent * pairOffset * side;
+            int seed = 81017 + collapseBand * 7919;
+            float sectorJitter = Mathf.Lerp(-0.38f, 0.38f, BoundaryMath.StableUnit(seed, wallIndex));
+            float angle = Mathf.PI * 2f * (wallIndex + 0.5f) / wallCountPerTier +
+                          collapseBand * 0.19f + sectorJitter;
+            float radius01 = Mathf.Lerp(0.12f, 0.88f, BoundaryMath.StableUnit(seed + 1, wallIndex));
+            float radius = Mathf.Lerp(innerDistance, outerDistance, radius01);
+            Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+            Vector3 position = match.ArenaCenter + radial * radius;
 
-                float length = wallLength * Mathf.Lerp(0.92f, 1.32f,
-                    BoundaryMath.StableUnit(seed + 3, wallIndex));
-                float height = wallHeight * Mathf.Lerp(0.92f, 1.38f,
-                    BoundaryMath.StableUnit(seed + 4, wallIndex));
-                float thickness = wallThickness * Mathf.Lerp(0.92f, 1.28f,
-                    BoundaryMath.StableUnit(seed + 5, wallIndex));
-                float extraHeight = wallMaximumExtraHeight *
-                                    Mathf.Pow(BoundaryMath.StableUnit(seed + 6, wallIndex), 1.45f);
-                position.y = baseSurfaceY + wallGroundClearance + extraHeight + height * 0.5f;
-                float yawJitter = Mathf.Lerp(-42f, 42f, BoundaryMath.StableUnit(seed + 7, wallIndex));
-                Quaternion rotation = Quaternion.Euler(0f, -angle * Mathf.Rad2Deg + yawJitter, 0f);
-                CreatePlatform(
-                    parent,
-                    $"Wall Pair {collapseBand}-{pair:00}-{(side < 0 ? "L" : "R")}",
-                    position,
-                    new Vector3(length, height, thickness),
-                    rotation,
-                    collapseBand,
-                    indexOffset + wallIndex,
-                    true);
-            }
+            float length = wallLength * Mathf.Lerp(0.92f, 1.32f,
+                BoundaryMath.StableUnit(seed + 3, wallIndex));
+            float height = wallHeight * Mathf.Lerp(0.92f, 1.38f,
+                BoundaryMath.StableUnit(seed + 4, wallIndex));
+            float thickness = wallThickness * Mathf.Lerp(0.92f, 1.28f,
+                BoundaryMath.StableUnit(seed + 5, wallIndex));
+            float extraHeight = wallMaximumExtraHeight *
+                                Mathf.Pow(BoundaryMath.StableUnit(seed + 6, wallIndex), 1.45f);
+            position.y = baseSurfaceY + wallGroundClearance + extraHeight + height * 0.5f;
+
+            // The wall's complete forward axis, including pitch, faces the
+            // arena center. This eliminates tangential and yaw-jittered walls.
+            Vector3 towardCenter = match.ArenaCenter - position;
+            Quaternion rotation = Quaternion.LookRotation(towardCenter.normalized, Vector3.up);
+            CreatePlatform(
+                parent,
+                $"Wall {collapseBand}-{wallIndex:00}",
+                position,
+                new Vector3(length, height, thickness),
+                rotation,
+                collapseBand,
+                indexOffset + wallIndex,
+                true);
         }
     }
 

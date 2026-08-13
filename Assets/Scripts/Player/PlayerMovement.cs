@@ -354,6 +354,14 @@ void HandleJump()
         rb.AddForce(Vector3.ClampMagnitude(velocityChange, 18f), ForceMode.VelocityChange);
     }
 
+    public void ApplyAbilityImpulse(Vector3 velocityChange)
+    {
+        if (!isOwner || rb == null)
+            return;
+
+        rb.AddForce(Vector3.ClampMagnitude(velocityChange, 30f), ForceMode.VelocityChange);
+    }
+
     private void UpdateBoundaryFooting()
     {
         BoundaryMatchController match = BoundaryMatchController.Instance;

@@ -228,10 +228,10 @@ MonoBehaviour:
   mode: 1
   delayBeforePulse: 1.5
   destroyAfterPulse: 0.1
-  radius: 75
-  strength: 7000
-  maxAccel: 1000
-  playerForceMultiplier: 1.5
+  radius: 110
+  strength: 9500
+  maxAccel: 1500
+  playerForceMultiplier: 1.85
   falloff:
     serializedVersion: 2
     m_Curve:

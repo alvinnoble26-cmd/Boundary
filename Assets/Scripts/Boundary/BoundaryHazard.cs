@@ -324,8 +324,8 @@ public sealed class BoundaryHazard : NetworkBehaviour
         RegisterAbilityInfluence();
         body.WakeUp();
         body.AddForce(velocityChange, ForceMode.VelocityChange);
-        if (body.linearVelocity.magnitude > 34f)
-            body.linearVelocity = body.linearVelocity.normalized * 34f;
+        if (body.linearVelocity.magnitude > 50f)
+            body.linearVelocity = body.linearVelocity.normalized * 50f;
     }
 
     public void ServerPulse(bool outward)
