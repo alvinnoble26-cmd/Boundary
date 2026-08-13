@@ -194,10 +194,10 @@ public static class BoundaryFeatureValidator
             "Attract or Repel projectile prefab is missing.");
         SerializedObject attractField = new SerializedObject(attractPrefab.GetComponent<ForceField>());
         SerializedObject repelField = new SerializedObject(repelPrefab.GetComponent<ForceField>());
-        Require(attractField.FindProperty("radius").floatValue >= 110f &&
-                repelField.FindProperty("radius").floatValue >= 110f &&
-                attractField.FindProperty("maxAccel").floatValue >= 1500f &&
-                repelField.FindProperty("maxAccel").floatValue >= 1500f,
+        Require(attractField.FindProperty("radius").floatValue >= 220f &&
+                repelField.FindProperty("radius").floatValue >= 220f &&
+                attractField.FindProperty("maxAccel").floatValue >= 3000f &&
+                repelField.FindProperty("maxAccel").floatValue >= 3000f,
             "Attract and Repel must retain their expanded radius and power.");
         Require(registry != null, "Network prefab registry is missing.");
         Require(registry.prefabs.Any(entry => entry.prefab == director), "Director is not in NetworkPrefabs.");
@@ -221,8 +221,13 @@ public static class BoundaryFeatureValidator
             "Arena cubes and black holes must retain their enlarged silhouettes.");
         Require(BoundaryMath.IsBelowVoidKillPlane(-5f, -0.9f, 4f),
             "The platform void must have a lethal fall plane.");
-        Require(BoundaryMath.ArenaMassAbilityVelocityChange(1f) >= 30f,
+        Require(BoundaryMath.ArenaMassAbilityVelocityChange(1f) >= 88f,
             "Attract and Repel must decisively move arena masses.");
+        SerializedObject controllerSettings = new SerializedObject(controller);
+        Require(controllerSettings.FindProperty("outerPull").floatValue <= 0.325f &&
+                controllerSettings.FindProperty("middlePull").floatValue <= 1.05f &&
+                controllerSettings.FindProperty("innerPull").floatValue <= 2.75f,
+            "Boundary singularity gravity must remain at the reduced level.");
         Require(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.Cube, true) &&
                 BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.ArenaBlackHole, true),
             "Arena cubes and ground black holes must be lethal on contact.");

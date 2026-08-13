@@ -29,9 +29,9 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     [SerializeField] private float innerPlatformSurfaceY = 4.25f;
 
     [Header("Singularity pull")]
-    [SerializeField, Min(0f)] private float outerPull = 0.65f;
-    [SerializeField, Min(0f)] private float middlePull = 2.1f;
-    [SerializeField, Min(0f)] private float innerPull = 5.5f;
+    [SerializeField, Min(0f)] private float outerPull = 0.325f;
+    [SerializeField, Min(0f)] private float middlePull = 1.05f;
+    [SerializeField, Min(0f)] private float innerPull = 2.75f;
     [SerializeField, Min(0f)] private float innerPullGrowthPerSecond;
 
     [Header("Boundary event")]

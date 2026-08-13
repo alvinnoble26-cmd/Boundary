@@ -104,8 +104,8 @@ public sealed class BoundaryMathTests
     {
         Assert.That(BoundaryMatchController.ArenaMassCubeScale, Is.GreaterThanOrEqualTo(2.8f));
         Assert.That(BoundaryMatchController.ArenaMassBlackHoleScale, Is.GreaterThanOrEqualTo(1.75f));
-        Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(0f), Is.EqualTo(16f).Within(0.001f));
-        Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(1f), Is.EqualTo(44f).Within(0.001f));
+        Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(0f), Is.EqualTo(32f).Within(0.001f));
+        Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(1f), Is.EqualTo(88f).Within(0.001f));
     }
 
     [Test]

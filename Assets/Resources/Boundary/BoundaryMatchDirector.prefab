@@ -88,9 +88,9 @@ MonoBehaviour:
   outerPlatformSurfaceY: 0
   middlePlatformSurfaceY: 2
   innerPlatformSurfaceY: 4.25
-  outerPull: 0.65
-  middlePull: 2.1
-  innerPull: 5.5
+  outerPull: 0.325
+  middlePull: 1.05
+  innerPull: 2.75
   innerPullGrowthPerSecond: 0
   disasterRevealDelay: 5
   disasterWarningDuration: 3

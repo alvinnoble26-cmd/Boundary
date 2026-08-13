@@ -99,7 +99,7 @@ public static class BoundaryMath
 
     public static float ArenaMassAbilityVelocityChange(float influence)
     {
-        return Mathf.Lerp(16f, 44f, Mathf.Clamp01(influence));
+        return Mathf.Lerp(32f, 88f, Mathf.Clamp01(influence));
     }
 
     public static bool IsLethalContactHazard(BoundaryHazardKind kind, bool isArenaMass)

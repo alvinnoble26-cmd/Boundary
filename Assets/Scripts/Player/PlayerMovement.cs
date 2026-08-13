@@ -359,7 +359,7 @@ void HandleJump()
         if (!isOwner || rb == null)
             return;
 
-        rb.AddForce(Vector3.ClampMagnitude(velocityChange, 30f), ForceMode.VelocityChange);
+        rb.AddForce(Vector3.ClampMagnitude(velocityChange, 60f), ForceMode.VelocityChange);
     }
 
     private void UpdateBoundaryFooting()

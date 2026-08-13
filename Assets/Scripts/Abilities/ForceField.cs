@@ -138,7 +138,7 @@ public class  ForceField : MonoBehaviour
                     // Player rigidbodies are owner-authoritative and kinematic
                     // on the server. Send the velocity change to that owner;
                     // applying AddForce here would silently do nothing.
-                    boundaryState.ServerPushOwner(dir * Mathf.Clamp(accel * 0.13f, 3f, 28f));
+                    boundaryState.ServerPushOwner(dir * Mathf.Clamp(accel * 0.13f, 6f, 56f));
                     continue;
                 }
             }
