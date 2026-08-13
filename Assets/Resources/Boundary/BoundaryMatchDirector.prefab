@@ -114,6 +114,7 @@ MonoBehaviour:
   platformThickness: 0.85
   collapseWarningSeconds: 1.35
   wallPairsPerTier: 7
-  wallLength: 5.8
-  wallHeight: 4.2
-  wallPairGap: 4.3
+  wallLength: 8
+  wallHeight: 5.8
+  wallPairGap: 5.2
+  wallGroundClearance: 1.15

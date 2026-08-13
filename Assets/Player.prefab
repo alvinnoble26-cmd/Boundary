@@ -1045,6 +1045,7 @@ MonoBehaviour:
   horizonDistanceBelowCore: 5.5
   escapeWindowSeconds: 1.6
   horizonHorizontalRadius: 10
+  voidKillDepthBelowArena: 4
 --- !u!1 &8938675066990083720
 GameObject:
   m_ObjectHideFlags: 0

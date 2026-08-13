@@ -316,6 +316,18 @@ public sealed class BoundaryHazard : NetworkBehaviour
             abilityInfluenceUntil = Time.time + 1.4f;
     }
 
+    public void ServerApplyAbilityVelocity(Vector3 velocityChange)
+    {
+        if (!isServer || !arenaMass.value || absorptionStarted || body == null || body.isKinematic)
+            return;
+
+        RegisterAbilityInfluence();
+        body.WakeUp();
+        body.AddForce(velocityChange, ForceMode.VelocityChange);
+        if (body.linearVelocity.magnitude > 34f)
+            body.linearVelocity = body.linearVelocity.normalized * 34f;
+    }
+
     public void ServerPulse(bool outward)
     {
         if (!isServer || body == null || body.isKinematic)
@@ -451,8 +463,10 @@ public sealed class BoundaryHazard : NetworkBehaviour
             body.AddForce(-flat.normalized * inwardForce, ForceMode.Acceleration);
         }
 
-        float desiredY = match.PlatformSurfaceYAtRadius(flat.magnitude) +
-                         (kind.value == BoundaryHazardKind.ArenaBlackHole ? 1.9f : 1.4f);
+        float bodyClearance = kind.value == BoundaryHazardKind.ArenaBlackHole
+            ? sphereCollider.radius * transform.lossyScale.y
+            : boxCollider.size.y * transform.lossyScale.y * 0.5f;
+        float desiredY = match.PlatformSurfaceYAtRadius(flat.magnitude) + bodyClearance;
         body.AddForce(Vector3.up * ((desiredY - body.position.y) * 5.2f), ForceMode.Acceleration);
         if (body.linearVelocity.magnitude > 30f)
             body.linearVelocity = body.linearVelocity.normalized * 30f;
@@ -579,6 +593,19 @@ public sealed class BoundaryHazard : NetworkBehaviour
         PlayerMovement movement = collision.collider.GetComponentInParent<PlayerMovement>();
         if (movement == null || !movement.isOwner)
             return;
+
+        if (BoundaryMath.IsLethalContactHazard(kind.value, arenaMass.value))
+        {
+            BoundaryPlayerState playerState = movement.GetComponent<BoundaryPlayerState>();
+            if (playerState != null)
+                playerState.ConsumeFromHazard("You were consumed by the black hole.");
+            else
+            {
+                SfxManager.PlayLethalHit();
+                GameManager.I?.ReportLocalPlayerLost("You were consumed by the black hole.");
+            }
+            return;
+        }
 
         Vector3 direction = movement.transform.position - transform.position;
         direction.y = Mathf.Max(0.45f, direction.y);

@@ -200,6 +200,16 @@ public static class BoundaryFeatureValidator
         Require(BoundaryMatchController.ArenaMassInnerSurvivors * 4 ==
                 BoundaryMatchController.ArenaMassPopulation,
             "Exactly one quarter of arena masses must reach the inner ring.");
+        Require(BoundaryMatchController.ArenaMassCubeScale >= 2.8f &&
+                BoundaryMatchController.ArenaMassBlackHoleScale >= 1.75f,
+            "Arena cubes and black holes must retain their enlarged silhouettes.");
+        Require(BoundaryMath.IsBelowVoidKillPlane(-5f, -0.9f, 4f),
+            "The platform void must have a lethal fall plane.");
+        Require(BoundaryMath.ArenaMassAbilityVelocityChange(1f) >= 30f,
+            "Attract and Repel must decisively move arena masses.");
+        Require(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.Cube, true) &&
+                BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.ArenaBlackHole, true),
+            "Arena cubes and ground black holes must be lethal on contact.");
         Require(System.Enum.IsDefined(typeof(BoundaryHazardKind), BoundaryHazardKind.ArenaBlackHole),
             "The arena black-hole sphere kind is missing.");
 
@@ -213,7 +223,7 @@ public static class BoundaryFeatureValidator
         }
         Require(disasterCount == 9, "Reverse Current must be removed and exactly nine disasters must remain.");
 
-        Debug.Log("[BoundaryFeatureValidator] PASS — wall-jump arena, 20 masses, quarter survival, platform corruption, authority, and all 9 events validated.");
+        Debug.Log("[BoundaryFeatureValidator] PASS — lethal void/masses, floating walls, decisive ability physics, quarter survival, corruption, authority, and all 9 events validated.");
     }
 
     private static void Require(bool condition, string message)
@@ -344,7 +354,19 @@ public static class BoundaryRuntimeSmokeRunner
             RequireSmoke(wallRoot != null && wallRoot.transform.childCount >= 30,
                 "Purpose-built wall-jump structures were not generated.");
             foreach (Transform wall in wallRoot.transform)
+            {
                 RequireSmoke(wall.CompareTag("Wall"), wall.name + " is not tagged for wall jumping.");
+                RequireSmoke(wall.localScale.x >= 7.95f && wall.localScale.y >= 5.75f,
+                    wall.name + " is not using the enlarged wall-jump dimensions.");
+                float tierSurface = wall.name.StartsWith("Wall Pair 2")
+                    ? controller.OuterPlatformSurfaceY
+                    : wall.name.StartsWith("Wall Pair 1")
+                        ? controller.MiddlePlatformSurfaceY
+                        : controller.InnerPlatformSurfaceY;
+                float wallBottom = wall.position.y - wall.localScale.y * 0.5f;
+                RequireSmoke(wallBottom >= tierSurface + 1.1f,
+                    wall.name + " is not visibly suspended above its platform tier.");
+            }
             RequireSmoke(GameObject.Find("Vertical Combat Routes") == null,
                 "Random elevated stepping routes must not remain in the arena.");
             RequireSmoke(GameObject.Find("Brace") == null,

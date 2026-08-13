@@ -92,6 +92,22 @@ public static class BoundaryMath
         return Mathf.Sin(Mathf.Clamp01(pulseTime / pulseDuration) * Mathf.PI);
     }
 
+    public static bool IsBelowVoidKillPlane(float playerY, float arenaFloorY, float killDepth)
+    {
+        return playerY <= arenaFloorY - Mathf.Max(1f, killDepth);
+    }
+
+    public static float ArenaMassAbilityVelocityChange(float influence)
+    {
+        return Mathf.Lerp(10f, 30f, Mathf.Clamp01(influence));
+    }
+
+    public static bool IsLethalContactHazard(BoundaryHazardKind kind, bool isArenaMass)
+    {
+        return kind == BoundaryHazardKind.Cube ||
+               (isArenaMass && kind == BoundaryHazardKind.ArenaBlackHole);
+    }
+
     public static Vector3 PlayerPullAcceleration(
         Vector3 playerPosition,
         Vector3 singularityPosition,
@@ -128,19 +144,6 @@ public static class BoundaryMath
             float outsideDistance = horizontalDistance - ringRadius;
             pull += inward * Mathf.Min(19f, 5.5f + outsideDistance * 1.05f);
             pull += Vector3.up * Mathf.Min(22f, 7f + outsideDistance * 1.20f);
-        }
-
-        // With a platform-only floor, falling through a newly opened gap must
-        // remain a combat situation instead of becoming an endless void fall.
-        // The rebound is deliberately strong but gives no horizontal control
-        // advantage: it returns the fighter toward the arena as an airborne
-        // target that the opponent can punish.
-        float voidDepth = arenaFloorY - 2.5f - playerPosition.y;
-        if (voidDepth > 0f)
-        {
-            Vector3 inward = flatOffset.sqrMagnitude > 0.01f ? -flatOffset.normalized : Vector3.zero;
-            pull += Vector3.up * Mathf.Min(34f, 17f + voidDepth * 2.2f);
-            pull += inward * Mathf.Min(12f, 4f + voidDepth * 0.7f);
         }
 
         return Vector3.ClampMagnitude(pull, 50f);

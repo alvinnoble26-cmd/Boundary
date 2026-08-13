@@ -232,7 +232,6 @@ MonoBehaviour:
   strength: 7000
   maxAccel: 1000
   playerForceMultiplier: 1.5
-  arenaMassForceMultiplier: 2.15
   falloff:
     serializedVersion: 2
     m_Curve:

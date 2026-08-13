@@ -9,6 +9,8 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     public static BoundaryMatchController Instance { get; private set; }
     public const int ArenaMassPopulation = 20;
     public const int ArenaMassInnerSurvivors = 5;
+    public const float ArenaMassCubeScale = 2.8f;
+    public const float ArenaMassBlackHoleScale = 1.75f;
 
     [Header("Phase timing")]
     [SerializeField, Min(10f)] private float outerRingDuration = 60f;
@@ -558,14 +560,16 @@ public sealed class BoundaryMatchController : NetworkBehaviour
             bool survivesInner = i == 0 || i == 4 || i == 10 || i == 14 || i == 18;
             float angle = i * 2.399963f + 0.31f;
             float radius = 24f + (i % 5) * 15.2f + (i / 5) * 1.7f;
+            float scale = sphere ? ArenaMassBlackHoleScale : ArenaMassCubeScale;
+            float groundClearance = sphere ? scale * 1.65f : scale * 0.5f;
             Vector3 position = new Vector3(
                 ArenaCenter.x + Mathf.Cos(angle) * radius,
-                PlatformSurfaceYAtRadius(radius) + (sphere ? 1.9f : 1.4f),
+                PlatformSurfaceYAtRadius(radius) + groundClearance,
                 ArenaCenter.z + Mathf.Sin(angle) * radius);
 
             GameObject instance = Instantiate(hazardPrefab, position, Quaternion.identity);
             instance.name = sphere ? $"Arena Black Hole {i - 9:00}" : $"Arena Mass Cube {i + 1:00}";
-            instance.transform.localScale = Vector3.one * (sphere ? 1.15f : 1.85f);
+            instance.transform.localScale = Vector3.one * scale;
             BoundaryHazard hazard = instance.GetComponent<BoundaryHazard>();
             if (hazard == null)
             {

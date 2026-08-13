@@ -51,7 +51,7 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
-    public void PlatformVoid_ReboundsFighterTowardCombatSpace()
+    public void PlatformVoid_HasAnImmediateKillPlaneWithoutARescueCurrent()
     {
         Vector3 acceleration = BoundaryMath.PlayerPullAcceleration(
             new Vector3(22f, -8f, 0f),
@@ -62,8 +62,9 @@ public sealed class BoundaryMathTests
             2.1f,
             false);
 
-        Assert.That(acceleration.y, Is.GreaterThan(15f));
-        Assert.That(acceleration.x, Is.LessThan(-3f));
+        Assert.That(BoundaryMath.IsBelowVoidKillPlane(-5f, -0.9f, 4f), Is.True);
+        Assert.That(BoundaryMath.IsBelowVoidKillPlane(-4f, -0.9f, 4f), Is.False);
+        Assert.That(acceleration.y, Is.LessThan(10f));
     }
 
     [Test]
@@ -96,6 +97,23 @@ public sealed class BoundaryMathTests
         Assert.That(BoundaryMatchController.ArenaMassPopulation, Is.EqualTo(20));
         Assert.That(BoundaryMatchController.ArenaMassInnerSurvivors,
             Is.EqualTo(BoundaryMatchController.ArenaMassPopulation / 4));
+    }
+
+    [Test]
+    public void ArenaMasses_AreLargeAndAbilityPulseIsDecisive()
+    {
+        Assert.That(BoundaryMatchController.ArenaMassCubeScale, Is.GreaterThanOrEqualTo(2.8f));
+        Assert.That(BoundaryMatchController.ArenaMassBlackHoleScale, Is.GreaterThanOrEqualTo(1.75f));
+        Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(0f), Is.EqualTo(10f).Within(0.001f));
+        Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(1f), Is.EqualTo(30f).Within(0.001f));
+    }
+
+    [Test]
+    public void ArenaCubesAndGroundBlackHoles_AreLethalOnContact()
+    {
+        Assert.That(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.Cube, true), Is.True);
+        Assert.That(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.ArenaBlackHole, true), Is.True);
+        Assert.That(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.ArenaBlackHole, false), Is.False);
     }
 }
 #endif

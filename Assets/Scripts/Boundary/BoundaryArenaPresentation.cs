@@ -38,9 +38,10 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
     [Header("Wall-jump cover")]
     [SerializeField, Range(4, 12)] private int wallPairsPerTier = 7;
-    [SerializeField, Range(3f, 8f)] private float wallLength = 5.8f;
-    [SerializeField, Range(2.5f, 6f)] private float wallHeight = 4.2f;
-    [SerializeField, Range(3f, 6f)] private float wallPairGap = 4.3f;
+    [SerializeField, Range(3f, 10f)] private float wallLength = 8f;
+    [SerializeField, Range(2.5f, 8f)] private float wallHeight = 5.8f;
+    [SerializeField, Range(3f, 8f)] private float wallPairGap = 5.2f;
+    [SerializeField, Range(0.5f, 3f)] private float wallGroundClearance = 1.15f;
 
     private BoundaryMatchController match;
     private Transform generatedRoot;
@@ -249,7 +250,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             for (int side = -1; side <= 1; side += 2)
             {
                 Vector3 position = center + tangent * (wallPairGap * 0.5f * side);
-                position.y = baseSurfaceY + wallHeight * 0.5f;
+                position.y = baseSurfaceY + wallGroundClearance + wallHeight * 0.5f;
                 CreatePlatform(
                     parent,
                     $"Wall Pair {collapseBand}-{pair:00}-{(side < 0 ? "L" : "R")}",

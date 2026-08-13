@@ -10,6 +10,9 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
     [SerializeField, Min(0.5f)] private float escapeWindowSeconds = 1.6f;
     [SerializeField, Min(1f)] private float horizonHorizontalRadius = 10f;
 
+    [Header("Void")]
+    [SerializeField, Min(1f)] private float voidKillDepthBelowArena = 4f;
+
     private readonly SyncVar<BoundaryKnockoutState> state = new(BoundaryKnockoutState.Grounded, ownerAuth: true);
 
     private PlayerMovement movement;
@@ -35,7 +38,19 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
             return;
 
         BoundaryMatchController match = BoundaryMatchController.Instance;
-        if (match == null || match.Phase == BoundaryPhase.Waiting)
+        if (match == null)
+            return;
+
+        if (BoundaryMath.IsBelowVoidKillPlane(
+                transform.position.y,
+                match.ArenaFloorY,
+                voidKillDepthBelowArena))
+        {
+            ConsumePlayer("You fell into the void.");
+            return;
+        }
+
+        if (match.Phase == BoundaryPhase.Waiting)
         {
             SetState(movement.IsGrounded ? BoundaryKnockoutState.Grounded : BoundaryKnockoutState.Airborne);
             return;
@@ -58,7 +73,7 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
             else if (state.value == BoundaryKnockoutState.EventHorizon &&
                      Time.time - horizonEnteredAt >= escapeWindowSeconds)
             {
-                ConsumePlayer();
+                ConsumePlayer("You crossed the event horizon.");
             }
             return;
         }
@@ -97,7 +112,17 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
             state.value = next;
     }
 
-    private void ConsumePlayer()
+    public void ConsumeFromHazard(string reason)
+    {
+        if (!isOwner)
+            return;
+
+        ConsumePlayer(string.IsNullOrWhiteSpace(reason)
+            ? "You were consumed by the black hole."
+            : reason);
+    }
+
+    private void ConsumePlayer(string reason)
     {
         if (reportedLoss)
             return;
@@ -106,6 +131,6 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
         SetState(BoundaryKnockoutState.Consumed);
         SfxManager.PlayLethalHit();
         if (GameManager.I != null)
-            GameManager.I.ReportLocalPlayerLost("You crossed the event horizon.");
+            GameManager.I.ReportLocalPlayerLost(reason);
     }
 }
