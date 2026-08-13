@@ -120,6 +120,9 @@ public sealed class BoundaryMathTests
         Assert.That(BoundaryMatchController.ArenaMassCubeScale, Is.EqualTo(4.48f).Within(0.001f));
         Assert.That(BoundaryMatchController.ArenaMassBlackHoleScale, Is.EqualTo(2.8f).Within(0.001f));
         Assert.That(BoundaryMatchController.ScaleBoundaryHazard(2f), Is.EqualTo(3.2f).Within(0.001f));
+        Assert.That(BoundaryMatchController.EventHazardSizeMultiplier, Is.EqualTo(1.5f));
+        Assert.That(BoundaryMatchController.ScaleEventBoundaryHazard(2f),
+            Is.EqualTo(4.8f).Within(0.001f));
         Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(0f), Is.EqualTo(0f).Within(0.001f));
         Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(1f), Is.EqualTo(88f).Within(0.001f));
     }
@@ -172,6 +175,14 @@ public sealed class BoundaryMathTests
             Is.EqualTo(BoundaryMath.StableUnit(81017, 3)).Within(0.000001f));
         Assert.That(BoundaryMath.StableUnit(81017, 3),
             Is.Not.EqualTo(BoundaryMath.StableUnit(81017, 4)));
+    }
+
+    [Test]
+    public void WallBands_RemoveInnerCoverAndReduceOuterCover()
+    {
+        Assert.That(BoundaryArenaPresentation.WallCountForBand(7, 0), Is.Zero);
+        Assert.That(BoundaryArenaPresentation.WallCountForBand(7, 1), Is.EqualTo(7));
+        Assert.That(BoundaryArenaPresentation.WallCountForBand(7, 2), Is.EqualTo(5));
     }
 
     [Test]

@@ -10,6 +10,7 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     public const int ArenaMassPopulation = 20;
     public const int ArenaMassInnerSurvivors = 5;
     public const float HazardSizeMultiplier = 1.6f;
+    public const float EventHazardSizeMultiplier = 1.5f;
     public const float ArenaMassCubeScale = 2.8f * HazardSizeMultiplier;
     public const float ArenaMassBlackHoleScale = 1.75f * HazardSizeMultiplier;
 
@@ -520,7 +521,7 @@ public sealed class BoundaryMatchController : NetworkBehaviour
         }
 
         GameObject instance = Instantiate(hazardPrefab, position, Quaternion.identity);
-        instance.transform.localScale = Vector3.one * ScaleBoundaryHazard(scale);
+        instance.transform.localScale = Vector3.one * ScaleEventBoundaryHazard(scale);
         BoundaryHazard hazard = instance.GetComponent<BoundaryHazard>();
         if (hazard == null)
         {
@@ -715,6 +716,11 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     public static float ScaleBoundaryHazard(float authoredScale)
     {
         return Mathf.Max(0f, authoredScale) * HazardSizeMultiplier;
+    }
+
+    public static float ScaleEventBoundaryHazard(float authoredScale)
+    {
+        return ScaleBoundaryHazard(authoredScale) * EventHazardSizeMultiplier;
     }
 
     private uint SecondsToTicks(float seconds)

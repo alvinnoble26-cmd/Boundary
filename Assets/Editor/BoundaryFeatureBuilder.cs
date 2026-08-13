@@ -226,8 +226,10 @@ public static class BoundaryFeatureValidator
         Require(Mathf.Approximately(BoundaryMatchController.HazardSizeMultiplier, 1.6f) &&
                 Mathf.Approximately(BoundaryMatchController.ArenaMassCubeScale, 4.48f) &&
                 Mathf.Approximately(BoundaryMatchController.ArenaMassBlackHoleScale, 2.8f) &&
-                Mathf.Approximately(BoundaryMatchController.ScaleBoundaryHazard(2f), 3.2f),
-            "Boundary cubes and singularity spheres must be uniformly enlarged by 1.6x.");
+                Mathf.Approximately(BoundaryMatchController.ScaleBoundaryHazard(2f), 3.2f) &&
+                Mathf.Approximately(BoundaryMatchController.EventHazardSizeMultiplier, 1.5f) &&
+                Mathf.Approximately(BoundaryMatchController.ScaleEventBoundaryHazard(2f), 4.8f),
+            "Arena hazards must remain 1.6x enlarged and event hazards need the additional 1.5x scale.");
         Require(BoundaryMath.IsBelowVoidKillPlane(-5f, -0.9f, 4f),
             "The platform void must have a lethal fall plane.");
         Require(BoundaryMath.ArenaMassAbilityVelocityChange(1f) >= 88f,
@@ -395,9 +397,11 @@ public static class BoundaryRuntimeSmokeRunner
             RequireSmoke(rampRoot != null && presentation.GeneratedTransitionRampCount >= 70 &&
                          rampRoot.transform.childCount == presentation.GeneratedTransitionRampCount,
                 "Continuous slide ramps were not generated across both raised tier seams.");
-            RequireSmoke(wallRoot != null && wallRoot.transform.childCount == 21,
-                "The arena must generate exactly one wall at each of seven positions per tier.");
+            RequireSmoke(wallRoot != null && wallRoot.transform.childCount == 12,
+                "The arena must generate five outer walls, seven middle walls, and no inner walls.");
             int substantiallyRaisedWalls = 0;
+            int outerWalls = 0;
+            int middleWalls = 0;
             foreach (Transform wall in wallRoot.transform)
             {
                 RequireSmoke(wall.CompareTag("Wall"), wall.name + " is not tagged for wall jumping.");
@@ -406,9 +410,11 @@ public static class BoundaryRuntimeSmokeRunner
                     wall.name + " is not enlarged across length, height, and thickness.");
                 float tierSurface = wall.name.StartsWith("Wall 2")
                     ? controller.OuterPlatformSurfaceY
-                    : wall.name.StartsWith("Wall 1")
-                        ? controller.MiddlePlatformSurfaceY
-                        : controller.InnerPlatformSurfaceY;
+                    : controller.MiddlePlatformSurfaceY;
+                RequireSmoke(!wall.name.StartsWith("Wall 0"),
+                    "Inner-circle wall-jump cover must be completely removed.");
+                if (wall.name.StartsWith("Wall 2")) outerWalls++;
+                if (wall.name.StartsWith("Wall 1")) middleWalls++;
                 float wallBottom = wall.position.y - wall.localScale.y * 0.5f;
                 RequireSmoke(wallBottom >= tierSurface + 1.1f,
                     wall.name + " is not visibly suspended above its platform tier.");
@@ -418,7 +424,9 @@ public static class BoundaryRuntimeSmokeRunner
                 RequireSmoke(Vector3.Dot(wall.forward, towardCenter) >= 0.999f,
                     wall.name + " does not point toward the arena center on all axes.");
             }
-            RequireSmoke(substantiallyRaisedWalls >= 5,
+            RequireSmoke(outerWalls == 5 && middleWalls == 7,
+                "Outer wall cover was not reduced by approximately 25 percent.");
+            RequireSmoke(substantiallyRaisedWalls >= 3,
                 "The randomized wall field did not create enough elevated wall-jump routes.");
             RequireSmoke(GameObject.Find("Vertical Combat Routes") == null,
                 "Random elevated stepping routes must not remain in the arena.");

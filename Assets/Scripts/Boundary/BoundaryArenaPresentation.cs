@@ -304,11 +304,12 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         if (outerDistance <= innerDistance)
             return;
 
-        for (int wallIndex = 0; wallIndex < wallCountPerTier; wallIndex++)
+        int wallCount = WallCountForBand(wallCountPerTier, collapseBand);
+        for (int wallIndex = 0; wallIndex < wallCount; wallIndex++)
         {
             int seed = 81017 + collapseBand * 7919;
             float sectorJitter = Mathf.Lerp(-0.38f, 0.38f, BoundaryMath.StableUnit(seed, wallIndex));
-            float angle = Mathf.PI * 2f * (wallIndex + 0.5f) / wallCountPerTier +
+            float angle = Mathf.PI * 2f * (wallIndex + 0.5f) / wallCount +
                           collapseBand * 0.19f + sectorJitter;
             float radius01 = Mathf.Lerp(0.12f, 0.88f, BoundaryMath.StableUnit(seed + 1, wallIndex));
             float radius = Mathf.Lerp(innerDistance, outerDistance, radius01);
@@ -339,6 +340,16 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
                 indexOffset + wallIndex,
                 true);
         }
+    }
+
+    public static int WallCountForBand(int standardCount, int collapseBand)
+    {
+        int count = Mathf.Max(0, standardCount);
+        if (collapseBand == 0)
+            return 0;
+        if (collapseBand == 2)
+            return Mathf.RoundToInt(count * 0.75f);
+        return count;
     }
 
     private void CreatePlatform(
