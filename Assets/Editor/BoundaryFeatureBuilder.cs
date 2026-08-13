@@ -223,9 +223,11 @@ public static class BoundaryFeatureValidator
         Require(BoundaryMatchController.ArenaMassInnerSurvivors * 4 ==
                 BoundaryMatchController.ArenaMassPopulation,
             "Exactly one quarter of arena masses must reach the inner ring.");
-        Require(BoundaryMatchController.ArenaMassCubeScale >= 2.8f &&
-                BoundaryMatchController.ArenaMassBlackHoleScale >= 1.75f,
-            "Arena cubes and black holes must retain their enlarged silhouettes.");
+        Require(Mathf.Approximately(BoundaryMatchController.HazardSizeMultiplier, 1.6f) &&
+                Mathf.Approximately(BoundaryMatchController.ArenaMassCubeScale, 4.48f) &&
+                Mathf.Approximately(BoundaryMatchController.ArenaMassBlackHoleScale, 2.8f) &&
+                Mathf.Approximately(BoundaryMatchController.ScaleBoundaryHazard(2f), 3.2f),
+            "Boundary cubes and singularity spheres must be uniformly enlarged by 1.6x.");
         Require(BoundaryMath.IsBelowVoidKillPlane(-5f, -0.9f, 4f),
             "The platform void must have a lethal fall plane.");
         Require(BoundaryMath.ArenaMassAbilityVelocityChange(1f) >= 88f,

@@ -116,8 +116,10 @@ public sealed class BoundaryMathTests
     [Test]
     public void ArenaMasses_AreLargeAndAbilityPulseIsDecisive()
     {
-        Assert.That(BoundaryMatchController.ArenaMassCubeScale, Is.GreaterThanOrEqualTo(2.8f));
-        Assert.That(BoundaryMatchController.ArenaMassBlackHoleScale, Is.GreaterThanOrEqualTo(1.75f));
+        Assert.That(BoundaryMatchController.HazardSizeMultiplier, Is.EqualTo(1.6f));
+        Assert.That(BoundaryMatchController.ArenaMassCubeScale, Is.EqualTo(4.48f).Within(0.001f));
+        Assert.That(BoundaryMatchController.ArenaMassBlackHoleScale, Is.EqualTo(2.8f).Within(0.001f));
+        Assert.That(BoundaryMatchController.ScaleBoundaryHazard(2f), Is.EqualTo(3.2f).Within(0.001f));
         Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(0f), Is.EqualTo(0f).Within(0.001f));
         Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(1f), Is.EqualTo(88f).Within(0.001f));
     }
