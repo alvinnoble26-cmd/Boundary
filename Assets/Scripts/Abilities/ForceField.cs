@@ -91,6 +91,15 @@ public class  ForceField : MonoBehaviour
             return;
         }
 
+        // Arena masses have a dedicated authoritative registry. A 220-unit
+        // overlap contains hundreds of floor colliders and can saturate the
+        // fixed query buffer before returning a single cube or black hole.
+        // Applying this pass directly guarantees every mass in range is hit.
+        BoundaryHazard.ServerApplyArenaMassField(
+            center,
+            radius,
+            mode == Mode.Repel);
+
         int count = Physics.OverlapSphereNonAlloc(center, radius, hits, affectMask, triggerInteraction);
 
         for (int i = 0; i < count; i++)
@@ -100,6 +109,10 @@ public class  ForceField : MonoBehaviour
 
             Rigidbody rb = c.attachedRigidbody;
             if (!rb) continue;
+
+            BoundaryHazard registeredHazard = rb.GetComponent<BoundaryHazard>();
+            if (registeredHazard != null && registeredHazard.IsArenaMass)
+                continue;
 
             if (!affectOwner && ownerRb != null && rb == ownerRb)
                 continue;
@@ -141,18 +154,6 @@ public class  ForceField : MonoBehaviour
                     boundaryState.ServerPushOwner(dir * Mathf.Clamp(accel * 0.13f, 6f, 56f));
                     continue;
                 }
-            }
-
-            BoundaryHazard hazard = rb.GetComponent<BoundaryHazard>();
-            if (hazard != null && hazard.IsArenaMass)
-            {
-                // Arena masses are server authoritative and fight the overhead
-                // singularity every physics tick. Give the pulse an immediate,
-                // mass-independent velocity change so Attract/Repel is visible
-                // and tactically reliable on both cubes and black holes.
-                float velocityChange = BoundaryMath.ArenaMassAbilityVelocityChange(f);
-                hazard.ServerApplyAbilityVelocity(dir * velocityChange);
-                continue;
             }
 
             rb.AddForce(dir * accel, ForceMode.Acceleration);

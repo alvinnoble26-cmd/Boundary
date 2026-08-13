@@ -123,6 +123,27 @@ public static class BoundaryMath
         return StableHash(seed, index) / (float)int.MaxValue;
     }
 
+    public static float SingularityProximity01(
+        Vector3 playerPosition,
+        Vector3 singularityPosition,
+        float nearDistance = 7f,
+        float farDistance = 42f)
+    {
+        float distance = Vector3.Distance(playerPosition, singularityPosition);
+        float proximity = Mathf.InverseLerp(
+            Mathf.Max(nearDistance + 0.1f, farDistance),
+            Mathf.Max(0.1f, nearDistance),
+            distance);
+        return EaseInOut(proximity);
+    }
+
+    public static float BoundaryFallGravityMultiplier(float singularityProximity)
+    {
+        // Falling remains responsive away from the core, then progressively
+        // lightens beneath it so its upward pull is not erased by 12x gravity.
+        return Mathf.Lerp(2.2f, 0.85f, Mathf.Clamp01(singularityProximity));
+    }
+
     public static Vector3 PlayerPullAcceleration(
         Vector3 playerPosition,
         Vector3 singularityPosition,
@@ -146,9 +167,14 @@ public static class BoundaryMath
         float edge01 = Mathf.InverseLerp(ringRadius * 0.80f, ringRadius * 1.10f, horizontalDistance);
         float edgeMultiplier = Mathf.Lerp(1f, 1.42f, edge01);
         float footingMultiplier = stableGrounded && !outsideBoundary ? 0.055f : 1f;
+        float proximityMultiplier = Mathf.Lerp(
+            1f,
+            1.3f,
+            SingularityProximity01(playerPosition, singularityPosition));
 
         Vector3 pull = toSingularity.normalized *
-                       (basePull * altitudeMultiplier * edgeMultiplier * footingMultiplier);
+                       (basePull * altitudeMultiplier * edgeMultiplier * footingMultiplier *
+                        proximityMultiplier);
 
         // Once a section has closed, the old floor is no longer safe. This is
         // intentionally recoverable: it pushes inward and upward instead of

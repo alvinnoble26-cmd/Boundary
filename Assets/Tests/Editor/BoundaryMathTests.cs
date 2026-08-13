@@ -147,5 +147,31 @@ public sealed class BoundaryMathTests
 
         Assert.That(elevated.y, Is.EqualTo(2.35f).Within(0.001f));
     }
+
+    [Test]
+    public void SingularityProximity_SmoothlyReducesDownwardGravity()
+    {
+        Vector3 singularity = new Vector3(0f, 32f, 0f);
+        float far = BoundaryMath.SingularityProximity01(Vector3.zero, singularity);
+        float near = BoundaryMath.SingularityProximity01(new Vector3(0f, 25f, 0f), singularity);
+
+        Assert.That(near, Is.GreaterThan(far));
+        Assert.That(BoundaryMath.BoundaryFallGravityMultiplier(near),
+            Is.LessThan(BoundaryMath.BoundaryFallGravityMultiplier(far)));
+        Assert.That(BoundaryMath.BoundaryFallGravityMultiplier(1f), Is.EqualTo(0.85f).Within(0.001f));
+    }
+
+    [Test]
+    public void SingularityPull_GrowsModeratelyWithProximity()
+    {
+        Vector3 singularity = new Vector3(0f, 32f, 0f);
+        Vector3 farPull = BoundaryMath.PlayerPullAcceleration(
+            new Vector3(0f, 4f, 0f), singularity, Vector3.zero, -0.9f, 38f, 2.75f, false);
+        Vector3 nearPull = BoundaryMath.PlayerPullAcceleration(
+            new Vector3(0f, 25f, 0f), singularity, Vector3.zero, -0.9f, 38f, 2.75f, false);
+
+        Assert.That(nearPull.y, Is.GreaterThan(farPull.y));
+        Assert.That(nearPull.y, Is.LessThan(farPull.y * 2.8f));
+    }
 }
 #endif

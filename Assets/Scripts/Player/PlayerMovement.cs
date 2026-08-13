@@ -312,8 +312,9 @@ void HandleWallDetection()
         if (rb.linearVelocity.y < 0f)
         {
             BoundaryMatchController match = BoundaryMatchController.Instance;
-            float activeFallMultiplier = match != null
-                ? Mathf.Lerp(fallGravityMultiplier, 1.45f, match.GravityDominance)
+            float activeFallMultiplier = match != null && match.Phase != BoundaryPhase.Waiting
+                ? BoundaryMath.BoundaryFallGravityMultiplier(
+                    BoundaryMath.SingularityProximity01(rb.position, match.SingularityPosition))
                 : fallGravityMultiplier;
             rb.AddForce(Vector3.up * Physics.gravity.y * (activeFallMultiplier - 1f), ForceMode.Acceleration);
         }

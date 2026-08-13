@@ -223,6 +223,11 @@ public static class BoundaryFeatureValidator
             "The platform void must have a lethal fall plane.");
         Require(BoundaryMath.ArenaMassAbilityVelocityChange(1f) >= 88f,
             "Attract and Repel must decisively move arena masses.");
+        Require(typeof(BoundaryHazard).GetMethod("ServerApplyArenaMassField") != null,
+            "Arena masses need a direct field path that cannot be crowded out by platform colliders.");
+        Require(BoundaryMath.BoundaryFallGravityMultiplier(1f) < 1f &&
+                BoundaryMath.BoundaryFallGravityMultiplier(0f) <= 2.2f,
+            "Downward gravity must ease smoothly near the singularity.");
         SerializedObject controllerSettings = new SerializedObject(controller);
         Require(controllerSettings.FindProperty("outerPull").floatValue <= 0.325f &&
                 controllerSettings.FindProperty("middlePull").floatValue <= 1.05f &&

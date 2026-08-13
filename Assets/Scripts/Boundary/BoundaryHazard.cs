@@ -328,6 +328,55 @@ public sealed class BoundaryHazard : NetworkBehaviour
             body.linearVelocity = body.linearVelocity.normalized * 100f;
     }
 
+    public static int ServerApplyArenaMassField(Vector3 center, float radius, bool outward)
+    {
+        if (radius <= 0f)
+            return 0;
+
+        int affected = 0;
+        for (int i = ActiveHazards.Count - 1; i >= 0; i--)
+        {
+            BoundaryHazard hazard = ActiveHazards[i];
+            if (hazard == null)
+            {
+                ActiveHazards.RemoveAt(i);
+                continue;
+            }
+
+            if (!hazard.isServer || !hazard.arenaMass.value || hazard.absorptionStarted ||
+                hazard.body == null)
+            {
+                continue;
+            }
+
+            Vector3 offset = hazard.body.position - center;
+            float distance = offset.magnitude;
+            if (distance < 0.01f || distance > radius)
+                continue;
+
+            float normalizedDistance = Mathf.Clamp01(distance / radius);
+            float influence = 1f - BoundaryMath.EaseInOut(normalizedDistance);
+            Vector3 direction = offset / distance;
+            if (!outward)
+                direction = -direction;
+
+            // Authority resolution may briefly leave a newly spawned arena
+            // mass kinematic. Since this executes on the server and arena
+            // masses are always dynamic outside absorption, restore it here.
+            if (hazard.body.isKinematic)
+            {
+                hazard.body.isKinematic = false;
+                hazard.body.useGravity = false;
+            }
+
+            hazard.ServerApplyAbilityVelocity(
+                direction * BoundaryMath.ArenaMassAbilityVelocityChange(influence));
+            affected++;
+        }
+
+        return affected;
+    }
+
     public void ServerPulse(bool outward)
     {
         if (!isServer || body == null || body.isKinematic)
