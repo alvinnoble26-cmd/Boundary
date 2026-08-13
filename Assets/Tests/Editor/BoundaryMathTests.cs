@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -298,6 +299,114 @@ public sealed class BoundaryMathTests
         finally
         {
             Object.DestroyImmediate(canvasObject);
+        }
+    }
+
+    [Test]
+    public void FirstPersonCamera_UsesEyePoseWithoutThirdPersonOffset()
+    {
+        Vector3 playerPosition = new Vector3(10f, 2f, 3f);
+        Vector3 localEyeOffset = new Vector3(0f, 0.52f, 0.08f);
+        Vector3 eyePosition = Cam.CalculateFirstPersonEyePosition(
+            playerPosition,
+            90f,
+            localEyeOffset);
+        Quaternion viewRotation = Cam.CalculateFirstPersonViewRotation(-30f, 90f);
+
+        Assert.That(eyePosition.x, Is.EqualTo(10.08f).Within(0.001f));
+        Assert.That(eyePosition.y, Is.EqualTo(2.52f).Within(0.001f));
+        Assert.That(eyePosition.z, Is.EqualTo(3f).Within(0.001f));
+        Assert.That(Quaternion.Angle(viewRotation, Quaternion.Euler(-30f, 90f, 0f)),
+            Is.LessThan(0.001f));
+    }
+
+    [Test]
+    public void FirstPersonCamera_UsesPerspectiveAndClippingSafeLens()
+    {
+        GameObject cameraObject = new GameObject("First Person Camera Test", typeof(Camera));
+        try
+        {
+            Camera unityCamera = cameraObject.GetComponent<Camera>();
+            unityCamera.orthographic = true;
+            unityCamera.nearClipPlane = 0.3f;
+            unityCamera.fieldOfView = 30f;
+
+            Cam.ConfigureFirstPersonCamera(
+                unityCamera,
+                Cam.DefaultFirstPersonNearClip,
+                Cam.DefaultFirstPersonFieldOfView);
+
+            Assert.That(unityCamera.orthographic, Is.False);
+            Assert.That(unityCamera.nearClipPlane,
+                Is.EqualTo(Cam.DefaultFirstPersonNearClip).Within(0.001f));
+            Assert.That(unityCamera.fieldOfView,
+                Is.EqualTo(Cam.DefaultFirstPersonFieldOfView).Within(0.001f));
+        }
+        finally
+        {
+            Object.DestroyImmediate(cameraObject);
+        }
+    }
+
+    [Test]
+    public void FirstPersonOwner_HidesOnlyItsBodyRenderersAndRestoresTheirState()
+    {
+        GameObject player = new GameObject("First Person Player Test");
+        try
+        {
+            GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            visual.name = "Visual";
+            visual.transform.SetParent(player.transform, false);
+            Renderer bodyRenderer = visual.GetComponent<Renderer>();
+
+            GameObject eye = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            eye.name = "eye";
+            eye.transform.SetParent(player.transform, false);
+            Renderer eyeRenderer = eye.GetComponent<Renderer>();
+            eyeRenderer.forceRenderingOff = true;
+
+            GameObject pivot = new GameObject("CameraPivot");
+            pivot.transform.SetParent(player.transform, false);
+            Cam cameraController = pivot.AddComponent<Cam>();
+
+            cameraController.SetLocalVisualVisibility(true);
+            Assert.That(bodyRenderer.forceRenderingOff, Is.True);
+            Assert.That(eyeRenderer.forceRenderingOff, Is.True);
+
+            cameraController.SetLocalVisualVisibility(false);
+            Assert.That(bodyRenderer.forceRenderingOff, Is.False);
+            Assert.That(eyeRenderer.forceRenderingOff, Is.True,
+                "A renderer hidden before first-person setup must stay hidden.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(player);
+        }
+    }
+
+    [Test]
+    public void TouchLookDelta_IsConsumedExactlyOnce()
+    {
+        GameObject eventSystemObject = new GameObject("Look Event System", typeof(EventSystem));
+        GameObject lookObject = new GameObject("Touch Look Test");
+        try
+        {
+            TouchLookHandler look = lookObject.AddComponent<TouchLookHandler>();
+            PointerEventData pointer = new PointerEventData(eventSystemObject.GetComponent<EventSystem>())
+            {
+                delta = new Vector2(12f, -7f)
+            };
+
+            look.OnPointerDown(pointer);
+            look.OnDrag(pointer);
+
+            Assert.That(look.ConsumeLookDelta(), Is.EqualTo(new Vector2(12f, -7f)));
+            Assert.That(look.ConsumeLookDelta(), Is.EqualTo(Vector2.zero));
+        }
+        finally
+        {
+            Object.DestroyImmediate(lookObject);
+            Object.DestroyImmediate(eventSystemObject);
         }
     }
 

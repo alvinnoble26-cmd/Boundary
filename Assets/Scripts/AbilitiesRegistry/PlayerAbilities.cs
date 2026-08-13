@@ -47,17 +47,23 @@ protected override void OnOwnerChanged(PlayerID? oldOwner, PlayerID? newOwner, b
 
 private void SetupLocalPlayer()
 {
-    // Enable Camera
-    Camera cam = GetComponentInChildren<Camera>(true);
-    if (cam != null)
+    // Cam owns the Camera and AudioListener lifecycle. Enabling either one
+    // here races its first-person setup and can expose the prefab's stale
+    // third-person transform for a frame during spawn or respawn.
+    Cam cameraController = GetComponentInChildren<Cam>(true);
+    if (cameraController == null)
     {
-        cam.enabled = true;
-        cam.gameObject.tag = "MainCamera";
-        Debug.Log("[PlayerAbilities] Camera Enabled.");
-    }
+        Camera legacyCamera = GetComponentInChildren<Camera>(true);
+        if (legacyCamera != null)
+        {
+            legacyCamera.enabled = true;
+            legacyCamera.gameObject.tag = "MainCamera";
+        }
 
-    AudioListener listener = GetComponentInChildren<AudioListener>(true);
-    if (listener != null) listener.enabled = true;
+        AudioListener legacyListener = GetComponentInChildren<AudioListener>(true);
+        if (legacyListener != null)
+            legacyListener.enabled = true;
+    }
 
     try
     {
@@ -134,7 +140,11 @@ private void ApplySkinVisual(string skinId)
     bool useCustomSkin = useSun || useTurtle;
     if (beardBody != null) beardBody.gameObject.SetActive(!useCustomSkin);
     if (beardEye != null) beardEye.gameObject.SetActive(!useCustomSkin);
-    if (!useCustomSkin || tilt == null) return;
+    if (!useCustomSkin || tilt == null)
+    {
+        RefreshLocalFirstPersonVisuals();
+        return;
+    }
 
     string templateName = useTurtle ? "Turtle" : "Sun Ducker";
     Transform source = FindSkinTemplateInScene(gameObject.scene, templateName);
@@ -143,6 +153,7 @@ private void ApplySkinVisual(string skinId)
         Debug.LogError($"[PlayerAbilities] Game scene skin template 'skins/{templateName}' was not found.");
         if (beardBody != null) beardBody.gameObject.SetActive(true);
         if (beardEye != null) beardEye.gameObject.SetActive(true);
+        RefreshLocalFirstPersonVisuals();
         return;
     }
 
@@ -158,6 +169,14 @@ private void ApplySkinVisual(string skinId)
         Destroy(collider);
     foreach (Rigidbody body in clone.GetComponentsInChildren<Rigidbody>(true))
         Destroy(body);
+    RefreshLocalFirstPersonVisuals();
+}
+
+private void RefreshLocalFirstPersonVisuals()
+{
+    Cam cameraController = GetComponentInChildren<Cam>(true);
+    if (cameraController != null)
+        cameraController.RefreshLocalFirstPersonVisuals();
 }
 
 public static Transform FindSkinTemplateInScene(Scene scene, string templateName)

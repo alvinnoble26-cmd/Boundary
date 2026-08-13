@@ -29,9 +29,13 @@ public class TouchLookHandler : MonoBehaviour, IDragHandler, IPointerDownHandler
         LookDelta = Vector2.zero;
     }
 
-    void LateUpdate()
+    public Vector2 ConsumeLookDelta()
     {
-        // Important: consume the delta each frame so it doesn't "stick"
+        // The camera consumes each pointer delta exactly once. Clearing this in
+        // LateUpdate made look input depend on script execution order: on some
+        // frames the UI cleared it before the camera could read it.
+        Vector2 value = LookDelta;
         LookDelta = Vector2.zero;
+        return value;
     }
 }

@@ -1,207 +1,351 @@
-using UnityEngine;
-using PurrNet;
 using System.Collections;
-using UnityEngine.Rendering.Universal; // Required for URP data
+using System.Collections.Generic;
+using PurrNet;
+using UnityEngine;
+using UnityEngine.Rendering.Universal;
 
-
-
-public class Cam : NetworkBehaviour 
+public class Cam : NetworkBehaviour
 {
-    
+    public const float DefaultFirstPersonNearClip = 0.05f;
+    public const float DefaultFirstPersonFieldOfView = 85f;
+    public const float DefaultLookDegreesPerPixel = 0.32f;
+
     [Header("Sensitivity")]
-    public float xSens = 15f; 
-    public float ySens = 15f;
+    public float xSens = ControlLayoutSettings.DefaultCameraSensitivity;
+    public float ySens = ControlLayoutSettings.DefaultCameraSensitivity;
 
     [Header("Refs")]
     public Transform orientation;
-    public Transform cam;      // Drag the 'Main Camera' child here
-    public Transform camPivot; // Drag the 'CameraPivot' child here
+    public Transform cam;
+    public Transform camPivot;
 
     [Header("Mobile Settings")]
     public TouchLookHandler swipe;
-    public Vector3 camOffset = new Vector3(0f, 1.6f, -4f);
 
-    [Header("Camera Limits & Collision")]
-    [SerializeField] private float minPitch = -35f;
-    [SerializeField] private float maxPitch = 55f;
-    [SerializeField] private float collisionRadius = 0.2f;
-    [SerializeField] private float collisionPadding = 0.08f;
-    [SerializeField] private LayerMask collisionMask = ~0;
+    [Header("First Person View")]
+    [SerializeField] private Vector3 firstPersonEyeOffset = new Vector3(0f, 0.52f, 0.08f);
+    [SerializeField, Range(-89f, -45f)] private float firstPersonMinPitch = -85f;
+    [SerializeField, Range(45f, 89f)] private float firstPersonMaxPitch = 85f;
+    [SerializeField, Range(0.01f, 0.2f)] private float firstPersonNearClip = DefaultFirstPersonNearClip;
+    [SerializeField, Range(60f, 110f)] private float firstPersonFieldOfView = DefaultFirstPersonFieldOfView;
+    [SerializeField, Range(0.05f, 0.5f)] private float lookDegreesPerPixelAtDefault = DefaultLookDegreesPerPixel;
 
+    [Header("First Person Obstruction Protection")]
+    [SerializeField, Range(0.02f, 0.2f)] private float obstructionRadius = 0.07f;
+    [SerializeField, Range(0.005f, 0.1f)] private float obstructionPadding = 0.025f;
+    [SerializeField] private LayerMask obstructionMask = ~0;
+
+    private readonly RaycastHit[] obstructionHits = new RaycastHit[16];
+    private readonly Dictionary<Renderer, bool> localRendererStates = new Dictionary<Renderer, bool>();
+    private Transform playerRoot;
     private float pitch;
     private float yaw;
-    private bool isReady = false;
-    private readonly RaycastHit[] collisionHits = new RaycastHit[12];
+    private bool isReady;
+    private bool setupRoutineRunning;
 
     protected override void OnSpawned()
     {
-            if (cam != null)
-    {
-        if (cam.TryGetComponent<Camera>(out var c)) c.enabled = false;
-        if (cam.TryGetComponent<AudioListener>(out var a)) a.enabled = false;
+        SetCameraComponentsEnabled(false);
+        BeginOwnerSetup();
     }
+
+    protected override void OnOwnerChanged(PlayerID? oldOwner, PlayerID? newOwner, bool asServer)
+    {
+        if (asServer)
+            return;
+
+        if (isOwner)
+        {
+            BeginOwnerSetup();
+        }
+        else
+        {
+            StopAllCoroutines();
+            setupRoutineRunning = false;
+            DeactivateOwnerView();
+        }
+    }
+
+    private void OnDisable()
+    {
+        setupRoutineRunning = false;
+        DeactivateOwnerView();
+    }
+
+    private void BeginOwnerSetup()
+    {
+        if (!isActiveAndEnabled || isReady || setupRoutineRunning)
+            return;
 
         StartCoroutine(SetupCameraRoutine());
     }
 
-private IEnumerator SetupCameraRoutine()
-{
-    float savedSensitivity = ControlLayoutSettings.LoadCameraSensitivity();
-    xSens = savedSensitivity;
-    ySens = savedSensitivity;
-
-    float t = 0f;
-    while (!isOwner && t < 10f)
+    private IEnumerator SetupCameraRoutine()
     {
-        t += 0.1f;
-        yield return new WaitForSeconds(0.1f);
-    }
-    
-    if (!isOwner)
-    {
-        Debug.LogError("[Cam] Ownership never arrived.");
-        yield break;
-    }
-    yield return new WaitUntil(() => isOwner);
+        setupRoutineRunning = true;
 
-    // Disable all OTHER cameras/listeners
-    foreach (var c in Object.FindObjectsByType<Camera>(FindObjectsSortMode.None))
-    {
-        if (cam != null && c.transform == cam) continue;
-        c.enabled = false;
-    }
-    foreach (var a in Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None))
-    {
-        if (cam != null && a.transform == cam) continue;
-        a.enabled = false;
-    }
+        // Ownership can arrive shortly after the network object itself. A
+        // non-owned clone simply times out with its camera disabled; it is not
+        // an error and must remain visible to the actual owner.
+        float timeoutAt = Time.realtimeSinceStartup + 10f;
+        while (!isOwner && Time.realtimeSinceStartup < timeoutAt)
+            yield return new WaitForSecondsRealtime(0.05f);
 
-    if (swipe == null)
-        swipe = Object.FindFirstObjectByType<TouchLookHandler>();
+        if (!isOwner)
+        {
+            setupRoutineRunning = false;
+            yield break;
+        }
 
-    if (cam == null)
-    {
-        Debug.LogError("[Cam] cam Transform is NOT assigned on the prefab!");
-        yield break;
-    }
+        ResolveReferences();
+        if (cam == null)
+        {
+            Debug.LogError("[Cam] The player prefab has no assigned first-person Camera transform.");
+            setupRoutineRunning = false;
+            yield break;
+        }
 
-    // Make sure the camera object is actually active
-    cam.gameObject.SetActive(true);
+        float savedSensitivity = ControlLayoutSettings.LoadCameraSensitivity();
+        xSens = savedSensitivity;
+        ySens = savedSensitivity;
 
-    if (cam.TryGetComponent<Camera>(out var unityCamera))
-    {
+        DisableOtherCamerasAndListeners();
+
+        GameObject fallback = GameObject.Find("FallbackCamera");
+        if (fallback != null)
+            fallback.SetActive(false);
+
+        if (swipe == null)
+            swipe = Object.FindFirstObjectByType<TouchLookHandler>();
+
+        Camera unityCamera = cam.GetComponent<Camera>();
+        if (unityCamera == null)
+        {
+            Debug.LogError("[Cam] The assigned first-person Camera transform has no Camera component.");
+            setupRoutineRunning = false;
+            yield break;
+        }
+
+        cam.gameObject.SetActive(true);
+        ConfigureFirstPersonCamera(unityCamera, firstPersonNearClip, firstPersonFieldOfView);
         unityCamera.gameObject.tag = "MainCamera";
-        unityCamera.enabled = true;
+        unityCamera.targetDisplay = 0;
+        unityCamera.targetTexture = null;
+        unityCamera.depth = 10f;
 
-        unityCamera.targetDisplay = 0;     // Display 1
-        unityCamera.targetTexture = null;  // MUST be null to render to Game view
-        unityCamera.depth = 10;
+        if (cam.TryGetComponent<UniversalAdditionalCameraData>(out UniversalAdditionalCameraData data))
+            data.renderType = CameraRenderType.Base;
 
-        Debug.Log($"[Cam] Camera enabled. display={unityCamera.targetDisplay} targetTexture={(unityCamera.targetTexture ? unityCamera.targetTexture.name : "null")}");
-    }
-    else
-    {
-        Debug.LogError("[Cam] No Camera component found on cam Transform.");
-    }
+        yaw = orientation != null ? orientation.eulerAngles.y : playerRoot.eulerAngles.y;
+        pitch = 0f;
+        isReady = true;
 
-    if (cam.TryGetComponent<AudioListener>(out var listener))
-    {
-        listener.enabled = true;
-        Debug.Log("[Cam] AudioListener enabled = " + listener.enabled);
-    }
-    else
-    {
-        Debug.LogError("[Cam] No AudioListener component found on cam Transform.");
+        // Establish the eye pose and hide the local body before the camera is
+        // enabled, preventing a one-frame flash of the old third-person pose.
+        UpdateFirstPersonPose(Vector2.zero);
+        SetLocalVisualVisibility(true);
+        SetCameraComponentsEnabled(true);
+
+        setupRoutineRunning = false;
+        Debug.Log("[Cam] Owner first-person camera enabled.");
     }
 
-    if (cam.TryGetComponent<UniversalAdditionalCameraData>(out var data))
+    private void LateUpdate()
     {
-        data.renderType = CameraRenderType.Base;
+        if (!isOwner || !isReady)
+            return;
+
+        Vector2 lookDelta = swipe != null ? swipe.ConsumeLookDelta() : Vector2.zero;
+        UpdateFirstPersonPose(lookDelta);
     }
 
-    yaw = orientation.eulerAngles.y;
-    isReady = true;
-}
-
-
-    void LateUpdate()
+    private void ResolveReferences()
     {
-        // Only the owner should calculate camera movement
-        if (!isOwner || !isReady) return;
-        var fallback = GameObject.Find("FallbackCamera");
-        if (fallback) fallback.SetActive(false);
+        PlayerMovement movement = GetComponentInParent<PlayerMovement>();
+        playerRoot = movement != null ? movement.transform : transform.root;
 
+        if (orientation == null)
+            orientation = movement != null && movement.orientation != null
+                ? movement.orientation
+                : playerRoot;
+        if (camPivot == null)
+            camPivot = transform;
+    }
 
-        Vector2 lookDelta = swipe != null ? swipe.LookDelta : Vector2.zero;
+    private void UpdateFirstPersonPose(Vector2 lookDelta)
+    {
+        if (playerRoot == null)
+            ResolveReferences();
 
-        // Read the cached live preference so a camera that survives a menu or
-        // networking transition still receives newly saved sensitivity values.
         float activeSensitivity = ControlLayoutSettings.LoadCameraSensitivity();
         xSens = activeSensitivity;
         ySens = activeSensitivity;
+        float sensitivityScale = activeSensitivity / ControlLayoutSettings.DefaultCameraSensitivity;
+        float degreesPerPixel = lookDegreesPerPixelAtDefault * sensitivityScale;
 
-        // Apply sensitivity and time smoothing
-        yaw += lookDelta.x * Time.deltaTime * xSens;
-        pitch -= lookDelta.y * Time.deltaTime * ySens;
-        pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
-        if (orientation == null) orientation = transform;
-        if (camPivot == null) camPivot = transform;
+        yaw += lookDelta.x * degreesPerPixel;
+        pitch = Mathf.Clamp(
+            pitch - lookDelta.y * degreesPerPixel,
+            firstPersonMinPitch,
+            firstPersonMaxPitch);
 
+        Quaternion yawRotation = Quaternion.Euler(0f, yaw, 0f);
+        Quaternion viewRotation = CalculateFirstPersonViewRotation(pitch, yaw);
+        if (orientation != null)
+            orientation.rotation = yawRotation;
 
-        // Update rotations
-        orientation.rotation = Quaternion.Euler(0f, yaw, 0f);
-        camPivot.rotation = Quaternion.Euler(pitch, yaw, 0f);
+        Vector3 desiredEyePosition = CalculateFirstPersonEyePosition(
+            playerRoot.position,
+            yaw,
+            firstPersonEyeOffset);
+        Vector3 safeEyePosition = ResolveObstructionSafeEyePosition(desiredEyePosition);
 
-        // Pull the camera in front of walls instead of letting the near clip
-        // plane pass through them and reveal the other side.
-        Vector3 desiredPosition = camPivot.TransformPoint(camOffset);
-        Vector3 castOrigin = camPivot.position;
-        Vector3 castVector = desiredPosition - castOrigin;
+        if (camPivot != null)
+            camPivot.SetPositionAndRotation(safeEyePosition, viewRotation);
+        cam.SetPositionAndRotation(safeEyePosition, viewRotation);
+    }
+
+    private Vector3 ResolveObstructionSafeEyePosition(Vector3 desiredEyePosition)
+    {
+        Vector3 castOrigin = playerRoot != null ? playerRoot.position : desiredEyePosition;
+        Vector3 castVector = desiredEyePosition - castOrigin;
         float castDistance = castVector.magnitude;
-        Vector3 castDirection = castDistance > 0.001f
-            ? castVector / castDistance
-            : Vector3.back;
-        float nearestHitDistance = castDistance;
-        bool cameraBlocked = false;
-        int hitCount = castDistance > 0.001f
-            ? Physics.SphereCastNonAlloc(
-                castOrigin,
-                collisionRadius,
-                castDirection,
-                collisionHits,
-                castDistance,
-                collisionMask,
-                QueryTriggerInteraction.Ignore)
-            : 0;
+        if (castDistance <= 0.001f)
+            return desiredEyePosition;
+
+        Vector3 castDirection = castVector / castDistance;
+        float nearestDistance = castDistance;
+        int hitCount = Physics.SphereCastNonAlloc(
+            castOrigin,
+            obstructionRadius,
+            castDirection,
+            obstructionHits,
+            castDistance,
+            obstructionMask,
+            QueryTriggerInteraction.Ignore);
 
         for (int i = 0; i < hitCount; i++)
         {
-            Collider hitCollider = collisionHits[i].collider;
-            if (hitCollider == null || hitCollider.transform.root == transform.root)
+            Collider hitCollider = obstructionHits[i].collider;
+            if (hitCollider == null || hitCollider.transform.root == playerRoot)
                 continue;
-
-            // Thrown abilities are gameplay objects, not camera-obstructing
-            // level geometry. Ignoring them prevents a spawn or fly-by from
-            // snapping the third-person camera into the player.
             if (hitCollider.GetComponentInParent<NetworkProjectilePhysics>() != null)
                 continue;
 
-            if (collisionHits[i].distance < nearestHitDistance)
-            {
-                nearestHitDistance = collisionHits[i].distance;
-                cameraBlocked = true;
-            }
+            nearestDistance = Mathf.Min(nearestDistance, obstructionHits[i].distance);
         }
 
-        if (cameraBlocked)
+        if (nearestDistance >= castDistance)
+            return desiredEyePosition;
+
+        float safeDistance = Mathf.Max(0f, nearestDistance - obstructionPadding);
+        return castOrigin + castDirection * safeDistance;
+    }
+
+    private void DisableOtherCamerasAndListeners()
+    {
+        foreach (Camera otherCamera in Object.FindObjectsByType<Camera>(FindObjectsSortMode.None))
         {
-            float safeDistance = Mathf.Max(0.05f, nearestHitDistance - collisionPadding);
-            cam.position = castOrigin + castDirection * safeDistance;
+            if (cam != null && otherCamera.transform == cam)
+                continue;
+            otherCamera.enabled = false;
         }
-        else
+
+        foreach (AudioListener otherListener in Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None))
         {
-            cam.position = desiredPosition;
+            if (cam != null && otherListener.transform == cam)
+                continue;
+            otherListener.enabled = false;
         }
-        cam.LookAt(camPivot.position);
+    }
+
+    private void SetCameraComponentsEnabled(bool enabled)
+    {
+        if (cam == null)
+            return;
+
+        if (cam.TryGetComponent<Camera>(out Camera unityCamera))
+            unityCamera.enabled = enabled;
+        if (cam.TryGetComponent<AudioListener>(out AudioListener listener))
+            listener.enabled = enabled;
+    }
+
+    private void DeactivateOwnerView()
+    {
+        isReady = false;
+        SetCameraComponentsEnabled(false);
+        SetLocalVisualVisibility(false);
+    }
+
+    public void RefreshLocalFirstPersonVisuals()
+    {
+        if (isOwner && isReady)
+            SetLocalVisualVisibility(true);
+    }
+
+    public void SetLocalVisualVisibility(bool hiddenFromOwner)
+    {
+        if (playerRoot == null)
+        {
+            PlayerMovement movement = GetComponentInParent<PlayerMovement>();
+            playerRoot = movement != null ? movement.transform : transform.root;
+        }
+
+        if (!hiddenFromOwner)
+        {
+            foreach (KeyValuePair<Renderer, bool> state in localRendererStates)
+            {
+                if (state.Key != null)
+                    state.Key.forceRenderingOff = state.Value;
+            }
+            localRendererStates.Clear();
+            return;
+        }
+
+        HideRenderer(playerRoot.GetComponent<Renderer>());
+        HideRenderersUnder(playerRoot.Find("Visual"));
+        HideRenderersUnder(playerRoot.Find("eye"));
+    }
+
+    private void HideRenderersUnder(Transform visualRoot)
+    {
+        if (visualRoot == null)
+            return;
+
+        foreach (Renderer renderer in visualRoot.GetComponentsInChildren<Renderer>(true))
+            HideRenderer(renderer);
+    }
+
+    private void HideRenderer(Renderer renderer)
+    {
+        if (renderer == null)
+            return;
+
+        if (!localRendererStates.ContainsKey(renderer))
+            localRendererStates.Add(renderer, renderer.forceRenderingOff);
+        renderer.forceRenderingOff = true;
+    }
+
+    public static Vector3 CalculateFirstPersonEyePosition(
+        Vector3 playerPosition,
+        float yawDegrees,
+        Vector3 localEyeOffset)
+    {
+        return playerPosition + Quaternion.Euler(0f, yawDegrees, 0f) * localEyeOffset;
+    }
+
+    public static Quaternion CalculateFirstPersonViewRotation(float pitchDegrees, float yawDegrees)
+    {
+        return Quaternion.Euler(pitchDegrees, yawDegrees, 0f);
+    }
+
+    public static void ConfigureFirstPersonCamera(Camera unityCamera, float nearClip, float fieldOfView)
+    {
+        if (unityCamera == null)
+            return;
+
+        unityCamera.orthographic = false;
+        unityCamera.nearClipPlane = Mathf.Clamp(nearClip, 0.01f, 0.2f);
+        unityCamera.fieldOfView = Mathf.Clamp(fieldOfView, 60f, 110f);
     }
 }

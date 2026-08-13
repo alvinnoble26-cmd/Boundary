@@ -185,6 +185,16 @@ public static class BoundaryFeatureValidator
         Require(player != null && player.GetComponent<BoundaryPlayerState>() != null,
             "Player prefab is missing its owner-authoritative Boundary state.");
         Require(player.GetComponent<PlayerMovement>() != null, "Player prefab has no movement component.");
+        Cam playerCameraController = player.GetComponentInChildren<Cam>(true);
+        Camera playerCamera = player.GetComponentInChildren<Camera>(true);
+        Require(playerCameraController != null && playerCamera != null,
+            "Player prefab is missing its owner-controlled first-person camera.");
+        SerializedObject firstPersonCamera = new SerializedObject(playerCameraController);
+        Require(firstPersonCamera.FindProperty("firstPersonEyeOffset") != null &&
+                firstPersonCamera.FindProperty("firstPersonMinPitch").floatValue <= -80f &&
+                firstPersonCamera.FindProperty("firstPersonMaxPitch").floatValue >= 80f &&
+                firstPersonCamera.FindProperty("firstPersonNearClip").floatValue <= 0.05f,
+            "First-person eye pose, look range, or near clipping protection is not configured.");
         SerializedObject attractThrow = new SerializedObject(player.GetComponent<AttractThrow>());
         SerializedObject repelThrow = new SerializedObject(player.GetComponent<RepelThrow>());
         Require(attractThrow.FindProperty("launchHeightAbovePlayerCenter").floatValue >= 1.3f &&
@@ -265,7 +275,7 @@ public static class BoundaryFeatureValidator
         Require(disasterCount == 8,
             "Reverse Current and False Singularities must be removed; exactly eight disasters must remain.");
 
-        Debug.Log("[BoundaryFeatureValidator] PASS — seamless sliding floor, continuous tier ramps, lethal masses/void, floating walls, ability physics, corruption, authority, and all 8 events validated.");
+        Debug.Log("[BoundaryFeatureValidator] PASS — first-person ownership/camera safety, seamless sliding floor, continuous tier ramps, lethal masses/void, floating walls, ability physics, corruption, authority, and all 8 events validated.");
     }
 
     private static void Require(bool condition, string message)
