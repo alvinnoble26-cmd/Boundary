@@ -64,7 +64,7 @@ public class ControlLayoutEditorUI : MonoBehaviour
         sensitivityValue = CreateText(topBar, string.Empty, 22, TextAnchor.MiddleLeft, Color.white,
             new Vector2(0.5f, 1f), new Vector2(292f, -81f), new Vector2(100f, 40f));
 
-        CreateText(topBar, "Drag a control to move it. Drag its + corner to resize it.", 18,
+        CreateText(topBar, "Drag controls to move them. The centered crosshair is size-only.", 18,
             TextAnchor.MiddleCenter, new Color(0.68f, 0.84f, 1f, 1f),
             new Vector2(0.5f, 1f), new Vector2(0f, -126f), new Vector2(620f, 32f));
 
@@ -73,6 +73,7 @@ public class ControlLayoutEditorUI : MonoBehaviour
         CreateControlWidget("A1", 150f, new Color(0.12f, 0.42f, 0.82f, 0.90f));
         CreateControlWidget("A2", 150f, new Color(0.12f, 0.42f, 0.82f, 0.90f));
         CreateControlWidget("A3", 150f, new Color(0.12f, 0.42f, 0.82f, 0.90f));
+        CreateCrosshairWidget();
 
         editorPanel.SetActive(false);
         UpdateEditButtonVisibility();
@@ -170,6 +171,47 @@ public class ControlLayoutEditorUI : MonoBehaviour
         handleGraphic.gameObject.AddComponent<ControlResizeHandle>().Initialize(widget);
 
         widgets[id] = widget;
+    }
+
+    private void CreateCrosshairWidget()
+    {
+        GameObject root = new GameObject(ControlLayoutSettings.CrosshairControlId, typeof(RectTransform));
+        root.layer = 5;
+        root.transform.SetParent(workspace, false);
+        RectTransform rect = (RectTransform)root.transform;
+        EditableControlWidget widget = root.AddComponent<EditableControlWidget>();
+        widget.Initialize(ControlLayoutSettings.CrosshairControlId,
+            ControlLayoutSettings.CrosshairBaseSize, workspace, false);
+
+        CreateCrosshairBar(rect, "Horizontal", true);
+        CreateCrosshairBar(rect, "Vertical", false);
+
+        Image handleImage = CreateImage(rect, "ResizeHandle", new Color(0.78f, 0.90f, 1f, 1f));
+        RectTransform handle = handleImage.rectTransform;
+        handle.anchorMin = new Vector2(1f, 0f);
+        handle.anchorMax = new Vector2(1f, 0f);
+        handle.pivot = Vector2.one * 0.5f;
+        handle.anchoredPosition = Vector2.zero;
+        handle.sizeDelta = new Vector2(30f, 30f);
+        CreateText(handle, "+", 22, TextAnchor.MiddleCenter, DeepNavy,
+            Vector2.one * 0.5f, Vector2.zero, Vector2.zero, true);
+        handleImage.gameObject.AddComponent<ControlResizeHandle>().Initialize(widget);
+
+        CreateText(rect, "SIZE ONLY", 12, TextAnchor.MiddleCenter, Color.white,
+            new Vector2(0.5f, 0f), new Vector2(0f, -18f), new Vector2(100f, 24f));
+        widgets[ControlLayoutSettings.CrosshairControlId] = widget;
+    }
+
+    private static void CreateCrosshairBar(Transform parent, string name, bool horizontal)
+    {
+        Image image = CreateImage(parent, name, Color.white);
+        image.raycastTarget = false;
+        RectTransform rect = image.rectTransform;
+        rect.anchorMin = horizontal ? new Vector2(0.14f, 0.44f) : new Vector2(0.44f, 0.14f);
+        rect.anchorMax = horizontal ? new Vector2(0.86f, 0.56f) : new Vector2(0.56f, 0.86f);
+        rect.pivot = Vector2.one * 0.5f;
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = Vector2.zero;
     }
 
     private static Image CreateImage(Transform parent, string name, Color color)

@@ -53,13 +53,15 @@ public class EditableControlWidget : MonoBehaviour, IBeginDragHandler, IDragHand
     private RectTransform rect;
     private RectTransform workspace;
     private Vector2 dragOffset;
+    private bool canMove = true;
 
-    public void Initialize(string controlId, float baseSize, RectTransform parentWorkspace)
+    public void Initialize(string controlId, float baseSize, RectTransform parentWorkspace, bool allowMovement = true)
     {
         ControlId = controlId;
         BaseSize = baseSize;
         workspace = parentWorkspace;
         rect = (RectTransform)transform;
+        canMove = allowMovement;
     }
 
     public void Apply(ControlLayoutSettings.ControlEntry entry)
@@ -68,7 +70,9 @@ public class EditableControlWidget : MonoBehaviour, IBeginDragHandler, IDragHand
             return;
 
         Scale = Mathf.Clamp(entry.scale, 0.55f, 1.8f);
-        Vector2 anchor = new Vector2(Mathf.Clamp01(entry.x), Mathf.Clamp01(entry.y));
+        Vector2 anchor = canMove
+            ? new Vector2(Mathf.Clamp01(entry.x), Mathf.Clamp01(entry.y))
+            : Vector2.one * 0.5f;
         rect.anchorMin = anchor;
         rect.anchorMax = anchor;
         rect.pivot = new Vector2(0.5f, 0.5f);
@@ -78,13 +82,13 @@ public class EditableControlWidget : MonoBehaviour, IBeginDragHandler, IDragHand
 
     public ControlLayoutSettings.ControlEntry Capture()
     {
-        Vector2 anchor = rect.anchorMin;
+        Vector2 anchor = canMove ? rect.anchorMin : Vector2.one * 0.5f;
         return new ControlLayoutSettings.ControlEntry(ControlId, anchor.x, anchor.y, Scale);
     }
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        if (workspace == null)
+        if (!canMove || workspace == null)
             return;
 
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
@@ -97,7 +101,7 @@ public class EditableControlWidget : MonoBehaviour, IBeginDragHandler, IDragHand
 
     public void OnDrag(PointerEventData eventData)
     {
-        if (workspace == null || workspace.rect.width <= 0f || workspace.rect.height <= 0f)
+        if (!canMove || workspace == null || workspace.rect.width <= 0f || workspace.rect.height <= 0f)
             return;
 
         RectTransformUtility.ScreenPointToLocalPointInRectangle(

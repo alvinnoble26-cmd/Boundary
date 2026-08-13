@@ -2,6 +2,7 @@
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public sealed class BoundaryMathTests
 {
@@ -260,6 +261,44 @@ public sealed class BoundaryMathTests
         Assert.That(BoundaryHUD.EventHintFontSize, Is.EqualTo(15));
         Assert.That(BoundaryHUD.EventBannerWidth, Is.LessThan(850f));
         Assert.That(BoundaryHUD.EventBannerHeight, Is.LessThan(190f));
+    }
+
+    [Test]
+    public void Crosshair_DefaultsToFixedCenterWithEditableScale()
+    {
+        ControlLayoutSettings.LayoutData layout = ControlLayoutSettings.CreateDefault();
+        ControlLayoutSettings.ControlEntry crosshair = layout.Find(ControlLayoutSettings.CrosshairControlId);
+
+        Assert.That(crosshair, Is.Not.Null);
+        Assert.That(crosshair.x, Is.EqualTo(0.5f));
+        Assert.That(crosshair.y, Is.EqualTo(0.5f));
+        Assert.That(crosshair.scale, Is.EqualTo(1f));
+        Assert.That(ControlLayoutSettings.CrosshairBaseSize, Is.EqualTo(42f));
+    }
+
+    [Test]
+    public void Crosshair_RuntimeVisualIsWhitePlusAtExactCenter()
+    {
+        GameObject canvasObject = new GameObject("Crosshair Canvas", typeof(Canvas));
+        try
+        {
+            Canvas canvas = canvasObject.GetComponent<Canvas>();
+            ControlLayoutSettings.ApplyToGameCanvas(canvas);
+            RectTransform crosshair = canvas.transform.Find("Aim Crosshair") as RectTransform;
+
+            Assert.That(crosshair, Is.Not.Null);
+            Assert.That(crosshair.anchorMin, Is.EqualTo(Vector2.one * 0.5f));
+            Assert.That(crosshair.anchorMax, Is.EqualTo(Vector2.one * 0.5f));
+            Assert.That(crosshair.anchoredPosition, Is.EqualTo(Vector2.zero));
+            Assert.That(crosshair.Find("Horizontal").GetComponent<Image>().color, Is.EqualTo(Color.white));
+            Assert.That(crosshair.Find("Vertical").GetComponent<Image>().color, Is.EqualTo(Color.white));
+            Assert.That(crosshair.Find("Horizontal").GetComponent<Image>().raycastTarget, Is.False);
+            Assert.That(crosshair.Find("Vertical").GetComponent<Image>().raycastTarget, Is.False);
+        }
+        finally
+        {
+            Object.DestroyImmediate(canvasObject);
+        }
     }
 
     [Test]

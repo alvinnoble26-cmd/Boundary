@@ -389,6 +389,14 @@ public static class BoundaryRuntimeSmokeRunner
                          hazard.transform.Find("BlackHoleAccretion") != null,
                 "Runtime hazard visuals were not generated.");
             RequireSmoke(hud != null, "Boundary HUD was not installed in the Game scene.");
+            RectTransform crosshair = GameObject.Find("Aim Crosshair")?.transform as RectTransform;
+            RequireSmoke(crosshair != null &&
+                         crosshair.anchorMin == Vector2.one * 0.5f &&
+                         crosshair.anchorMax == Vector2.one * 0.5f &&
+                         crosshair.anchoredPosition == Vector2.zero &&
+                         crosshair.Find("Horizontal") != null &&
+                         crosshair.Find("Vertical") != null,
+                "The white plus crosshair was not locked to the exact screen center.");
             RectTransform eventBanner = hud.transform.Find("Safe Area/Event Banner") as RectTransform;
             RequireSmoke(eventBanner != null &&
                          Mathf.Approximately(eventBanner.sizeDelta.x, BoundaryHUD.EventBannerWidth) &&

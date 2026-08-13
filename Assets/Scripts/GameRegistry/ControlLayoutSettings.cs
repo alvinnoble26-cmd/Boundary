@@ -4,6 +4,8 @@ using UnityEngine;
 
 public static class ControlLayoutSettings
 {
+    public const string CrosshairControlId = "Crosshair";
+    public const float CrosshairBaseSize = 42f;
     public const float DefaultCameraSensitivity = 20f;
     public const float MinimumCameraSensitivity = 5f;
     public const float MaximumCameraSensitivity = 50f;
@@ -65,7 +67,8 @@ public static class ControlLayoutSettings
                 new ControlEntry("Jump", 0.893f, 0.190f),
                 new ControlEntry("A1", 0.906f, 0.491f),
                 new ControlEntry("A2", 0.760f, 0.407f),
-                new ControlEntry("A3", 0.724f, 0.167f)
+                new ControlEntry("A3", 0.724f, 0.167f),
+                new ControlEntry(CrosshairControlId, 0.5f, 0.5f)
             }
         };
     }
@@ -100,6 +103,7 @@ public static class ControlLayoutSettings
         if (data == null)
             return;
 
+        MergeMissingDefaults(data);
         data.cameraSensitivity = Mathf.Clamp(
             data.cameraSensitivity,
             MinimumCameraSensitivity,
@@ -138,6 +142,65 @@ public static class ControlLayoutSettings
         ApplyControl(canvas.transform, buttonRoot != null ? buttonRoot.Find("A1") : null, layout.Find("A1"), 150f);
         ApplyControl(canvas.transform, buttonRoot != null ? buttonRoot.Find("A2") : null, layout.Find("A2"), 150f);
         ApplyControl(canvas.transform, buttonRoot != null ? buttonRoot.Find("A3") : null, layout.Find("A3"), 150f);
+        ApplyCrosshair(canvas, layout.Find(CrosshairControlId));
+    }
+
+    private static void ApplyCrosshair(Canvas canvas, ControlEntry entry)
+    {
+        Transform existing = canvas.transform.Find("Aim Crosshair");
+        RectTransform root;
+        if (existing != null)
+        {
+            root = existing as RectTransform;
+        }
+        else
+        {
+            GameObject crosshair = new GameObject("Aim Crosshair", typeof(RectTransform));
+            crosshair.layer = 5;
+            crosshair.transform.SetParent(canvas.transform, false);
+            root = (RectTransform)crosshair.transform;
+            CreateCrosshairBar(root, "Horizontal", true);
+            CreateCrosshairBar(root, "Vertical", false);
+        }
+
+        if (root == null)
+            return;
+
+        float scale = Mathf.Clamp(entry != null ? entry.scale : 1f, 0.55f, 1.8f);
+        float size = CrosshairBaseSize * scale;
+        root.anchorMin = Vector2.one * 0.5f;
+        root.anchorMax = Vector2.one * 0.5f;
+        root.pivot = Vector2.one * 0.5f;
+        root.anchoredPosition = Vector2.zero;
+        root.localScale = Vector3.one;
+        root.sizeDelta = Vector2.one * size;
+        SetCrosshairBar(root.Find("Horizontal") as RectTransform, size * 0.72f, size * 0.12f);
+        SetCrosshairBar(root.Find("Vertical") as RectTransform, size * 0.12f, size * 0.72f);
+        root.SetAsLastSibling();
+    }
+
+    private static void CreateCrosshairBar(Transform parent, string name, bool horizontal)
+    {
+        GameObject bar = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image));
+        bar.layer = 5;
+        bar.transform.SetParent(parent, false);
+        UnityEngine.UI.Image image = bar.GetComponent<UnityEngine.UI.Image>();
+        image.color = Color.white;
+        image.raycastTarget = false;
+        SetCrosshairBar((RectTransform)bar.transform,
+            horizontal ? CrosshairBaseSize * 0.72f : CrosshairBaseSize * 0.12f,
+            horizontal ? CrosshairBaseSize * 0.12f : CrosshairBaseSize * 0.72f);
+    }
+
+    private static void SetCrosshairBar(RectTransform bar, float width, float height)
+    {
+        if (bar == null)
+            return;
+        bar.anchorMin = Vector2.one * 0.5f;
+        bar.anchorMax = Vector2.one * 0.5f;
+        bar.pivot = Vector2.one * 0.5f;
+        bar.anchoredPosition = Vector2.zero;
+        bar.sizeDelta = new Vector2(width, height);
     }
 
     private static Transform FindDirectChild(Transform parent, string childName)
@@ -186,6 +249,11 @@ public static class ControlLayoutSettings
             entry.x = Mathf.Clamp01(entry.x);
             entry.y = Mathf.Clamp01(entry.y);
             entry.scale = Mathf.Clamp(entry.scale, 0.55f, 1.8f);
+            if (entry.id == CrosshairControlId)
+            {
+                entry.x = 0.5f;
+                entry.y = 0.5f;
+            }
         }
     }
 }
