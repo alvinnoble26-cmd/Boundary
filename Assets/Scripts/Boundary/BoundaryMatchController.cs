@@ -155,11 +155,12 @@ public sealed class BoundaryMatchController : NetworkBehaviour
         {
             if (!IsDisasterActive || disaster.value != BoundaryDisaster.GravitySurge)
                 return 0f;
-            return BoundaryMath.RhythmicPulse(DisasterElapsed, 4.2f, 1.05f, 1.25f);
+            return BoundaryMath.RhythmicPulse(DisasterElapsed, 3.6f, 0.9f, 1.35f);
         }
     }
 
-    public float EffectivePullStrength => pullStrength.value * (1f + GravitySurgePulse * 1.85f);
+    public float EffectivePullStrength => pullStrength.value *
+        (1f + GravitySurgePulse * 1.85f * BoundaryMath.DisasterPower(BoundaryDisaster.GravitySurge));
 
     public float GravityDominance => Mathf.InverseLerp(3.5f, Mathf.Max(5f, innerPull), EffectivePullStrength);
 
@@ -171,7 +172,7 @@ public sealed class BoundaryMatchController : NetworkBehaviour
         {
             if (!IsDisasterActive || disaster.value != BoundaryDisaster.FractureLines)
                 return 0f;
-            return BoundaryMath.RhythmicPulse(DisasterElapsed, 3.4f, 1.2f, 0.9f);
+            return BoundaryMath.RhythmicPulse(DisasterElapsed, 3f, 0.9f, 1.15f);
         }
     }
 
@@ -181,7 +182,7 @@ public sealed class BoundaryMatchController : NetworkBehaviour
         {
             if (!IsDisasterActive || disaster.value != BoundaryDisaster.DarkMatterFog)
                 return 0f;
-            return BoundaryMath.EaseInOut(Mathf.Min(DisasterElapsed, 2.5f) / 2.5f);
+            return BoundaryMath.EaseInOut(Mathf.Min(DisasterElapsed, 1.6f) / 1.6f);
         }
     }
 
@@ -383,27 +384,27 @@ public sealed class BoundaryMatchController : NetworkBehaviour
         switch (disaster.value)
         {
             case BoundaryDisaster.BlackRain:
-                SpawnRainWave(4);
-                ScheduleWave(4.8f, 4);
+                SpawnRainWave(6);
+                ScheduleWave(3.8f, 5);
                 break;
             case BoundaryDisaster.CubeStorm:
-                SpawnDebrisWave(BoundaryHazardKind.Cube, disasterWave == 0 ? 10 : 5, 1f);
-                ScheduleWave(6.5f, 3);
+                SpawnDebrisWave(BoundaryHazardKind.Cube, disasterWave == 0 ? 14 : 7, 1.25f);
+                ScheduleWave(5f, 4);
                 break;
             case BoundaryDisaster.OrbitalStrike:
-                SpawnOrbitWave(6, false);
-                ScheduleWave(9f, 2);
+                SpawnOrbitWave(9, false);
+                ScheduleWave(7f, 3);
                 break;
             case BoundaryDisaster.MeteorBreak:
-                SpawnDebrisWave(BoundaryHazardKind.Meteor, 3, 2.4f);
-                ScheduleWave(6f, 3);
+                SpawnDebrisWave(BoundaryHazardKind.Meteor, 5, 2.8f);
+                ScheduleWave(4.8f, 4);
                 break;
             case BoundaryDisaster.UnstableMass:
                 if (disasterWave == 0)
                 {
-                    SpawnDebrisWave(BoundaryHazardKind.Cube, 8, 1.25f);
+                    SpawnDebrisWave(BoundaryHazardKind.Cube, 12, 1.5f);
                     disasterWave++;
-                    nextWaveTick = CurrentTick + SecondsToTicks(5.5f);
+                    nextWaveTick = CurrentTick + SecondsToTicks(4.5f);
                 }
                 else if (!unstableMassPulsed)
                 {
@@ -411,10 +412,6 @@ public sealed class BoundaryMatchController : NetworkBehaviour
                     PulseEveryMass();
                     nextWaveTick = uint.MaxValue;
                 }
-                break;
-            case BoundaryDisaster.FalseSingularities:
-                SpawnFalseSingularities(5);
-                nextWaveTick = uint.MaxValue;
                 break;
             default:
                 nextWaveTick = uint.MaxValue;
@@ -440,7 +437,8 @@ public sealed class BoundaryMatchController : NetworkBehaviour
                 PlatformSurfaceYAtRadius(point.magnitude) + 1.2f,
                 ArenaCenter.z + point.y);
             Vector3 spawn = new Vector3(landing.x, SingularityPosition.y - 3f, landing.z);
-            SpawnHazard(BoundaryHazardKind.BlackRainSingularity, spawn, Vector3.zero, landing, 10f, 0, 1.15f);
+            SpawnHazard(BoundaryHazardKind.BlackRainSingularity, spawn, Vector3.zero, landing,
+                12f, 0, 1.35f);
         }
     }
 
@@ -476,26 +474,11 @@ public sealed class BoundaryMatchController : NetworkBehaviour
             SpawnHazard(
                 tornado ? BoundaryHazardKind.TornadoDebris : BoundaryHazardKind.OrbitalDebris,
                 spawn,
-                tangent * (tornado ? 11f : 14f),
+                tangent * (tornado ? 11f : 18f),
                 ArenaCenter,
-                tornado ? 55f : 24f,
+                tornado ? 55f : 30f,
                 lane,
-                lane == 0 ? 1.1f : 0.85f);
-        }
-    }
-
-    private void SpawnFalseSingularities(int count)
-    {
-        int realIndex = disasterRandom.Next(0, count);
-        for (int i = 0; i < count; i++)
-        {
-            float angle = Mathf.PI * 2f * i / count + NextFloat(-0.2f, 0.2f);
-            float radius = ringRadius.value * 0.76f;
-            Vector3 position = new Vector3(
-                ArenaCenter.x + Mathf.Cos(angle) * radius,
-                PlatformSurfaceYAtRadius(radius) + 1.7f,
-                ArenaCenter.z + Mathf.Sin(angle) * radius);
-            SpawnHazard(BoundaryHazardKind.FalseSingularity, position, Vector3.zero, position, 23f, i == realIndex ? 1 : 0, 1.2f);
+                lane == 0 ? 1.3f : 1f);
         }
     }
 
@@ -625,7 +608,9 @@ public sealed class BoundaryMatchController : NetworkBehaviour
             Vector3 direction = body.position - ArenaCenter;
             direction.y = 0.35f;
             if (!outward) direction = -direction;
-            body.AddForce(direction.normalized * 16f, ForceMode.VelocityChange);
+            body.AddForce(direction.normalized *
+                (16f * BoundaryMath.DisasterPower(BoundaryDisaster.UnstableMass)),
+                ForceMode.VelocityChange);
         }
     }
 

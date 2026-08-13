@@ -399,7 +399,9 @@ public sealed class BoundaryHazard : NetworkBehaviour
         Vector3 direction = body.position - center;
         direction.y = 0.4f;
         if (!outward) direction = -direction;
-        body.AddForce(direction.normalized * 16f, ForceMode.VelocityChange);
+        body.AddForce(direction.normalized *
+            (16f * BoundaryMath.DisasterPower(BoundaryDisaster.UnstableMass)),
+            ForceMode.VelocityChange);
         SetEmission(outward ? new Color(1f, 0.2f, 0.8f) : new Color(0.2f, 0.85f, 1f), 5f);
     }
 
@@ -463,7 +465,9 @@ public sealed class BoundaryHazard : NetworkBehaviour
                 break;
             case BoundaryHazardKind.Meteor:
                 if (body != null && !body.isKinematic)
-                    body.AddForce(Vector3.down * 11f, ForceMode.Acceleration);
+                    body.AddForce(Vector3.down *
+                        (11f * BoundaryMath.DisasterPower(BoundaryDisaster.MeteorBreak)),
+                        ForceMode.Acceleration);
                 break;
         }
     }
@@ -566,7 +570,9 @@ public sealed class BoundaryHazard : NetworkBehaviour
         }
 
         body.MovePosition(position);
-        PullServerObjects(IsRealSingularity ? 16f : 4f, 7f * transform.localScale.x);
+        float power = BoundaryMath.DisasterPower(BoundaryDisaster.BlackRain);
+        PullServerObjects(IsRealSingularity ? 16f * power : 4f,
+            7f * transform.localScale.x * power);
     }
 
     private void TickFalseSingularity()
@@ -670,9 +676,13 @@ public sealed class BoundaryHazard : NetworkBehaviour
 
         Vector3 direction = movement.transform.position - transform.position;
         direction.y = Mathf.Max(0.45f, direction.y);
-        float impact = kind.value == BoundaryHazardKind.Meteor ? meteorImpact : cubeImpact;
+        float impact = kind.value == BoundaryHazardKind.Meteor
+            ? meteorImpact * BoundaryMath.DisasterPower(BoundaryDisaster.MeteorBreak)
+            : cubeImpact;
         if (kind.value == BoundaryHazardKind.OrbitalDebris || kind.value == BoundaryHazardKind.TornadoDebris)
-            impact *= 1.2f;
+            impact *= 1.2f * (kind.value == BoundaryHazardKind.OrbitalDebris
+                ? BoundaryMath.DisasterPower(BoundaryDisaster.OrbitalStrike)
+                : 1f);
         movement.ApplyBoundaryImpulse(direction.normalized * impact);
     }
 
@@ -714,7 +724,9 @@ public sealed class BoundaryHazard : NetworkBehaviour
             if (distance >= radius || distance < 0.05f)
                 continue;
 
-            float strength = arenaBlackHole ? 6f : hazard.IsRealSingularity ? 22f : 3f;
+            float strength = arenaBlackHole ? 6f : hazard.IsRealSingularity
+                ? 22f * BoundaryMath.DisasterPower(BoundaryDisaster.BlackRain)
+                : 3f;
             float falloff = 1f - Mathf.Clamp01(distance / radius);
             movement.rb.AddForce(delta.normalized * strength * falloff, ForceMode.Acceleration);
         }

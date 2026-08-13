@@ -25,8 +25,7 @@ public enum BoundaryDisaster
     FractureLines,
     DarkMatterFog,
     MeteorBreak,
-    UnstableMass,
-    FalseSingularities
+    UnstableMass
 }
 
 public enum BoundaryDisasterStage
@@ -90,6 +89,22 @@ public static class BoundaryMath
             return 0f;
 
         return Mathf.Sin(Mathf.Clamp01(pulseTime / pulseDuration) * Mathf.PI);
+    }
+
+    public static float DisasterPower(BoundaryDisaster disaster)
+    {
+        switch (disaster)
+        {
+            case BoundaryDisaster.BlackRain: return 1.35f;
+            case BoundaryDisaster.CubeStorm: return 1.4f;
+            case BoundaryDisaster.GravitySurge: return 1.4f;
+            case BoundaryDisaster.OrbitalStrike: return 1.35f;
+            case BoundaryDisaster.FractureLines: return 1.4f;
+            case BoundaryDisaster.DarkMatterFog: return 1.35f;
+            case BoundaryDisaster.MeteorBreak: return 1.4f;
+            case BoundaryDisaster.UnstableMass: return 1.5f;
+            default: return 1f;
+        }
     }
 
     public static bool IsBelowVoidKillPlane(float playerY, float arenaFloorY, float killDepth)
@@ -229,7 +244,6 @@ public static class BoundaryMath
             case BoundaryDisaster.DarkMatterFog: return "DARK MATTER FOG";
             case BoundaryDisaster.MeteorBreak: return "METEOR BREAK";
             case BoundaryDisaster.UnstableMass: return "UNSTABLE MASS";
-            case BoundaryDisaster.FalseSingularities: return "FALSE SINGULARITIES";
             default: return string.Empty;
         }
     }
@@ -254,8 +268,6 @@ public static class BoundaryMath
                 return "Impact zones become debris. Bait a rival in, then launch the remains.";
             case BoundaryDisaster.UnstableMass:
                 return "Every cube is charged. Watch its glow before the mass pulses.";
-            case BoundaryDisaster.FalseSingularities:
-                return "Only one well is real. Feed it debris to expose and strengthen it.";
             default:
                 return string.Empty;
         }

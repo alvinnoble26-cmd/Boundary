@@ -258,9 +258,10 @@ public static class BoundaryFeatureValidator
             Require(!string.IsNullOrEmpty(BoundaryMath.DisasterName(value)), value + " has no presentation name.");
             Require(!string.IsNullOrEmpty(BoundaryMath.DisasterHint(value)), value + " has no tactical hint.");
         }
-        Require(disasterCount == 9, "Reverse Current must be removed and exactly nine disasters must remain.");
+        Require(disasterCount == 8,
+            "Reverse Current and False Singularities must be removed; exactly eight disasters must remain.");
 
-        Debug.Log("[BoundaryFeatureValidator] PASS — seamless sliding floor, continuous tier ramps, lethal masses/void, floating walls, ability physics, corruption, authority, and all 9 events validated.");
+        Debug.Log("[BoundaryFeatureValidator] PASS — seamless sliding floor, continuous tier ramps, lethal masses/void, floating walls, ability physics, corruption, authority, and all 8 events validated.");
     }
 
     private static void Require(bool condition, string message)

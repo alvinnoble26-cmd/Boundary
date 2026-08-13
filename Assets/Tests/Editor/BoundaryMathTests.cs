@@ -77,7 +77,6 @@ public sealed class BoundaryMathTests
     }
 
     [TestCase(BoundaryDisaster.BlackRain, "BLACK RAIN")]
-    [TestCase(BoundaryDisaster.FalseSingularities, "FALSE SINGULARITIES")]
     [TestCase(BoundaryDisaster.UnstableMass, "UNSTABLE MASS")]
     public void EveryDisasterHasReadablePresentation(BoundaryDisaster disaster, string expectedName)
     {
@@ -86,10 +85,24 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
-    public void ReverseCurrent_IsNotInTheDisasterPool()
+    public void RemovedDisasters_AreNotInTheDisasterPool()
     {
         CollectionAssert.DoesNotContain(System.Enum.GetNames(typeof(BoundaryDisaster)), "ReverseCurrent");
-        Assert.That(System.Enum.GetValues(typeof(BoundaryDisaster)).Length - 1, Is.EqualTo(9));
+        CollectionAssert.DoesNotContain(System.Enum.GetNames(typeof(BoundaryDisaster)), "FalseSingularities");
+        Assert.That(System.Enum.GetValues(typeof(BoundaryDisaster)).Length - 1, Is.EqualTo(8));
+    }
+
+    [Test]
+    public void EveryRemainingDisaster_IsMorePowerfulThanBaseline()
+    {
+        foreach (BoundaryDisaster disaster in System.Enum.GetValues(typeof(BoundaryDisaster)))
+        {
+            if (disaster == BoundaryDisaster.None)
+                continue;
+
+            Assert.That(BoundaryMath.DisasterPower(disaster), Is.GreaterThanOrEqualTo(1.35f),
+                disaster + " was not strengthened.");
+        }
     }
 
     [Test]

@@ -402,10 +402,11 @@ void HandleJump()
         {
             float angle = Mathf.Atan2(radial.z, radial.x);
             float stripe = Mathf.Abs(Mathf.Sin(angle * 4f + match.DisasterSeed * 0.001f));
-            if (stripe < 0.18f)
+            if (stripe < 0.24f)
             {
-                Vector3 fracturePush = Vector3.up * (10f * match.FracturePulse) +
-                                       radial.normalized * (3f * match.FracturePulse);
+                float fracturePower = BoundaryMath.DisasterPower(BoundaryDisaster.FractureLines);
+                Vector3 fracturePush = Vector3.up * (10f * fracturePower * match.FracturePulse) +
+                                       radial.normalized * (3f * fracturePower * match.FracturePulse);
                 rb.AddForce(fracturePush, ForceMode.Acceleration);
             }
         }

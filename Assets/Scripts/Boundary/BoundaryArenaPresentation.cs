@@ -953,7 +953,10 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.ExponentialSquared;
         RenderSettings.fogColor = Color.Lerp(originalFogColor, new Color(0.015f, 0.006f, 0.025f), fog);
-        RenderSettings.fogDensity = Mathf.Lerp(Mathf.Max(0.002f, originalFogDensity), 0.039f, fog);
+        RenderSettings.fogDensity = Mathf.Lerp(
+            Mathf.Max(0.002f, originalFogDensity),
+            0.039f * BoundaryMath.DisasterPower(BoundaryDisaster.DarkMatterFog),
+            fog);
     }
 
     private void UpdatePlayerTrails()
