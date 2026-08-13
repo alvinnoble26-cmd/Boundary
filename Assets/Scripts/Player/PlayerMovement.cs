@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 using PurrNet;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -42,10 +43,21 @@ public class PlayerMovement : NetworkBehaviour
     public Transform orientation;
     public PlayerInputReader input;
 
+    [Header("Boundary Anchor")]
+    [SerializeField, Range(0.1f, 0.8f)] private float freshBraceResistance = 0.25f;
+    [SerializeField, Range(0.4f, 1f)] private float fatiguedBraceResistance = 0.72f;
+    [SerializeField, Min(0.05f)] private float braceFatiguePerSecond = 0.16f;
+    [SerializeField, Min(0.05f)] private float braceRecoveryPerSecond = 0.34f;
+    [SerializeField, Range(0.1f, 0.8f)] private float braceMovementMultiplier = 0.34f;
+    [SerializeField, Min(5f)] private float maximumBoundaryVerticalSpeed = 26f;
+
     [HideInInspector] public Rigidbody rb;
     [HideInInspector] public Vector2 moveInput;
 
     public bool IsGrounded => isGrounded;
+    public bool IsStableGrounded { get; private set; }
+    public bool IsBracing { get; private set; }
+    public float BraceFatigue => braceFatigue;
     public bool JumpPressedThisFrame { get; private set; }
     public bool MovementSuppressed { get; private set; }
     public float ExternalSpeedCap { get; private set; } = -1f;
@@ -72,6 +84,9 @@ public class PlayerMovement : NetworkBehaviour
 
     private Collider myCol;
     private Vector2 smoothedMoveInput;
+    private bool mobileBraceHeld;
+    private float braceFatigue;
+    private BoundaryPlayerState boundaryState;
 
 // Add this field near the top with other private fields
 private SlideAbility slideAbility;
@@ -84,6 +99,7 @@ void Awake()
     if (input == null) input = GetComponent<PlayerInputReader>();
     if (orientation == null) orientation = transform;
     slideAbility = GetComponentInChildren<SlideAbility>();
+    boundaryState = GetComponent<BoundaryPlayerState>();
 }
     protected override void OnSpawned()
 {
@@ -141,10 +157,12 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
 
         }
         UpdateGrounded();
+        UpdateBrace();
         HandleWallDetection();
 
         if (MovementSuppressed)
         {
+            ApplyBoundaryForces();
             JumpPressedThisFrame = false;
             jumpRequested = false;
             return;
@@ -153,9 +171,12 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         PerformNormalMovement();
         HandleGravityAndWallPhysics();
         HandleJump();
+        ApplyBoundaryForces();
         ApplyMasterRotation();
 
         float cap = (ExternalSpeedCap > 0f) ? ExternalSpeedCap : maxSpeed;
+        if (IsBracing)
+            cap *= braceMovementMultiplier;
         ClampHorizontalSpeed(cap);
 
         Vector3 v = rb.linearVelocity;
@@ -216,6 +237,10 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         Vector3 vel = rb.linearVelocity;
         Vector3 flatVel = new Vector3(vel.x, 0f, vel.z);
 
+        float movementMultiplier = IsBracing ? braceMovementMultiplier : 1f;
+        if (boundaryState != null && boundaryState.State == BoundaryKnockoutState.EventHorizon)
+            movementMultiplier *= 0.48f;
+
         if (inputMag > 0.001f)
         {
             if (OnSlope() && !exitingSlope)
@@ -223,7 +248,7 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
                 Vector3 slopeDirNorm = GetSlopeMoveDirection(inputDirNorm);
                 Vector3 slopeDir = slopeDirNorm * inputMag;
 
-                rb.AddForce(slopeDir * acceleration, ForceMode.Acceleration);
+                rb.AddForce(slopeDir * (acceleration * movementMultiplier), ForceMode.Acceleration);
 
                 if (rb.linearVelocity.y > 0f)
                     rb.AddForce(Vector3.down * 80f, ForceMode.Acceleration);
@@ -233,7 +258,7 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
             else
             {
                 rb.useGravity = true;
-                rb.AddForce(inputDirNorm * (acceleration * inputMag), ForceMode.Acceleration);
+                rb.AddForce(inputDirNorm * (acceleration * inputMag * movementMultiplier), ForceMode.Acceleration);
             }
         }
         else
@@ -298,13 +323,23 @@ void HandleWallDetection()
 
         if (rb.linearVelocity.y < 0f)
         {
-            rb.AddForce(Vector3.up * Physics.gravity.y * (fallGravityMultiplier - 1f), ForceMode.Acceleration);
+            BoundaryMatchController match = BoundaryMatchController.Instance;
+            float activeFallMultiplier = match != null
+                ? Mathf.Lerp(fallGravityMultiplier, 1.45f, match.GravityDominance)
+                : fallGravityMultiplier;
+            rb.AddForce(Vector3.up * Physics.gravity.y * (activeFallMultiplier - 1f), ForceMode.Acceleration);
         }
     }
 
 void HandleJump()
 {
     if (!jumpRequested) return;
+
+    if (IsBracing)
+    {
+        jumpRequested = false;
+        return;
+    }
 
     // Always release suppression on jump regardless of source
     if (MovementSuppressed)
@@ -328,6 +363,99 @@ void HandleJump()
     jumpRequested = false;
     exitingSlope = true;
 }
+
+    public void SetBraceHeld(bool held)
+    {
+        if (!isOwner)
+            return;
+        mobileBraceHeld = held;
+    }
+
+    public void ApplyBoundaryImpulse(Vector3 velocityChange)
+    {
+        if (!isOwner || rb == null)
+            return;
+
+        if (IsBracing && IsStableGrounded)
+        {
+            float resistance = Mathf.Lerp(freshBraceResistance, fatiguedBraceResistance, braceFatigue);
+            velocityChange *= resistance;
+        }
+
+        rb.AddForce(Vector3.ClampMagnitude(velocityChange, 18f), ForceMode.VelocityChange);
+    }
+
+    private void UpdateBrace()
+    {
+        bool hardwareHeld = (Keyboard.current != null &&
+                             (Keyboard.current.leftShiftKey.isPressed || Keyboard.current.rightShiftKey.isPressed)) ||
+                            (Gamepad.current != null && Gamepad.current.leftShoulder.isPressed);
+        bool wantsBrace = mobileBraceHeld || hardwareHeld;
+
+        BoundaryMatchController match = BoundaryMatchController.Instance;
+        Vector3 center = match != null ? match.ArenaCenter : transform.position;
+        float radius = match != null ? match.RingRadius : float.MaxValue;
+        Vector3 flatOffset = transform.position - center;
+        flatOffset.y = 0f;
+        IsStableGrounded = isGrounded && flatOffset.magnitude <= radius + 0.5f;
+        IsBracing = wantsBrace && IsStableGrounded && !jumpRequested;
+
+        if (IsBracing)
+            braceFatigue = Mathf.Min(1f, braceFatigue + braceFatiguePerSecond * Time.fixedDeltaTime);
+        else
+            braceFatigue = Mathf.Max(0f, braceFatigue - braceRecoveryPerSecond * Time.fixedDeltaTime);
+    }
+
+    private void ApplyBoundaryForces()
+    {
+        BoundaryMatchController match = BoundaryMatchController.Instance;
+        if (match == null || match.Phase == BoundaryPhase.Waiting || rb == null)
+            return;
+
+        float braceResistance = Mathf.Lerp(freshBraceResistance, fatiguedBraceResistance, braceFatigue);
+        Vector3 acceleration = BoundaryMath.PlayerPullAcceleration(
+            rb.position,
+            match.SingularityPosition,
+            match.ArenaCenter,
+            match.ArenaFloorY,
+            match.RingRadius,
+            match.EffectivePullStrength,
+            IsStableGrounded,
+            IsBracing,
+            braceResistance);
+        rb.AddForce(acceleration, ForceMode.Acceleration);
+
+        Vector3 radial = rb.position - match.ArenaCenter;
+        radial.y = 0f;
+        if (radial.sqrMagnitude > 0.1f &&
+            (match.Phase == BoundaryPhase.InnerRing ||
+             (match.IsDisasterActive && match.Disaster == BoundaryDisaster.ReverseCurrent)))
+        {
+            Vector3 tangent = Vector3.Cross(Vector3.up, radial.normalized) * match.CurrentDirection;
+            float currentStrength = match.Phase == BoundaryPhase.InnerRing ? 4.2f : 3.4f;
+            if (IsBracing) currentStrength *= 0.35f;
+            rb.AddForce(tangent * currentStrength, ForceMode.Acceleration);
+        }
+
+        if (match.FracturePulse > 0f)
+        {
+            float angle = Mathf.Atan2(radial.z, radial.x);
+            float stripe = Mathf.Abs(Mathf.Sin(angle * 4f + match.DisasterSeed * 0.001f));
+            if (stripe < 0.18f)
+            {
+                Vector3 fracturePush = Vector3.up * (10f * match.FracturePulse) +
+                                       radial.normalized * (3f * match.FracturePulse);
+                if (IsBracing) fracturePush *= 0.55f;
+                rb.AddForce(fracturePush, ForceMode.Acceleration);
+            }
+        }
+
+        BoundaryHazard.ApplyLocalFields(this);
+
+        Vector3 velocity = rb.linearVelocity;
+        if (velocity.y > maximumBoundaryVerticalSpeed)
+            rb.linearVelocity = new Vector3(velocity.x, maximumBoundaryVerticalSpeed, velocity.z);
+    }
 
     void ApplyMasterRotation()
     {

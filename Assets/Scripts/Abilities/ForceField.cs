@@ -118,8 +118,30 @@ public class  ForceField : MonoBehaviour
             float f = Mathf.Clamp01(falloff.Evaluate(t));
             float accel = Mathf.Min(strength * f, maxAccel);
 
-            if (rb.GetComponentInParent<PlayerMovement>() != null)
+            PlayerMovement player = rb.GetComponentInParent<PlayerMovement>();
+            if (player != null)
+            {
                 accel *= playerForceMultiplier;
+
+                BoundaryPlayerState boundaryState = player.GetComponent<BoundaryPlayerState>();
+                BoundaryMatchController match = BoundaryMatchController.Instance;
+                if (boundaryState != null && boundaryState.State != BoundaryKnockoutState.Grounded &&
+                    match != null && match.Phase == BoundaryPhase.InnerRing)
+                {
+                    // Airborne targets have less stability in the vortex, so
+                    // Repel becomes the intended final-phase knockout tool.
+                    accel *= mode == Mode.Repel ? 1.28f : 1.10f;
+                }
+
+                if (boundaryState != null)
+                {
+                    // Player rigidbodies are owner-authoritative and kinematic
+                    // on the server. Send the velocity change to that owner;
+                    // applying AddForce here would silently do nothing.
+                    boundaryState.ServerPushOwner(dir * Mathf.Clamp(accel * 0.085f, 1.2f, 13f));
+                    continue;
+                }
+            }
 
             rb.AddForce(dir * accel, ForceMode.Acceleration);
         }

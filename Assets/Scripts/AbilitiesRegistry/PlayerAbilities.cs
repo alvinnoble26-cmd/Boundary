@@ -307,6 +307,13 @@ private void ActivateAbility(AbilityId id)
 
 void UseSlot(int slotIndex)
 {
+    PlayerMovement movement = GetComponent<PlayerMovement>();
+    if (movement != null && movement.IsBracing)
+    {
+        Debug.Log("[PlayerAbilities] Ability blocked while Anchor is held.");
+        return;
+    }
+
     var id = slots[slotIndex];
     if (id == null)
     {
@@ -320,10 +327,12 @@ void UseSlot(int slotIndex)
     Debug.Log($"[PlayerAbilities] UseSlot {slotIndex} id={id}");
 
     float cooldownDuration = GetCooldownDuration(id.Value);
+    BoundaryMatchController match = BoundaryMatchController.Instance;
+    if (match != null && match.Phase == BoundaryPhase.InnerRing)
+        cooldownDuration *= 0.82f;
     slotCooldownEnds[slotIndex] = Time.time + cooldownDuration;
     cooldownVisuals[slotIndex]?.BeginCooldown(cooldownDuration);
 
-    PlayerMovement movement = GetComponent<PlayerMovement>();
     Transform aim = movement != null && movement.orientation != null
         ? movement.orientation
         : transform;

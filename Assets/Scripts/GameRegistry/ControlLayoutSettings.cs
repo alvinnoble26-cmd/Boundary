@@ -65,7 +65,8 @@ public static class ControlLayoutSettings
                 new ControlEntry("Jump", 0.893f, 0.190f),
                 new ControlEntry("A1", 0.906f, 0.491f),
                 new ControlEntry("A2", 0.760f, 0.407f),
-                new ControlEntry("A3", 0.724f, 0.167f)
+                new ControlEntry("A3", 0.724f, 0.167f),
+                new ControlEntry("Brace", 0.885f, 0.345f)
             }
         };
     }
@@ -138,6 +139,7 @@ public static class ControlLayoutSettings
         ApplyControl(canvas.transform, buttonRoot != null ? buttonRoot.Find("A1") : null, layout.Find("A1"), 150f);
         ApplyControl(canvas.transform, buttonRoot != null ? buttonRoot.Find("A2") : null, layout.Find("A2"), 150f);
         ApplyControl(canvas.transform, buttonRoot != null ? buttonRoot.Find("A3") : null, layout.Find("A3"), 150f);
+        ApplyControl(canvas.transform, FindDirectChild(canvas.transform, "Brace"), layout.Find("Brace"), 150f);
     }
 
     private static Transform FindDirectChild(Transform parent, string childName)

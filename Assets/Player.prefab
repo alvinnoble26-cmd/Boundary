@@ -592,6 +592,7 @@ GameObject:
   - component: {fileID: 5332693552980114665}
   - component: {fileID: 948166568671555870}
   - component: {fileID: 4544751516407353875}
+  - component: {fileID: 5931197452291881782}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -765,6 +766,12 @@ MonoBehaviour:
   backTiltAngle: 0
   orientation: {fileID: 7070120784998569782}
   input: {fileID: 309532525056957705}
+  freshBraceResistance: 0.25
+  fatiguedBraceResistance: 0.72
+  braceFatiguePerSecond: 0.16
+  braceRecoveryPerSecond: 0.34
+  braceMovementMultiplier: 0.34
+  maximumBoundaryVerticalSpeed: 26
   rb: {fileID: 0}
   moveInput: {x: 0, y: 0}
 --- !u!114 &309532525056957705
@@ -1019,6 +1026,30 @@ MonoBehaviour:
   _characterControllerPatch: 0
   _ownerAuth: 1
   _interpolationTiming: 0
+--- !u!114 &5931197452291881782
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8887482223705562195}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4f0e6fa9537c1430a9ecae0769d00b7b, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::BoundaryPlayerState
+  _isSetup: 0
+  _prefabId: -2147483648
+  _componentIndex: -2147483648
+  _shouldBePooled: 0
+  _parent: {fileID: 0}
+  _invertedPathToNearestParent:
+  _directChildren: []
+  _networkRules: {fileID: 0}
+  _visitiblityRules: {fileID: 0}
+  horizonDistanceBelowCore: 5.5
+  escapeWindowSeconds: 1.6
+  horizonHorizontalRadius: 10
 --- !u!1 &8938675066990083720
 GameObject:
   m_ObjectHideFlags: 0
