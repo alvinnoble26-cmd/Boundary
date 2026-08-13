@@ -191,6 +191,8 @@ public static class BoundaryFeatureValidator
             "Player prefab is missing its owner-controlled first-person camera.");
         SerializedObject firstPersonCamera = new SerializedObject(playerCameraController);
         Require(firstPersonCamera.FindProperty("firstPersonEyeOffset") != null &&
+                firstPersonCamera.FindProperty("minimumFirstPersonEyeHeight") != null &&
+                firstPersonCamera.FindProperty("minimumFirstPersonEyeHeight").floatValue >= 0.7f &&
                 firstPersonCamera.FindProperty("firstPersonMinPitch").floatValue <= -80f &&
                 firstPersonCamera.FindProperty("firstPersonMaxPitch").floatValue >= 80f &&
                 firstPersonCamera.FindProperty("firstPersonNearClip").floatValue <= 0.05f,

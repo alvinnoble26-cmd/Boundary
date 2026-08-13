@@ -306,7 +306,7 @@ public sealed class BoundaryMathTests
     public void FirstPersonCamera_UsesEyePoseWithoutThirdPersonOffset()
     {
         Vector3 playerPosition = new Vector3(10f, 2f, 3f);
-        Vector3 localEyeOffset = new Vector3(0f, 0.52f, 0.08f);
+        Vector3 localEyeOffset = new Vector3(0f, 0.72f, 0.08f);
         Vector3 eyePosition = Cam.CalculateFirstPersonEyePosition(
             playerPosition,
             90f,
@@ -314,7 +314,7 @@ public sealed class BoundaryMathTests
         Quaternion viewRotation = Cam.CalculateFirstPersonViewRotation(-30f, 90f);
 
         Assert.That(eyePosition.x, Is.EqualTo(10.08f).Within(0.001f));
-        Assert.That(eyePosition.y, Is.EqualTo(2.52f).Within(0.001f));
+        Assert.That(eyePosition.y, Is.EqualTo(2.72f).Within(0.001f));
         Assert.That(eyePosition.z, Is.EqualTo(3f).Within(0.001f));
         Assert.That(Quaternion.Angle(viewRotation, Quaternion.Euler(-30f, 90f, 0f)),
             Is.LessThan(0.001f));
@@ -363,6 +363,48 @@ public sealed class BoundaryMathTests
         Assert.That(ControlLayoutSettings.NormalizeCameraFieldOfView(140f),
             Is.EqualTo(ControlLayoutSettings.MaximumCameraFieldOfView));
         Assert.That(ControlLayoutSettings.NormalizeCameraFieldOfView(96f), Is.EqualTo(96f));
+    }
+
+    [Test]
+    public void EditControls_CameraRowsHaveCompactHandlesAndDoNotOverlap()
+    {
+        EventSystem existingEventSystem = EventSystem.current;
+        GameObject canvasObject = new GameObject("Edit Controls Canvas", typeof(Canvas));
+        GameObject options = new GameObject("OptionsMenu");
+        options.transform.SetParent(canvasObject.transform, false);
+        try
+        {
+            ControlLayoutEditorUI editor = canvasObject.AddComponent<ControlLayoutEditorUI>();
+            editor.Build(options);
+
+            Transform topBar = canvasObject.transform.Find("ControlLayoutEditor/TopBar");
+            Assert.That(topBar, Is.Not.Null);
+            RectTransform sensitivity = topBar.Find("SensitivitySlider") as RectTransform;
+            RectTransform fieldOfView = topBar.Find("FieldOfViewSlider") as RectTransform;
+            Assert.That(sensitivity, Is.Not.Null);
+            Assert.That(fieldOfView, Is.Not.Null);
+            RectTransform sensitivityHandle = sensitivity.Find("Handle") as RectTransform;
+            RectTransform fieldOfViewHandle = fieldOfView.Find("Handle") as RectTransform;
+
+            Assert.That(sensitivityHandle.sizeDelta.y, Is.LessThanOrEqualTo(30f));
+            Assert.That(fieldOfViewHandle.sizeDelta.y, Is.LessThanOrEqualTo(30f));
+
+            float rowDistance = Mathf.Abs(
+                sensitivity.anchoredPosition.y - fieldOfView.anchoredPosition.y);
+            float minimumGap = (sensitivityHandle.sizeDelta.y + fieldOfViewHandle.sizeDelta.y) * 0.5f + 24f;
+            Assert.That(rowDistance, Is.GreaterThan(minimumGap),
+                "Sensitivity and FOV slider handles must have a visible vertical gap.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(canvasObject);
+            if (existingEventSystem == null)
+            {
+                foreach (EventSystem eventSystem in Object.FindObjectsByType<EventSystem>(
+                             FindObjectsInactive.Include, FindObjectsSortMode.None))
+                    Object.DestroyImmediate(eventSystem.gameObject);
+            }
+        }
     }
 
     [Test]

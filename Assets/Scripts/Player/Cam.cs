@@ -9,6 +9,7 @@ public class Cam : NetworkBehaviour
     public const float DefaultFirstPersonNearClip = 0.05f;
     public const float DefaultFirstPersonFieldOfView = 85f;
     public const float DefaultLookDegreesPerPixel = 0.32f;
+    public const float MinimumFirstPersonEyeHeight = 0.72f;
 
     [Header("Sensitivity")]
     public float xSens = ControlLayoutSettings.DefaultCameraSensitivity;
@@ -23,7 +24,9 @@ public class Cam : NetworkBehaviour
     public TouchLookHandler swipe;
 
     [Header("First Person View")]
-    [SerializeField] private Vector3 firstPersonEyeOffset = new Vector3(0f, 0.52f, 0.08f);
+    [SerializeField] private Vector3 firstPersonEyeOffset = new Vector3(0f, 0.72f, 0.08f);
+    [SerializeField, Min(MinimumFirstPersonEyeHeight)]
+    private float minimumFirstPersonEyeHeight = MinimumFirstPersonEyeHeight;
     [SerializeField, Range(-89f, -45f)] private float firstPersonMinPitch = -85f;
     [SerializeField, Range(45f, 89f)] private float firstPersonMaxPitch = 85f;
     [SerializeField, Range(0.01f, 0.2f)] private float firstPersonNearClip = DefaultFirstPersonNearClip;
@@ -201,10 +204,12 @@ public class Cam : NetworkBehaviour
         if (orientation != null)
             orientation.rotation = yawRotation;
 
+        Vector3 effectiveEyeOffset = firstPersonEyeOffset;
+        effectiveEyeOffset.y = Mathf.Max(effectiveEyeOffset.y, minimumFirstPersonEyeHeight);
         Vector3 desiredEyePosition = CalculateFirstPersonEyePosition(
             playerRoot.position,
             yaw,
-            firstPersonEyeOffset);
+            effectiveEyeOffset);
         Vector3 safeEyePosition = ResolveObstructionSafeEyePosition(desiredEyePosition);
 
         if (camPivot != null)
