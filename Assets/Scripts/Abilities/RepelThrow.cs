@@ -15,6 +15,12 @@ public class RepelThrow : MonoBehaviour, IAbility
     [SerializeField] private float cooldown = 3f;
     [SerializeField, Min(0.5f)] private float launchHeightAbovePlayerCenter = 1.35f;
 
+    [Header("Repulsion Field Tuning")]
+    [SerializeField, Min(0f), Tooltip("Raw push force. Heavier objects receive less movement.")]
+    private float repulsionForce = 220f;
+    [SerializeField, Min(0f), Tooltip("Maximum response caused by the repulsion pulse.")]
+    private float fieldAcceleration = 88f;
+
     [Header("Projectile Physics Boost")]
     [SerializeField] private float projectileMass = 3f;
     [SerializeField] private float projectileDrag = 0f;
@@ -93,6 +99,10 @@ public class RepelThrow : MonoBehaviour, IAbility
             objectToThrow, owner, spawnPos, dir, launchHeightAbovePlayerCenter, true);
         if (projectile == null)
             return;
+
+        ForceField field = projectile.GetComponentInChildren<ForceField>();
+        if (field != null)
+            field.ConfigureField(repulsionForce, fieldAcceleration);
 
         NetworkIdentity.Spawn(projectile, objectToThrow);
 

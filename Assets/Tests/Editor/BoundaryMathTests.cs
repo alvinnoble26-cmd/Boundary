@@ -105,8 +105,28 @@ public sealed class BoundaryMathTests
     {
         Assert.That(BoundaryMatchController.ArenaMassCubeScale, Is.GreaterThanOrEqualTo(2.8f));
         Assert.That(BoundaryMatchController.ArenaMassBlackHoleScale, Is.GreaterThanOrEqualTo(1.75f));
-        Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(0f), Is.EqualTo(32f).Within(0.001f));
+        Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(0f), Is.EqualTo(0f).Within(0.001f));
         Assert.That(BoundaryMath.ArenaMassAbilityVelocityChange(1f), Is.EqualTo(88f).Within(0.001f));
+    }
+
+    [Test]
+    public void FieldResponse_FadesWithDistanceAndMass()
+    {
+        float nearLight = BoundaryMath.FieldVelocityChange(220f, 88f, 1f, 2.5f);
+        float farLight = BoundaryMath.FieldVelocityChange(220f, 88f, 0.2f, 2.5f);
+        float nearHeavy = BoundaryMath.FieldVelocityChange(220f, 88f, 1f, 10f);
+
+        Assert.That(nearLight, Is.EqualTo(88f).Within(0.001f));
+        Assert.That(farLight, Is.LessThan(nearLight));
+        Assert.That(nearHeavy, Is.LessThan(nearLight));
+        Assert.That(nearHeavy, Is.EqualTo(22f).Within(0.001f));
+    }
+
+    [Test]
+    public void FieldAcceleration_CapsConfiguredForce()
+    {
+        Assert.That(BoundaryMath.FieldVelocityChange(1000f, 35f, 1f, 1f),
+            Is.EqualTo(35f).Within(0.001f));
     }
 
     [Test]

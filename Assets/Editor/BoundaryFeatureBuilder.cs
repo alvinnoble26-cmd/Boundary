@@ -190,15 +190,22 @@ public static class BoundaryFeatureValidator
         Require(attractThrow.FindProperty("launchHeightAbovePlayerCenter").floatValue >= 1.3f &&
                 repelThrow.FindProperty("launchHeightAbovePlayerCenter").floatValue >= 1.3f,
             "Attract and Repel must launch above the player's center.");
+        Require(attractThrow.FindProperty("attractionForce").floatValue > 0f &&
+                attractThrow.FindProperty("fieldAcceleration").floatValue > 0f &&
+                repelThrow.FindProperty("repulsionForce").floatValue > 0f &&
+                repelThrow.FindProperty("fieldAcceleration").floatValue > 0f,
+            "Attract and Repel must expose force and acceleration tuning fields.");
         Require(attractPrefab != null && repelPrefab != null,
             "Attract or Repel projectile prefab is missing.");
         SerializedObject attractField = new SerializedObject(attractPrefab.GetComponent<ForceField>());
         SerializedObject repelField = new SerializedObject(repelPrefab.GetComponent<ForceField>());
         Require(attractField.FindProperty("radius").floatValue >= 220f &&
                 repelField.FindProperty("radius").floatValue >= 220f &&
-                attractField.FindProperty("maxAccel").floatValue >= 3000f &&
-                repelField.FindProperty("maxAccel").floatValue >= 3000f,
-            "Attract and Repel must retain their expanded radius and power.");
+                attractField.FindProperty("fieldForce").floatValue >= 220f &&
+                repelField.FindProperty("fieldForce").floatValue >= 220f &&
+                attractField.FindProperty("fieldAcceleration").floatValue >= 88f &&
+                repelField.FindProperty("fieldAcceleration").floatValue >= 88f,
+            "Attract and Repel must retain their expanded radius and tunable response.");
         Require(registry != null, "Network prefab registry is missing.");
         Require(registry.prefabs.Any(entry => entry.prefab == director), "Director is not in NetworkPrefabs.");
         Require(registry.prefabs.Any(entry => entry.prefab == hazard), "Hazard is not in NetworkPrefabs.");

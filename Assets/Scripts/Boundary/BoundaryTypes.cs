@@ -99,7 +99,20 @@ public static class BoundaryMath
 
     public static float ArenaMassAbilityVelocityChange(float influence)
     {
-        return Mathf.Lerp(32f, 88f, Mathf.Clamp01(influence));
+        return FieldVelocityChange(220f, 88f, influence, 2.5f);
+    }
+
+    public static float FieldVelocityChange(
+        float fieldForce,
+        float fieldAcceleration,
+        float distanceInfluence,
+        float rigidbodyMass)
+    {
+        float influence = Mathf.Clamp01(distanceInfluence);
+        float mass = Mathf.Max(0.1f, rigidbodyMass);
+        float forceResponse = Mathf.Max(0f, fieldForce) / mass;
+        float accelerationLimit = Mathf.Max(0f, fieldAcceleration);
+        return Mathf.Min(forceResponse, accelerationLimit) * influence;
     }
 
     public static bool IsLethalContactHazard(BoundaryHazardKind kind, bool isArenaMass)

@@ -15,6 +15,12 @@ public class AttractThrow : MonoBehaviour, IAbility
     [SerializeField] private float cooldown = 3f;
     [SerializeField, Min(0.5f)] private float launchHeightAbovePlayerCenter = 1.35f;
 
+    [Header("Attraction Field Tuning")]
+    [SerializeField, Min(0f), Tooltip("Raw pull force. Heavier objects receive less movement.")]
+    private float attractionForce = 220f;
+    [SerializeField, Min(0f), Tooltip("Maximum response caused by the attraction pulse.")]
+    private float fieldAcceleration = 88f;
+
     [Header("Projectile Physics Boost")]
     [SerializeField] private float projectileMass = 3f;
     [SerializeField] private float projectileDrag = 0f;
@@ -93,6 +99,10 @@ public class AttractThrow : MonoBehaviour, IAbility
             objectToThrow, owner, spawnPos, dir, launchHeightAbovePlayerCenter, true);
         if (projectile == null)
             return;
+
+        ForceField field = projectile.GetComponentInChildren<ForceField>();
+        if (field != null)
+            field.ConfigureField(attractionForce, fieldAcceleration);
 
         NetworkIdentity.Spawn(projectile, objectToThrow);
 

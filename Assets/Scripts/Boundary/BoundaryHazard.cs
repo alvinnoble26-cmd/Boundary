@@ -328,7 +328,13 @@ public sealed class BoundaryHazard : NetworkBehaviour
             body.linearVelocity = body.linearVelocity.normalized * 100f;
     }
 
-    public static int ServerApplyArenaMassField(Vector3 center, float radius, bool outward)
+    public static int ServerApplyArenaMassField(
+        Vector3 center,
+        float radius,
+        bool outward,
+        float fieldForce,
+        float fieldAcceleration,
+        AnimationCurve distanceFalloff)
     {
         if (radius <= 0f)
             return 0;
@@ -355,7 +361,9 @@ public sealed class BoundaryHazard : NetworkBehaviour
                 continue;
 
             float normalizedDistance = Mathf.Clamp01(distance / radius);
-            float influence = 1f - BoundaryMath.EaseInOut(normalizedDistance);
+            float influence = distanceFalloff != null
+                ? Mathf.Clamp01(distanceFalloff.Evaluate(normalizedDistance))
+                : 1f - BoundaryMath.EaseInOut(normalizedDistance);
             Vector3 direction = offset / distance;
             if (!outward)
                 direction = -direction;
@@ -370,7 +378,11 @@ public sealed class BoundaryHazard : NetworkBehaviour
             }
 
             hazard.ServerApplyAbilityVelocity(
-                direction * BoundaryMath.ArenaMassAbilityVelocityChange(influence));
+                direction * BoundaryMath.FieldVelocityChange(
+                    fieldForce,
+                    fieldAcceleration,
+                    influence,
+                    hazard.body.mass));
             affected++;
         }
 

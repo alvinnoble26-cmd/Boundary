@@ -176,8 +176,8 @@ MonoBehaviour:
   delayBeforePulse: 1.5
   destroyAfterPulse: 0.1
   radius: 220
-  strength: 19000
-  maxAccel: 3000
+  fieldForce: 220
+  fieldAcceleration: 88
   playerForceMultiplier: 1.85
   falloff:
     serializedVersion: 2

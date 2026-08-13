@@ -1,5 +1,6 @@
 using PurrNet;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public class  ForceField : MonoBehaviour
 {
@@ -14,8 +15,12 @@ public class  ForceField : MonoBehaviour
 
     [Header("Force")]
     [SerializeField] private float radius = 6f;
-    [SerializeField] private float strength = 25f;            
-    [SerializeField] private float maxAccel = 120f;          
+    [FormerlySerializedAs("strength")]
+    [SerializeField, Min(0f), Tooltip("Raw attraction or repulsion force. Rigidbody mass reduces its effect.")]
+    private float fieldForce = 220f;
+    [FormerlySerializedAs("maxAccel")]
+    [SerializeField, Min(0f), Tooltip("Maximum velocity response produced by one field pulse.")]
+    private float fieldAcceleration = 88f;
     [Tooltip("Extra force applied only to player rigidbodies. Physics props remain unchanged.")]
     [SerializeField] private float playerForceMultiplier = 1.5f;
     [SerializeField] private AnimationCurve falloff = AnimationCurve.EaseInOut(0, 1, 1, 0);
@@ -98,7 +103,10 @@ public class  ForceField : MonoBehaviour
         BoundaryHazard.ServerApplyArenaMassField(
             center,
             radius,
-            mode == Mode.Repel);
+            mode == Mode.Repel,
+            fieldForce,
+            fieldAcceleration,
+            falloff);
 
         int count = Physics.OverlapSphereNonAlloc(center, radius, hits, affectMask, triggerInteraction);
 
@@ -129,12 +137,18 @@ public class  ForceField : MonoBehaviour
 
             float t = Mathf.Clamp01(dist / radius); 
             float f = Mathf.Clamp01(falloff.Evaluate(t));
-            float accel = Mathf.Min(strength * f, maxAccel);
+            float velocityChange = BoundaryMath.FieldVelocityChange(
+                fieldForce,
+                fieldAcceleration,
+                f,
+                rb.mass);
 
             PlayerMovement player = rb.GetComponentInParent<PlayerMovement>();
             if (player != null)
             {
-                accel *= playerForceMultiplier;
+                velocityChange = Mathf.Min(
+                    fieldAcceleration,
+                    velocityChange * playerForceMultiplier);
 
                 BoundaryPlayerState boundaryState = player.GetComponent<BoundaryPlayerState>();
                 BoundaryMatchController match = BoundaryMatchController.Instance;
@@ -143,7 +157,9 @@ public class  ForceField : MonoBehaviour
                 {
                     // Airborne targets have less stability in the vortex, so
                     // Repel becomes the intended final-phase knockout tool.
-                    accel *= mode == Mode.Repel ? 1.42f : 1.12f;
+                    velocityChange = Mathf.Min(
+                        fieldAcceleration,
+                        velocityChange * (mode == Mode.Repel ? 1.42f : 1.12f));
                 }
 
                 if (boundaryState != null)
@@ -151,18 +167,24 @@ public class  ForceField : MonoBehaviour
                     // Player rigidbodies are owner-authoritative and kinematic
                     // on the server. Send the velocity change to that owner;
                     // applying AddForce here would silently do nothing.
-                    boundaryState.ServerPushOwner(dir * Mathf.Clamp(accel * 0.13f, 6f, 56f));
+                    boundaryState.ServerPushOwner(dir * velocityChange);
                     continue;
                 }
             }
 
-            rb.AddForce(dir * accel, ForceMode.Acceleration);
+            rb.AddForce(dir * velocityChange, ForceMode.VelocityChange);
         }
 
         Destroy(gameObject, destroyAfterPulse);
     }
 
     public void SetOwner(Rigidbody owner) => ownerRb = owner;
+
+    public void ConfigureField(float force, float acceleration)
+    {
+        fieldForce = Mathf.Max(0f, force);
+        fieldAcceleration = Mathf.Max(0f, acceleration);
+    }
 
     void OnDrawGizmosSelected()
     {
