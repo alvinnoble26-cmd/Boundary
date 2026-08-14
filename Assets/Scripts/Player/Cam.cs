@@ -45,6 +45,8 @@ public class Cam : NetworkBehaviour
     private float yaw;
     private bool isReady;
     private bool setupRoutineRunning;
+    private bool ownerViewWasUnexpectedlyDisabled;
+    private PlayerMovement playerMovement;
 
     protected override void OnSpawned()
     {
@@ -159,18 +161,48 @@ public class Cam : NetworkBehaviour
         if (!isOwner || !isReady)
             return;
 
+        // Player objects can finish spawning after ownership is assigned.
+        // Some of those spawn-time components toggle cameras/listeners while
+        // they establish their own local view. Keep this player's view alive
+        // without ever enabling a remote player's camera.
+        MaintainOwnerView();
+
         Vector2 lookDelta = swipe != null ? swipe.ConsumeLookDelta() : Vector2.zero;
         UpdateFirstPersonPose(lookDelta);
     }
 
+    private void MaintainOwnerView()
+    {
+        if (cam == null)
+            return;
+
+        if (!cam.gameObject.activeSelf)
+        {
+            cam.gameObject.SetActive(true);
+            ownerViewWasUnexpectedlyDisabled = true;
+        }
+
+        bool cameraWasDisabled = cam.TryGetComponent<Camera>(out Camera unityCamera) && !unityCamera.enabled;
+        bool listenerWasDisabled = cam.TryGetComponent<AudioListener>(out AudioListener listener) && !listener.enabled;
+        if (!cameraWasDisabled && !listenerWasDisabled)
+            return;
+
+        SetCameraComponentsEnabled(true);
+        if (!ownerViewWasUnexpectedlyDisabled)
+        {
+            ownerViewWasUnexpectedlyDisabled = true;
+            Debug.LogWarning("[Cam] Restored the local owner camera after a spawn-time component disabled it.");
+        }
+    }
+
     private void ResolveReferences()
     {
-        PlayerMovement movement = GetComponentInParent<PlayerMovement>();
-        playerRoot = movement != null ? movement.transform : transform.root;
+        playerMovement = GetComponentInParent<PlayerMovement>();
+        playerRoot = playerMovement != null ? playerMovement.transform : transform.root;
 
         if (orientation == null)
-            orientation = movement != null && movement.orientation != null
-                ? movement.orientation
+            orientation = playerMovement != null && playerMovement.orientation != null
+                ? playerMovement.orientation
                 : playerRoot;
         if (camPivot == null)
             camPivot = transform;
@@ -203,6 +235,8 @@ public class Cam : NetworkBehaviour
         Quaternion viewRotation = CalculateFirstPersonViewRotation(pitch, yaw);
         if (orientation != null)
             orientation.rotation = yawRotation;
+        if (playerMovement != null)
+            playerMovement.SetViewYaw(yaw);
 
         Vector3 effectiveEyeOffset = firstPersonEyeOffset;
         effectiveEyeOffset.y = Mathf.Max(effectiveEyeOffset.y, minimumFirstPersonEyeHeight);
@@ -285,6 +319,7 @@ public class Cam : NetworkBehaviour
     private void DeactivateOwnerView()
     {
         isReady = false;
+        ownerViewWasUnexpectedlyDisabled = false;
         SetCameraComponentsEnabled(false);
         SetLocalVisualVisibility(false);
     }

@@ -69,6 +69,7 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     private bool unstableMassPulsed;
     private bool tornadoStarted;
     private bool arenaMassesSpawned;
+    private float nextArenaMassRetryAt;
     private int disasterWave;
     private uint nextWaveTick;
     private uint lastContinuousSyncTick;
@@ -226,13 +227,22 @@ public sealed class BoundaryMatchController : NetworkBehaviour
         if (!roundStarted)
         {
             int requiredPlayers = GameManager.I != null && GameManager.I.IsPracticeMode ? 1 : 2;
-            int playerCount = FindObjectsByType<PlayerMovement>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
-            if (playerCount < requiredPlayers)
+            int loadedPlayers = FindObjectsByType<PlayerMovement>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+            NetworkManager manager = NetworkManager.main;
+            int connectedPlayers = manager != null ? manager.playerCount : 0;
+            if (Mathf.Max(loadedPlayers, connectedPlayers) < requiredPlayers)
                 return;
 
             roundStarted = true;
+            Debug.Log($"[Boundary] Starting round with {connectedPlayers} connected and {loadedPlayers} loaded player(s).");
             BeginPhase(BoundaryPhase.OuterRing);
             return;
+        }
+
+        if (!arenaMassesSpawned && Time.unscaledTime >= nextArenaMassRetryAt)
+        {
+            nextArenaMassRetryAt = Time.unscaledTime + 0.5f;
+            SpawnArenaMassPopulation();
         }
 
         TickMatchState();
@@ -535,12 +545,32 @@ public sealed class BoundaryMatchController : NetworkBehaviour
 
     private void SpawnArenaMassPopulation()
     {
-        if (arenaMassesSpawned || hazardPrefab == null)
+        if (arenaMassesSpawned)
             return;
 
-        arenaMassesSpawned = true;
+        if (hazardPrefab == null)
+            hazardPrefab = Resources.Load<GameObject>("Boundary/BoundaryHazard");
+        if (hazardPrefab == null)
+        {
+            Debug.LogError("[Boundary] Cannot spawn arena masses: Resources/Boundary/BoundaryHazard is missing.");
+            return;
+        }
+
+        HashSet<int> spawnedVariants = new HashSet<int>();
+        BoundaryHazard[] existingHazards = FindObjectsByType<BoundaryHazard>(
+            FindObjectsInactive.Exclude,
+            FindObjectsSortMode.None);
+        foreach (BoundaryHazard existingHazard in existingHazards)
+        {
+            if (existingHazard != null && existingHazard.IsArenaMass)
+                spawnedVariants.Add(existingHazard.Variant);
+        }
+
         for (int i = 0; i < ArenaMassPopulation; i++)
         {
+            if (spawnedVariants.Contains(i))
+                continue;
+
             bool sphere = i >= ArenaMassPopulation / 2;
             bool survivesInner = i == 0 || i == 4 || i == 10 || i == 14 || i == 18;
             float angle = i * 2.399963f + 0.31f;
@@ -568,8 +598,23 @@ public sealed class BoundaryMatchController : NetworkBehaviour
                 i,
                 survivesInner,
                 position);
-            NetworkIdentity.Spawn(instance, hazardPrefab);
+            try
+            {
+                NetworkIdentity.Spawn(instance, hazardPrefab);
+                spawnedVariants.Add(i);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError($"[Boundary] Failed to network-spawn arena mass {i}: {exception.Message}");
+                Destroy(instance);
+            }
         }
+
+        arenaMassesSpawned = spawnedVariants.Count >= ArenaMassPopulation;
+        if (arenaMassesSpawned)
+            Debug.Log($"[Boundary] Spawned all {ArenaMassPopulation} arena cubes and black holes.");
+        else
+            Debug.LogWarning($"[Boundary] Spawned {spawnedVariants.Count}/{ArenaMassPopulation} arena masses; retrying.");
     }
 
     public void ServerRegisterPlatformContact(int platformIndex)

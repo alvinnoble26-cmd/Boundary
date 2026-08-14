@@ -20,6 +20,11 @@ public class PlayerMovement : NetworkBehaviour
     public float deadzone = 0.15f;
     public float inputSmoothing = 12f;
 
+    [Header("Stopping Control")]
+    [SerializeField, Min(1f)] private float groundedStopDeceleration = 42f;
+    [SerializeField, Min(0f)] private float airborneStopDeceleration = 6f;
+    [SerializeField, Min(0.01f)] private float stopSpeedThreshold = 0.12f;
+
     [Header("Detection")]
     public LayerMask groundMask = ~0;
     public float groundCheckDistance = 0.25f;
@@ -62,8 +67,8 @@ public class PlayerMovement : NetworkBehaviour
         {
             Vector3 fwd = orientation ? orientation.forward : transform.forward;
             fwd.y = 0f;
-            if (LastFlatMoveDir.sqrMagnitude > 0.0001f) return LastFlatMoveDir.normalized;
             if (fwd.sqrMagnitude > 0.0001f) return fwd.normalized;
+            if (LastFlatMoveDir.sqrMagnitude > 0.0001f) return LastFlatMoveDir.normalized;
             return Vector3.forward;
         }
     }
@@ -77,6 +82,8 @@ public class PlayerMovement : NetworkBehaviour
     private Collider myCol;
     private Vector2 smoothedMoveInput;
     private BoundaryPlayerState boundaryState;
+    private float viewYaw;
+    private bool hasViewYaw;
 
 // Add this field near the top with other private fields
 private SlideAbility slideAbility;
@@ -90,6 +97,7 @@ void Awake()
     if (orientation == null) orientation = transform;
     slideAbility = GetComponentInChildren<SlideAbility>();
     boundaryState = GetComponent<BoundaryPlayerState>();
+    viewYaw = transform.eulerAngles.y;
 }
     protected override void OnSpawned()
 {
@@ -124,27 +132,39 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         ExternalSpeedCap = speedCap;
     }
 
+    public void SetViewYaw(float yaw)
+    {
+        viewYaw = Mathf.Repeat(yaw, 360f);
+        hasViewYaw = true;
+    }
+
     void FixedUpdate()
     {
         
         if (!isOwner) return;
-        if (input != null)
-        {
-            Vector2 raw = input.Move;
-            raw = Vector2.ClampMagnitude(raw, 1f);
-            if (raw.magnitude < deadzone) raw = Vector2.zero;
+        Vector2 raw = input != null ? input.Move : Vector2.zero;
+        raw = Vector2.ClampMagnitude(raw, 1f);
+        if (raw.magnitude < deadzone)
+            raw = Vector2.zero;
 
+        if (raw == Vector2.zero)
+        {
+            // Releasing the stick/key must stop acceleration immediately.
+            // Smoothing only the input ramp-up avoids the old movement tail.
+            smoothedMoveInput = Vector2.zero;
+        }
+        else
+        {
             float k = 1f - Mathf.Exp(-inputSmoothing * Time.fixedDeltaTime);
             smoothedMoveInput = Vector2.Lerp(smoothedMoveInput, raw, k);
+        }
 
-            moveInput = smoothedMoveInput;
+        moveInput = smoothedMoveInput;
 
-           if (input.ConsumeJump())
-            {
+        if (input != null && input.ConsumeJump())
+        {
             jumpRequested = true;
             JumpPressedThisFrame = true;
-            }
-
         }
         UpdateGrounded();
         UpdateBoundaryFooting();
@@ -153,6 +173,7 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         if (MovementSuppressed)
         {
             ApplyBoundaryForces();
+            ApplyMasterRotation();
             JumpPressedThisFrame = false;
             jumpRequested = false;
             return;
@@ -251,7 +272,17 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         }
         else
         {
-            rb.AddForce(-flatVel * deceleration, ForceMode.Acceleration);
+            float stopRate = isGrounded
+                ? Mathf.Max(deceleration, groundedStopDeceleration)
+                : airborneStopDeceleration;
+            Vector3 stoppedFlatVelocity = Vector3.MoveTowards(
+                flatVel,
+                Vector3.zero,
+                stopRate * Time.fixedDeltaTime);
+            if (stoppedFlatVelocity.magnitude <= stopSpeedThreshold)
+                stoppedFlatVelocity = Vector3.zero;
+
+            rb.linearVelocity = new Vector3(stoppedFlatVelocity.x, vel.y, stoppedFlatVelocity.z);
             rb.useGravity = true;
         }
     }
@@ -424,18 +455,7 @@ void HandleJump()
         float xTilt = moveInput.y * backTiltAngle;
 
         Transform basis = orientation ? orientation : transform;
-        Vector3 inputDir = (basis.forward * moveInput.y + basis.right * moveInput.x);
-        inputDir.y = 0f;
-
-        float yaw;
-        if (inputDir.sqrMagnitude > 0.001f)
-        {
-            yaw = Quaternion.LookRotation(inputDir.normalized, Vector3.up).eulerAngles.y;
-        }
-        else
-        {
-            yaw = rb.rotation.eulerAngles.y;
-        }
+        float yaw = hasViewYaw ? viewYaw : basis.eulerAngles.y;
 
         if (!isGrounded && wallStickCounter > 0f)
         {
@@ -443,8 +463,14 @@ void HandleJump()
             zTilt = localWallNormal.x > 0 ? -wallTiltAngle : wallTiltAngle;
         }
 
-        Quaternion targetRot = Quaternion.Euler(xTilt, yaw, zTilt);
-        rb.MoveRotation(Quaternion.Slerp(rb.rotation, targetRot, uprightStrength * Time.fixedDeltaTime));
+        Vector3 currentEuler = rb.rotation.eulerAngles;
+        float tiltBlend = 1f - Mathf.Exp(-uprightStrength * Time.fixedDeltaTime);
+        float smoothedX = Mathf.LerpAngle(currentEuler.x, xTilt, tiltBlend);
+        float smoothedZ = Mathf.LerpAngle(currentEuler.z, zTilt, tiltBlend);
+
+        // Yaw is exact rather than damped: the networked skin's front must
+        // agree with the first-person camera on every physics tick.
+        rb.MoveRotation(Quaternion.Euler(smoothedX, yaw, smoothedZ));
     }
 
     bool TryFindWall(out RaycastHit bestHit)
