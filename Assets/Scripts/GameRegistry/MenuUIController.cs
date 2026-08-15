@@ -88,6 +88,9 @@ public class MenuUIController : MonoBehaviour
         if (mainMenuPanel != null)
             mainMenuPanel.SetActive(false);
 
+        if (serverSelectorPanel != null)
+            serverSelectorPanel.SetActive(false);
+
         if (losePanel != null)
             losePanel.SetActive(false);
 
@@ -104,6 +107,12 @@ public class MenuUIController : MonoBehaviour
     {
         if (mainMenuPanel != null)
             mainMenuPanel.SetActive(false);
+
+        // The server/multiplayer selector is a sibling of the main menu in
+        // Menu.unity. Explicitly close it when a match ends so returning from
+        // the loss screen cannot reveal two menu stacks at once.
+        if (serverSelectorPanel != null)
+            serverSelectorPanel.SetActive(false);
 
         if (winPanel != null)
             winPanel.SetActive(false);
@@ -122,7 +131,10 @@ public class MenuUIController : MonoBehaviour
         if (GameManager.I != null)
             GameManager.I.ClearLastResult();
 
-        ShowMainMenu();
+        // A completed multiplayer match returns to its multiplayer selector,
+        // not the play/start panel. This keeps the two menu stacks mutually
+        // exclusive after pressing Back on the loss or win screen.
+        ShowServerSelector();
     }
 
     public void PlayAgain()

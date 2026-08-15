@@ -8,6 +8,14 @@ using UnityEngine.UI;
 public sealed class BoundaryMathTests
 {
     [Test]
+    public void OutOfBoundsMargin_TracksShrinkingRingPhase()
+    {
+        Assert.That(BoundaryMath.OutOfBoundsMargin(BoundaryPhase.OuterRing), Is.EqualTo(5f));
+        Assert.That(BoundaryMath.OutOfBoundsMargin(BoundaryPhase.MiddleRing), Is.EqualTo(3f));
+        Assert.That(BoundaryMath.OutOfBoundsMargin(BoundaryPhase.InnerRing), Is.EqualTo(2f));
+    }
+
+    [Test]
     public void TransitionRadius_IsSmoothAndHitsBothEndpoints()
     {
         Assert.That(BoundaryMath.TransitionRadius(106f, 68f, 0f, 7f), Is.EqualTo(106f).Within(0.001f));
@@ -237,6 +245,31 @@ public sealed class BoundaryMathTests
             owner, new Vector3(5f, -2f, 4f), 1.35f);
 
         Assert.That(elevated.y, Is.EqualTo(2.35f).Within(0.001f));
+    }
+
+    [Test]
+    public void HeadlessArenaBuild_CreatesCollidersWithoutRenderers()
+    {
+        GameObject root = new GameObject("Headless Arena Validation");
+        try
+        {
+            BoundaryMatchController controller = root.AddComponent<BoundaryMatchController>();
+            BoundaryArenaPresentation presentation = root.AddComponent<BoundaryArenaPresentation>();
+
+            presentation.BuildPhysicsOnlyArenaForValidation(controller);
+
+            Assert.That(presentation.GeneratedPlatformCount, Is.GreaterThan(0));
+            Assert.That(presentation.GeneratedPlatformColliderCount,
+                Is.EqualTo(presentation.GeneratedPlatformCount));
+            Assert.That(root.GetComponentsInChildren<BoxCollider>(true).Length,
+                Is.EqualTo(presentation.GeneratedPlatformCount));
+            Assert.That(root.GetComponentsInChildren<Renderer>(true), Is.Empty,
+                "Dedicated-server floor construction must not require render components.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(root);
+        }
     }
 
     [Test]

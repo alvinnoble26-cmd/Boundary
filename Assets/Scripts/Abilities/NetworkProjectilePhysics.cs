@@ -9,8 +9,19 @@ using UnityEngine;
 /// </summary>
 public class NetworkProjectilePhysics : MonoBehaviour
 {
+    private Rigidbody body;
+
     private void Awake()
     {
+        body = GetComponent<Rigidbody>();
+        if (body != null)
+        {
+            // Network-spawned client copies must never get a speculative local
+            // gravity step. Server-spawned copies are enabled immediately.
+            bool server = NetworkManager.main != null && NetworkManager.main.isServer;
+            SetServerSimulation(server);
+        }
+
         // The root collider gives the projectile world collision, but it must
         // not physically shove a player Rigidbody. BlackHoleKill uses a
         // separate child trigger, so ignoring only these solid-collider pairs
@@ -48,14 +59,41 @@ public class NetworkProjectilePhysics : MonoBehaviour
         }
 
         if (net.isServer)
+        {
+            SetServerSimulation(true);
             yield break;
+        }
 
-        Rigidbody body = GetComponent<Rigidbody>();
         if (body == null)
             yield break;
 
-        body.linearVelocity = Vector3.zero;
-        body.angularVelocity = Vector3.zero;
-        body.isKinematic = true;
+        SetServerSimulation(false);
+    }
+
+    public void PrepareForServerLaunch()
+    {
+        NetworkManager net = NetworkManager.main;
+        if (net == null || !net.isServer)
+            return;
+
+        SetServerSimulation(true);
+    }
+
+    private void SetServerSimulation(bool simulate)
+    {
+        if (body == null)
+            return;
+
+        if (!simulate)
+        {
+            body.linearVelocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
+        }
+
+        body.isKinematic = !simulate;
+        body.collisionDetectionMode = simulate
+            ? CollisionDetectionMode.ContinuousDynamic
+            : CollisionDetectionMode.ContinuousSpeculative;
+        body.interpolation = RigidbodyInterpolation.Interpolate;
     }
 }

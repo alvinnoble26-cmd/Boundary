@@ -247,7 +247,8 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         Vector3 flatVel = new Vector3(vel.x, 0f, vel.z);
 
         float movementMultiplier = 1f;
-        if (boundaryState != null && boundaryState.State == BoundaryKnockoutState.EventHorizon)
+        if (boundaryState != null && (boundaryState.State == BoundaryKnockoutState.EventHorizon ||
+                                      boundaryState.State == BoundaryKnockoutState.OutOfBounds))
             movementMultiplier *= 0.48f;
 
         if (inputMag > 0.001f)

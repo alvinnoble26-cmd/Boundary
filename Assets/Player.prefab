@@ -271,12 +271,16 @@ MonoBehaviour:
   cam: {fileID: 5967964451342603314}
   camPivot: {fileID: 3566061499379271860}
   swipe: {fileID: 0}
-  camOffset: {x: 0, y: 1.6, z: -4}
-  minPitch: -35
-  maxPitch: 55
-  collisionRadius: 0.2
-  collisionPadding: 0.08
-  collisionMask:
+  firstPersonEyeOffset: {x: 0, y: 0.52, z: 0.08}
+  minimumFirstPersonEyeHeight: 0.72
+  firstPersonMinPitch: -85
+  firstPersonMaxPitch: 85
+  firstPersonNearClip: 0.05
+  firstPersonFieldOfView: 85
+  lookDegreesPerPixelAtDefault: 0.32
+  obstructionRadius: 0.07
+  obstructionPadding: 0.025
+  obstructionMask:
     serializedVersion: 2
     m_Bits: 4294967295
 --- !u!1 &5855269780482679567
@@ -742,7 +746,7 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  maxSlopeAngle: 45
+  maxSlopeAngle: 75
   acceleration: 150
   maxSpeed: 20
   deceleration: 50
@@ -750,6 +754,9 @@ MonoBehaviour:
   fallGravityMultiplier: 12
   deadzone: 0.1
   inputSmoothing: 12
+  groundedStopDeceleration: 42
+  airborneStopDeceleration: 6
+  stopSpeedThreshold: 0.12
   groundMask:
     serializedVersion: 2
     m_Bits: 8
@@ -758,7 +765,7 @@ MonoBehaviour:
   wallSphereRadius: 0.1
   wallJumpUp: 20
   wallJumpSide: 20
-  wallStickTime: 0.25
+  wallStickTime: 0.3
   wallSlideSpeed: 10
   wallAttachForce: 40
   uprightStrength: 10
@@ -766,7 +773,7 @@ MonoBehaviour:
   backTiltAngle: 0
   orientation: {fileID: 7070120784998569782}
   input: {fileID: 309532525056957705}
-  maximumBoundaryVerticalSpeed: 26
+  maximumBoundaryVerticalSpeed: 22
   rb: {fileID: 0}
   moveInput: {x: 0, y: 0}
 --- !u!114 &309532525056957705
@@ -813,7 +820,7 @@ MonoBehaviour:
   teleportFailVFX: {fileID: 4594305064576874191, guid: d0467414c35f2b349a4bb1219e454466, type: 3}
   vfxLifetime: 2
   vfxYOffset: 0
-  maxDistance: 25
+  maxDistance: 30
   skin: 0.05
   backoffSteps: 8
   snapToGround: 1
@@ -927,8 +934,8 @@ MonoBehaviour:
   objectToThrow: {fileID: 1573405947621632370, guid: 5c0a8df551a6b43dfa5991b87b5bb1f5, type: 3}
   totalThrows: 100
   throwCooldown: 3.5
-  throwForce: 20
-  throwUpwardForce: 5
+  throwForce: 30
+  throwUpwardForce: 10
 --- !u!114 &4444250755395784126
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -942,10 +949,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   objectToThrow: {fileID: 5380649617664587886, guid: d82507865fb064c5e93cd29965798bb3, type: 3}
-  throwForce: 20
-  throwUpwardForce: 5
+  throwForce: 25
+  throwUpwardForce: 8
   cooldown: 3
   launchHeightAbovePlayerCenter: 1.35
+  attractionForce: 200
+  fieldAcceleration: 80
   projectileMass: 3
   projectileDrag: 0
   projectileAngularDrag: 0.05
@@ -963,10 +972,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   objectToThrow: {fileID: 5883653943848685551, guid: 0316e51d9f81b4e5b9df63b1ea59ac4e, type: 3}
-  throwForce: 20
-  throwUpwardForce: 5
+  throwForce: 25
+  throwUpwardForce: 8
   cooldown: 3
   launchHeightAbovePlayerCenter: 1.35
+  repulsionForce: 200
+  fieldAcceleration: 80
   projectileMass: 3
   projectileDrag: 0
   projectileAngularDrag: 0.05
@@ -1033,14 +1044,14 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4f0e6fa9537c1430a9ecae0769d00b7b, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BoundaryPlayerState
   _isSetup: 0
   _prefabId: -2147483648
   _componentIndex: -2147483648
   _shouldBePooled: 0
   _parent: {fileID: 0}
-  _invertedPathToNearestParent:
+  _invertedPathToNearestParent: 
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}

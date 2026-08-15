@@ -37,6 +37,7 @@ public sealed class NetworkArenaCubePhysics : MonoBehaviour
         if (net.isServer)
         {
             body.isKinematic = false;
+            body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             body.interpolation = RigidbodyInterpolation.Interpolate;
             yield break;
         }

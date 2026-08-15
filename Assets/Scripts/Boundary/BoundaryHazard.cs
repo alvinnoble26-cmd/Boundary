@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 [DisallowMultipleComponent]
 [RequireComponent(typeof(Rigidbody))]
@@ -15,6 +16,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
     private readonly SyncVar<int> variant = new(0, ownerAuth: false);
     private readonly SyncVar<bool> arenaMass = new(false, ownerAuth: false);
     private readonly SyncVar<bool> survivesInner = new(false, ownerAuth: false);
+    private readonly SyncVar<float> networkScale = new(1f, 0.01f, ownerAuth: false);
 
     [Header("Orbit")]
     [SerializeField] private float orbitAcceleration = 18f;
@@ -43,6 +45,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
     private int lastPlatformIndex = -1;
     private float lastPlatformContactAt = -10f;
     private bool visualApplied;
+    private bool buildVisuals;
     private float desiredOrbitRadius;
     private float desiredOrbitHeight;
     private Material cubeMaterial;
@@ -84,14 +87,20 @@ public sealed class BoundaryHazard : NetworkBehaviour
 
     private void Awake()
     {
-        EnsureVisuals();
         body = GetComponent<Rigidbody>();
         boxCollider = GetComponent<BoxCollider>();
         sphereCollider = GetComponent<SphereCollider>();
-        cubeRenderer = transform.Find("CubeVisual")?.GetComponent<Renderer>();
-        sphereRenderer = transform.Find("SphereVisual")?.GetComponent<Renderer>();
+        buildVisuals = !Application.isBatchMode &&
+                       SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null;
+        if (buildVisuals)
+        {
+            EnsureVisuals();
+            cubeRenderer = transform.Find("CubeVisual")?.GetComponent<Renderer>();
+            sphereRenderer = transform.Find("SphereVisual")?.GetComponent<Renderer>();
+        }
         body.isKinematic = true;
         body.interpolation = RigidbodyInterpolation.Interpolate;
+        body.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
         initialPosition = transform.position;
         ActiveHazards.Add(this);
     }
@@ -236,6 +245,8 @@ public sealed class BoundaryHazard : NetworkBehaviour
     protected override void OnSpawned()
     {
         kind.onChanged += OnKindChanged;
+        networkScale.onChanged += OnNetworkScaleChanged;
+        OnNetworkScaleChanged(networkScale.value);
         ApplyVisual();
         StartCoroutine(ResolveAuthority());
     }
@@ -255,6 +266,15 @@ public sealed class BoundaryHazard : NetworkBehaviour
 
     private void Update()
     {
+        // NetworkTransform can apply its initial snapshot after the SyncVar
+        // callback. Hold arena-mass replicas at the server-authored scale
+        // until an intentional absorption animation changes it.
+        if (arenaMass.value && !absorptionStarted && networkScale.value > 0.01f &&
+            Mathf.Abs(transform.localScale.x - networkScale.value) > 0.01f)
+        {
+            transform.localScale = Vector3.one * networkScale.value;
+        }
+
         if (blackHoleRig == null || !blackHoleRig.gameObject.activeSelf)
             return;
 
@@ -302,6 +322,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
         variant.value = populationIndex;
         arenaMass.value = true;
         survivesInner.value = innerRingSurvivor;
+        networkScale.value = transform.localScale.x;
         serverTarget = restingPosition;
         pendingVelocity = Vector3.zero;
         initialPosition = transform.position;
@@ -422,6 +443,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
         body.useGravity = manager.isServer && !kinematicHazard && !arenaMass.value;
         if (manager.isServer && !body.isKinematic)
         {
+            body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             body.linearVelocity = pendingVelocity;
             body.angularVelocity = new Vector3(1.5f, 2f, -1f);
         }
@@ -761,19 +783,34 @@ public sealed class BoundaryHazard : NetworkBehaviour
         ApplyVisual();
     }
 
+    private void OnNetworkScaleChanged(float scale)
+    {
+        if (scale > 0.01f)
+            transform.localScale = Vector3.one * scale;
+    }
+
     private void ApplyVisual()
     {
-        if (cubeRenderer == null || sphereRenderer == null || boxCollider == null || sphereCollider == null)
+        if (boxCollider == null || sphereCollider == null)
             return;
 
         bool sphere = IsSingularityVisual(kind.value);
+        boxCollider.enabled = !sphere;
+        sphereCollider.enabled = sphere;
+        sphereCollider.isTrigger = kind.value != BoundaryHazardKind.ArenaBlackHole;
+
+        // Collision shape selection is required on headless servers even when
+        // all visual components and shaders have been stripped.
+        if (!buildVisuals || cubeRenderer == null || sphereRenderer == null)
+        {
+            visualApplied = true;
+            return;
+        }
+
         cubeRenderer.gameObject.SetActive(!sphere);
         sphereRenderer.gameObject.SetActive(sphere);
         if (blackHoleRig != null)
             blackHoleRig.gameObject.SetActive(sphere);
-        boxCollider.enabled = !sphere;
-        sphereCollider.enabled = sphere;
-        sphereCollider.isTrigger = kind.value != BoundaryHazardKind.ArenaBlackHole;
 
         if (cubeMaterial == null)
             cubeMaterial = CreateMaterial(new Color(0.12f, 0.08f, 0.20f), new Color(0.65f, 0.16f, 1f), 2.5f);
@@ -818,6 +855,8 @@ public sealed class BoundaryHazard : NetworkBehaviour
     {
         Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         if (shader == null) shader = Shader.Find("Standard");
+        if (shader == null)
+            return null;
         Material material = new Material(shader);
         material.color = baseColor;
         material.EnableKeyword("_EMISSION");

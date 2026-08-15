@@ -67,6 +67,8 @@ public class BlackThrow : MonoBehaviour, IAbility
             return;
         }
 
+        projectile.GetComponent<NetworkProjectilePhysics>()?.PrepareForServerLaunch();
+
         NetworkIdentity.Spawn(projectile, objectToThrow);
 
         var kill = projectile.GetComponentInChildren<BlackHoleKill>();

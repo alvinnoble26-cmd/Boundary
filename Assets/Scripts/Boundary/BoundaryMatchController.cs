@@ -74,6 +74,8 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     private uint nextWaveTick;
     private uint lastContinuousSyncTick;
     private GameObject hazardPrefab;
+    private float emptyRoundStartedAt = -1f;
+    private bool awaitingFreshConnections;
 
     public BoundaryPhase Phase => phase.value;
     public BoundaryTransition Transition => transition.value;
@@ -230,14 +232,30 @@ public sealed class BoundaryMatchController : NetworkBehaviour
             int loadedPlayers = FindObjectsByType<PlayerMovement>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
             NetworkManager manager = NetworkManager.main;
             int connectedPlayers = manager != null ? manager.playerCount : 0;
+            if (awaitingFreshConnections && connectedPlayers < requiredPlayers)
+                return;
             if (Mathf.Max(loadedPlayers, connectedPlayers) < requiredPlayers)
                 return;
 
             roundStarted = true;
+            awaitingFreshConnections = false;
+            emptyRoundStartedAt = -1f;
             Debug.Log($"[Boundary] Starting round with {connectedPlayers} connected and {loadedPlayers} loaded player(s).");
             BeginPhase(BoundaryPhase.OuterRing);
             return;
         }
+
+        NetworkManager activeManager = NetworkManager.main;
+        if (activeManager != null && activeManager.playerCount == 0)
+        {
+            if (emptyRoundStartedAt < 0f)
+                emptyRoundStartedAt = Time.unscaledTime;
+            else if (Time.unscaledTime - emptyRoundStartedAt >= 0.5f)
+                ResetForRematch();
+            return;
+        }
+
+        emptyRoundStartedAt = -1f;
 
         if (!arenaMassesSpawned && Time.unscaledTime >= nextArenaMassRetryAt)
         {
@@ -330,6 +348,41 @@ public sealed class BoundaryMatchController : NetworkBehaviour
         unstableMassPulsed = false;
         disasterWave = 0;
         nextWaveTick = 0u;
+    }
+
+    private void ResetForRematch()
+    {
+        Debug.Log("[Boundary] Resetting authoritative arena for a fresh rematch.");
+
+        BoundaryHazard[] hazards = FindObjectsByType<BoundaryHazard>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (BoundaryHazard hazard in hazards)
+        {
+            if (hazard != null && hazard.TryGetComponent(out NetworkIdentity identity))
+                identity.Despawn();
+        }
+
+        roundStarted = false;
+        awaitingFreshConnections = true;
+        emptyRoundStartedAt = -1f;
+        arenaMassesSpawned = false;
+        nextArenaMassRetryAt = 0f;
+        tornadoStarted = false;
+        platformContactCounts.Clear();
+        phase.value = BoundaryPhase.Waiting;
+        transition.value = BoundaryTransition.None;
+        phaseStartTick.value = 0u;
+        transitionStartTick.value = 0u;
+        ringRadius.value = outerRadius;
+        pullStrength.value = outerPull;
+        ResetDisaster();
+        ResetArenaPresentation();
+    }
+
+    [ObserversRpc(runLocally: true)]
+    private void ResetArenaPresentation()
+    {
+        BoundaryArenaPresentation.Instance?.ResetForNewRound();
     }
 
     private void TickDisaster()

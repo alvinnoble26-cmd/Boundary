@@ -213,14 +213,18 @@ public sealed class BoundaryHUD : MonoBehaviour
     private void UpdateHorizon()
     {
         bool inHorizon = localState != null && localState.State == BoundaryKnockoutState.EventHorizon;
-        horizonOverlay.gameObject.SetActive(inHorizon);
-        if (!inHorizon)
+        bool outOfBounds = localState != null && localState.State == BoundaryKnockoutState.OutOfBounds;
+        bool showWarning = inHorizon || outOfBounds;
+        horizonOverlay.gameObject.SetActive(showWarning);
+        if (!showWarning)
             return;
 
         float progress = localState.EscapeProgress;
         float pulse = 0.18f + Mathf.Sin(Time.unscaledTime * 14f) * 0.07f + progress * 0.34f;
         horizonOverlay.color = new Color(0.42f, 0.01f, 0.40f, Mathf.Clamp01(pulse));
-        horizonText.text = $"EVENT HORIZON\nESCAPE NOW  •  {Mathf.CeilToInt((1f - progress) * 16f) / 10f:0.0}s";
+        horizonText.text = inHorizon
+            ? $"EVENT HORIZON\nESCAPE NOW  •  {Mathf.CeilToInt((1f - progress) * 16f) / 10f:0.0}s"
+            : $"OUT OF BOX\nRETURN NOW  •  {Mathf.CeilToInt((1f - progress) * 16f) / 10f:0.0}s";
         horizonText.rectTransform.localScale = Vector3.one * (1f + Mathf.Sin(Time.unscaledTime * 10f) * 0.035f);
     }
 
@@ -242,7 +246,8 @@ public sealed class BoundaryHUD : MonoBehaviour
         }
 
         BoundaryKnockoutState knockout = localState != null ? localState.State : BoundaryKnockoutState.Grounded;
-        if (knockout == BoundaryKnockoutState.EventHorizon && previousKnockout != knockout)
+        if ((knockout == BoundaryKnockoutState.EventHorizon || knockout == BoundaryKnockoutState.OutOfBounds) &&
+            previousKnockout != knockout)
             Play(horizonCue, 0.52f);
         previousKnockout = knockout;
     }

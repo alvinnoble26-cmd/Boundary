@@ -100,6 +100,8 @@ public class AttractThrow : MonoBehaviour, IAbility
         if (projectile == null)
             return;
 
+        projectile.GetComponent<NetworkProjectilePhysics>()?.PrepareForServerLaunch();
+
         ForceField field = projectile.GetComponentInChildren<ForceField>();
         if (field != null)
             field.ConfigureField(attractionForce, fieldAcceleration);

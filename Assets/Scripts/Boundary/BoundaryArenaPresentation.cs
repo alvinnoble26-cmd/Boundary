@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 [DisallowMultipleComponent]
 public sealed class BoundaryArenaPresentation : MonoBehaviour
@@ -73,12 +74,27 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
     private float originalFogDensity;
     private bool originalFogEnabled;
     private bool built;
+    private bool buildVisuals;
+    private bool renderSettingsCaptured;
     private int transitionRampCount;
 
     public int GeneratedPlatformCount => platforms.Count;
     public bool LegacyArenaHidden => disabledLegacyArena.Count > 0;
     public bool HasSideWalls => false;
     public int GeneratedTransitionRampCount => transitionRampCount;
+    public int GeneratedPlatformColliderCount
+    {
+        get
+        {
+            int count = 0;
+            for (int i = 0; i < platforms.Count; i++)
+            {
+                if (platforms[i].collider != null)
+                    count++;
+            }
+            return count;
+        }
+    }
 
     private void Awake()
     {
@@ -91,11 +107,17 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         if (match == null)
             match = BoundaryMatchController.Instance;
 
-        originalFogEnabled = RenderSettings.fog;
-        originalFogColor = RenderSettings.fogColor;
-        originalFogDensity = RenderSettings.fogDensity;
-        platformProperties = new MaterialPropertyBlock();
-        BuildArena();
+        buildVisuals = ShouldBuildVisuals();
+        if (buildVisuals)
+        {
+            originalFogEnabled = RenderSettings.fog;
+            originalFogColor = RenderSettings.fogColor;
+            originalFogDensity = RenderSettings.fogDensity;
+            renderSettingsCaptured = true;
+            platformProperties = new MaterialPropertyBlock();
+        }
+
+        BuildArena(buildVisuals);
     }
 
     private void OnDestroy()
@@ -103,9 +125,12 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         if (Instance == this)
             Instance = null;
 
-        RenderSettings.fog = originalFogEnabled;
-        RenderSettings.fogColor = originalFogColor;
-        RenderSettings.fogDensity = originalFogDensity;
+        if (renderSettingsCaptured)
+        {
+            RenderSettings.fog = originalFogEnabled;
+            RenderSettings.fogColor = originalFogColor;
+            RenderSettings.fogDensity = originalFogDensity;
+        }
 
         foreach (GameObject legacyRoot in disabledLegacyArena)
         {
@@ -126,42 +151,76 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             return;
 
         UpdatePlatformCollapses();
-        UpdateSingularity();
-        UpdateFractures();
-        UpdateFog();
-        UpdatePlayerTrails();
+        if (buildVisuals)
+        {
+            UpdateSingularity();
+            UpdateFractures();
+            UpdateFog();
+            UpdatePlayerTrails();
+        }
     }
 
-    private void BuildArena()
+    private void BuildArena(bool includeVisuals)
     {
         if (match == null || built)
             return;
-
-        DisableLegacyArena();
 
         generatedRoot = new GameObject("Boundary Generated Stadium").transform;
         generatedRoot.SetParent(transform, false);
         generatedRoot.position = Vector3.zero;
 
-        platformMaterial = CreateMaterial(
-            new Color(0.36f, 0.38f, 0.42f),
-            new Color(0.055f, 0.065f, 0.09f), 0.55f);
-        fractureMaterial = CreateMaterial(
-            new Color(0.04f, 0.01f, 0.06f),
-            new Color(1f, 0.08f, 0.65f), 4.5f);
-        vortexMaterial = CreateMaterial(
-            new Color(0.05f, 0.01f, 0.08f),
-            new Color(0.45f, 0.25f, 1f), 3.8f);
-        coreMaterial = CreateMaterial(Color.black, new Color(0.32f, 0.02f, 0.72f), 6f);
-
+        // Physics is authoritative on the dedicated server, while shaders and
+        // render components may be stripped from its build. Construct every
+        // collider before touching an optional presentation resource.
         BuildPlatformFloor();
         BuildTierTransitionRamps();
         BuildWallJumpStructures();
+
+        if (GeneratedPlatformColliderCount == 0)
+        {
+            Debug.LogError("[BoundaryArenaPresentation] Generated arena has no colliders. Keeping the legacy arena enabled.");
+            return;
+        }
+
+        // Only retire the fallback floor after its collision replacement is
+        // complete. A rendering failure can therefore never remove physics.
+        DisableLegacyArena();
         AlignSpawnsAndExistingPlayers();
-        BuildSingularity();
-        BuildFractureLines();
-        BuildVortexLines();
+
+        if (includeVisuals)
+        {
+            platformMaterial = CreateMaterial(
+                new Color(0.36f, 0.38f, 0.42f),
+                new Color(0.055f, 0.065f, 0.09f), 0.55f);
+            fractureMaterial = CreateMaterial(
+                new Color(0.04f, 0.01f, 0.06f),
+                new Color(1f, 0.08f, 0.65f), 4.5f);
+            vortexMaterial = CreateMaterial(
+                new Color(0.05f, 0.01f, 0.06f),
+                new Color(0.45f, 0.25f, 1f), 3.8f);
+            coreMaterial = CreateMaterial(Color.black, new Color(0.32f, 0.02f, 0.72f), 6f);
+            ApplyPlatformMaterial();
+            BuildSingularity();
+            BuildFractureLines();
+            BuildVortexLines();
+        }
+
         built = true;
+        Debug.Log($"[BoundaryArenaPresentation] Built {GeneratedPlatformColliderCount} authoritative arena colliders (visuals={includeVisuals}).");
+    }
+
+    private void ApplyPlatformMaterial()
+    {
+        for (int i = 0; i < platforms.Count; i++)
+        {
+            if (platforms[i].renderer != null)
+                platforms[i].renderer.sharedMaterial = platformMaterial;
+        }
+    }
+
+    private static bool ShouldBuildVisuals()
+    {
+        return !Application.isBatchMode && SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null;
     }
 
     private void DisableLegacyArena()
@@ -378,7 +437,23 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         int stableIndex,
         bool isWall = false)
     {
-        GameObject tile = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        GameObject tile;
+        Renderer renderer = null;
+        Collider collider;
+        if (buildVisuals)
+        {
+            tile = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            renderer = tile.GetComponent<Renderer>();
+            collider = tile.GetComponent<Collider>();
+        }
+        else
+        {
+            // A plain BoxCollider survives Dedicated Server asset stripping and
+            // avoids all dependencies on meshes, renderers, materials, and shaders.
+            tile = new GameObject();
+            collider = tile.AddComponent<BoxCollider>();
+        }
+
         tile.name = platformName;
         tile.layer = 3;
         tile.transform.SetParent(parent, false);
@@ -388,9 +463,6 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         if (isWall)
             tile.tag = "Wall";
 
-        Renderer renderer = tile.GetComponent<Renderer>();
-        renderer.sharedMaterial = platformMaterial;
-        Collider collider = tile.GetComponent<Collider>();
         collider.material = null;
 
         int hash = BoundaryMath.StableHash(74191 + band * 193, stableIndex);
@@ -525,6 +597,19 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         tile.animated = false;
     }
 
+    public void ResetForNewRound()
+    {
+        for (int i = 0; i < platforms.Count; i++)
+        {
+            PlatformTile tile = platforms[i];
+            tile.forcedCollapseAt = -1f;
+            tile.corruptionHits = 0;
+            if (!tile.transform.gameObject.activeSelf)
+                tile.transform.gameObject.SetActive(true);
+            ResetPlatform(tile);
+        }
+    }
+
     private void UpdateCollapsingPlatform(PlatformTile tile, float progress, int index)
     {
         float warningFraction = Mathf.Clamp01(collapseWarningSeconds /
@@ -639,6 +724,9 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
     private void SetPlatformColor(Renderer renderer, Color color)
     {
+        if (renderer == null || platformProperties == null)
+            return;
+
         renderer.GetPropertyBlock(platformProperties);
         platformProperties.SetColor("_BaseColor", color);
         platformProperties.SetColor("_Color", color);
@@ -1041,6 +1129,11 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         if (shader == null)
             shader = Shader.Find("Standard");
+        if (shader == null)
+        {
+            Debug.LogWarning("[BoundaryArenaPresentation] No runtime shader is available; continuing with collision geometry only.");
+            return null;
+        }
         Material material = new Material(shader);
         material.color = color;
         material.EnableKeyword("_EMISSION");
@@ -1048,6 +1141,15 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         generatedMaterials.Add(material);
         return material;
     }
+
+#if UNITY_EDITOR
+    public void BuildPhysicsOnlyArenaForValidation(BoundaryMatchController controller)
+    {
+        match = controller;
+        buildVisuals = false;
+        BuildArena(false);
+    }
+#endif
 }
 
 public sealed class BoundaryBreakawayPlatform : MonoBehaviour

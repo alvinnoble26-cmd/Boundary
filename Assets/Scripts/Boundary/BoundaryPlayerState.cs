@@ -17,12 +17,24 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
 
     private PlayerMovement movement;
     private float horizonEnteredAt = -1f;
+    private float outOfBoundsEnteredAt = -1f;
     private bool reportedLoss;
 
     public BoundaryKnockoutState State => state.value;
-    public float EscapeProgress => state.value == BoundaryKnockoutState.EventHorizon && horizonEnteredAt >= 0f
-        ? Mathf.Clamp01((Time.time - horizonEnteredAt) / escapeWindowSeconds)
-        : 0f;
+    public float EscapeProgress
+    {
+        get
+        {
+            float enteredAt = state.value == BoundaryKnockoutState.EventHorizon
+                ? horizonEnteredAt
+                : state.value == BoundaryKnockoutState.OutOfBounds ? outOfBoundsEnteredAt : -1f;
+            return enteredAt >= 0f
+                ? Mathf.Clamp01((Time.time - enteredAt) / escapeWindowSeconds)
+                : 0f;
+        }
+    }
+
+    public bool IsOutOfBounds => state.value == BoundaryKnockoutState.OutOfBounds;
 
     private void Awake()
     {
@@ -55,6 +67,32 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
             SetState(movement.IsGrounded ? BoundaryKnockoutState.Grounded : BoundaryKnockoutState.Airborne);
             return;
         }
+
+        float horizontalDistance = Vector2.Distance(
+            new Vector2(transform.position.x, transform.position.z),
+            new Vector2(match.ArenaCenter.x, match.ArenaCenter.z));
+        float outOfBoundsRadius = match.RingRadius + BoundaryMath.OutOfBoundsMargin(match.Phase);
+        if (horizontalDistance > outOfBoundsRadius)
+        {
+            if (state.value != BoundaryKnockoutState.OutOfBounds &&
+                state.value != BoundaryKnockoutState.Consumed)
+            {
+                outOfBoundsEnteredAt = Time.time;
+                SetState(BoundaryKnockoutState.OutOfBounds);
+            }
+            else if (state.value == BoundaryKnockoutState.OutOfBounds &&
+                     Time.time - outOfBoundsEnteredAt >= escapeWindowSeconds)
+            {
+                ConsumePlayer("You went out of bounds.");
+            }
+            return;
+        }
+
+        if (state.value == BoundaryKnockoutState.OutOfBounds &&
+            horizontalDistance > match.RingRadius - 1f)
+            return;
+
+        outOfBoundsEnteredAt = -1f;
 
         float horizonY = match.SingularityPosition.y - horizonDistanceBelowCore;
         Vector3 flatOffset = transform.position - match.ArenaCenter;

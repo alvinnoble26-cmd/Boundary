@@ -41,6 +41,7 @@ public enum BoundaryKnockoutState
     Grounded,
     Airborne,
     EventHorizon,
+    OutOfBounds,
     Consumed
 }
 
@@ -57,6 +58,17 @@ public enum BoundaryHazardKind
 
 public static class BoundaryMath
 {
+    public static float OutOfBoundsMargin(BoundaryPhase phase)
+    {
+        switch (phase)
+        {
+            case BoundaryPhase.OuterRing: return 5f;
+            case BoundaryPhase.MiddleRing: return 3f;
+            case BoundaryPhase.InnerRing: return 2f;
+            default: return float.PositiveInfinity;
+        }
+    }
+
     public static float EaseInOut(float value)
     {
         float t = Mathf.Clamp01(value);
