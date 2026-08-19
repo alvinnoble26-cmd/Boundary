@@ -7,7 +7,7 @@ using UnityEngine.Rendering.Universal;
 public class Cam : NetworkBehaviour
 {
     public const float DefaultFirstPersonNearClip = 0.05f;
-    public const float DefaultFirstPersonFieldOfView = 85f;
+    public const float DefaultFirstPersonFieldOfView = 80f;
     public const float DefaultLookDegreesPerPixel = 0.32f;
     public const float MinimumFirstPersonEyeHeight = 0.72f;
 
@@ -24,9 +24,9 @@ public class Cam : NetworkBehaviour
     public TouchLookHandler swipe;
 
     [Header("First Person View")]
-    [SerializeField] private Vector3 firstPersonEyeOffset = new Vector3(0f, 0.72f, 0.08f);
+    [SerializeField] private Vector3 firstPersonEyeOffset = new Vector3(0f, 0.90f, 0.28f);
     [SerializeField, Min(MinimumFirstPersonEyeHeight)]
-    private float minimumFirstPersonEyeHeight = MinimumFirstPersonEyeHeight;
+    private float minimumFirstPersonEyeHeight = 0.90f;
     [SerializeField, Range(-89f, -45f)] private float firstPersonMinPitch = -85f;
     [SerializeField, Range(45f, 89f)] private float firstPersonMaxPitch = 85f;
     [SerializeField, Range(0.01f, 0.2f)] private float firstPersonNearClip = DefaultFirstPersonNearClip;
@@ -47,6 +47,9 @@ public class Cam : NetworkBehaviour
     private bool setupRoutineRunning;
     private bool ownerViewWasUnexpectedlyDisabled;
     private PlayerMovement playerMovement;
+    private FirstPersonArmPresentation firstPersonArm;
+    private string equippedSkinId = "beard";
+    private bool lookInputSuppressed;
 
     protected override void OnSpawned()
     {
@@ -150,6 +153,7 @@ public class Cam : NetworkBehaviour
         // enabled, preventing a one-frame flash of the old third-person pose.
         UpdateFirstPersonPose(Vector2.zero);
         SetLocalVisualVisibility(true);
+        RefreshLocalFirstPersonVisuals();
         SetCameraComponentsEnabled(true);
 
         setupRoutineRunning = false;
@@ -167,7 +171,7 @@ public class Cam : NetworkBehaviour
         // without ever enabling a remote player's camera.
         MaintainOwnerView();
 
-        Vector2 lookDelta = swipe != null ? swipe.ConsumeLookDelta() : Vector2.zero;
+        Vector2 lookDelta = !lookInputSuppressed && swipe != null ? swipe.ConsumeLookDelta() : Vector2.zero;
         UpdateFirstPersonPose(lookDelta);
     }
 
@@ -322,12 +326,64 @@ public class Cam : NetworkBehaviour
         ownerViewWasUnexpectedlyDisabled = false;
         SetCameraComponentsEnabled(false);
         SetLocalVisualVisibility(false);
+        firstPersonArm?.Hide();
     }
 
-    public void RefreshLocalFirstPersonVisuals()
+    public void RefreshLocalFirstPersonVisuals(string skinId = null)
+    {
+        if (!string.IsNullOrEmpty(skinId))
+            equippedSkinId = skinId;
+
+        if (isOwner && isReady)
+        {
+            SetLocalVisualVisibility(true);
+            GetFirstPersonArm()?.SetSkin(equippedSkinId);
+        }
+    }
+
+    public void ShowThrowArm(Vector3 aimDirection)
     {
         if (isOwner && isReady)
-            SetLocalVisualVisibility(true);
+            GetFirstPersonArm()?.ShowThrow(aimDirection);
+    }
+
+    public void ShowTeleportArm()
+    {
+        if (isOwner && isReady)
+            GetFirstPersonArm()?.ShowTeleport();
+    }
+
+    public void SetGrappleArmActive(bool active, Vector3 aimDirection)
+    {
+        if (isOwner && isReady)
+            GetFirstPersonArm()?.SetGrappleActive(active, aimDirection);
+    }
+
+    public Vector3 GetGrappleArmOrigin()
+    {
+        return isOwner && isReady && GetFirstPersonArm() != null
+            ? GetFirstPersonArm().GrappleOrigin
+            : transform.position;
+    }
+
+    public void SetMovementArmActive(bool active)
+    {
+        if (isOwner && isReady)
+            GetFirstPersonArm()?.SetMovementActive(active);
+    }
+
+    public void SetLookInputSuppressed(bool suppressed)
+    {
+        if (isOwner)
+            lookInputSuppressed = suppressed;
+    }
+
+    private FirstPersonArmPresentation GetFirstPersonArm()
+    {
+        if (firstPersonArm == null && cam != null)
+            firstPersonArm = cam.GetComponent<FirstPersonArmPresentation>() ??
+                cam.gameObject.AddComponent<FirstPersonArmPresentation>();
+        return firstPersonArm;
     }
 
     public void SetLocalVisualVisibility(bool hiddenFromOwner)

@@ -14,7 +14,7 @@ public sealed class MenuButtonTextAlignment : MonoBehaviour
         "HOST", "JOIN", "PracticeButton", "BackButton (4)"
     };
 
-    private void Awake()
+    public void ApplyAuthoringLayout()
     {
         CenterMainMenuStack();
 

@@ -6,7 +6,7 @@
         BlackThrow,
         AttractThrow,
         RepelThrow,
-        // Grapple,
+        Grapple = 6,
         // Repulse,
         // Attract,
         // BlackHoleProjectile,

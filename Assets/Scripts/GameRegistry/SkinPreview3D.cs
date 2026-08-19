@@ -249,8 +249,20 @@ public sealed class SkinPreview3D : MonoBehaviour, IPointerDownHandler, IPointer
         if (texture != null)
         {
             texture.Release();
-            Destroy(texture);
+            DestroyPreviewObject(texture);
         }
-        if (previewWorld != null) Destroy(previewWorld);
+        if (previewWorld != null) DestroyPreviewObject(previewWorld);
+    }
+
+    private static void DestroyPreviewObject(Object previewObject)
+    {
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            DestroyImmediate(previewObject);
+            return;
+        }
+#endif
+        Destroy(previewObject);
     }
 }

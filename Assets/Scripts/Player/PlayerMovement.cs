@@ -58,6 +58,8 @@ public class PlayerMovement : NetworkBehaviour
     public bool JumpPressedThisFrame { get; private set; }
     public bool MovementSuppressed { get; private set; }
     public float ExternalSpeedCap { get; private set; } = -1f;
+    private float preservedMomentumSpeedCap = -1f;
+    private float preservedMomentumUntil;
 
     public Vector3 LastFlatMoveDir { get; private set; } = Vector3.forward;
 
@@ -75,6 +77,7 @@ public class PlayerMovement : NetworkBehaviour
 
     private bool isGrounded;
     private bool jumpRequested;
+    private bool movementSuppressionAllowsEnvironmentalRelease = true;
 
     private Vector3 wallNormal;
     private float wallStickCounter;
@@ -126,10 +129,30 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
     Debug.Log($"[Move] after: isOwner={isOwner} kinematic(after)={rb.isKinematic}");
 }
 
-    public void SetMovementSuppressed(bool on, float speedCap = -1f)
+    public void SetMovementSuppressed(bool on, float speedCap = -1f, bool allowEnvironmentalRelease = true)
     {
         MovementSuppressed = on;
         ExternalSpeedCap = speedCap;
+        movementSuppressionAllowsEnvironmentalRelease = allowEnvironmentalRelease;
+        if (on)
+        {
+            preservedMomentumSpeedCap = -1f;
+            preservedMomentumUntil = 0f;
+        }
+    }
+
+    public void ReleaseMovementSuppressionPreservingMomentum()
+    {
+        MovementSuppressed = false;
+        ExternalSpeedCap = -1f;
+        movementSuppressionAllowsEnvironmentalRelease = true;
+
+        if (rb == null)
+            return;
+
+        Vector3 velocity = rb.linearVelocity;
+        preservedMomentumSpeedCap = new Vector3(velocity.x, 0f, velocity.z).magnitude;
+        preservedMomentumUntil = Time.time + 0.6f;
     }
 
     public void SetViewYaw(float yaw)
@@ -165,6 +188,7 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         {
             jumpRequested = true;
             JumpPressedThisFrame = true;
+            GetComponent<PlayerAbilities>()?.CancelGrappleForJump();
         }
         UpdateGrounded();
         UpdateBoundaryFooting();
@@ -172,6 +196,14 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
 
         if (MovementSuppressed)
         {
+            if (slideAbility != null && slideAbility.IsActive && jumpRequested &&
+                slideAbility.TryManualSlideJump())
+            {
+                JumpPressedThisFrame = false;
+                jumpRequested = false;
+                return;
+            }
+
             ApplyBoundaryForces();
             ApplyMasterRotation();
             JumpPressedThisFrame = false;
@@ -186,6 +218,13 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         ApplyMasterRotation();
 
         float cap = (ExternalSpeedCap > 0f) ? ExternalSpeedCap : maxSpeed;
+        if (preservedMomentumSpeedCap > cap)
+        {
+            cap = preservedMomentumSpeedCap;
+            Vector3 horizontalVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
+            if (horizontalVelocity.magnitude <= maxSpeed)
+                preservedMomentumSpeedCap = -1f;
+        }
         ClampHorizontalSpeed(cap);
 
         Vector3 v = rb.linearVelocity;
@@ -271,7 +310,7 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
                 rb.AddForce(inputDirNorm * (acceleration * inputMag * movementMultiplier), ForceMode.Acceleration);
             }
         }
-        else
+        else if (Time.time >= preservedMomentumUntil)
         {
             float stopRate = isGrounded
                 ? Mathf.Max(deceleration, groundedStopDeceleration)
@@ -284,6 +323,10 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
                 stoppedFlatVelocity = Vector3.zero;
 
             rb.linearVelocity = new Vector3(stoppedFlatVelocity.x, vel.y, stoppedFlatVelocity.z);
+            rb.useGravity = true;
+        }
+        else
+        {
             rb.useGravity = true;
         }
     }
@@ -307,7 +350,7 @@ void HandleWallDetection()
     {
         wallStickCounter = 0f;
         // If we land while suppressed (e.g. mid-slide), reset suppression
-        if (MovementSuppressed)
+        if (MovementSuppressed && movementSuppressionAllowsEnvironmentalRelease)
             SetMovementSuppressed(false, -1f);
         return;
     }
@@ -322,7 +365,7 @@ void HandleWallDetection()
         wallStickCounter = Mathf.Max(0f, wallStickCounter - Time.fixedDeltaTime);
 
         // Wall contact lost — if still suppressed, release it
-        if (wallStickCounter <= 0f && MovementSuppressed)
+        if (wallStickCounter <= 0f && MovementSuppressed && movementSuppressionAllowsEnvironmentalRelease)
             SetMovementSuppressed(false, -1f);
     }
 }
@@ -502,6 +545,70 @@ void HandleJump()
         return found;
     }
 
+    public bool TryFindSlideWall(Vector3 travelDirection, out RaycastHit bestHit)
+    {
+        bestHit = default;
+        float bestDistance = float.PositiveInfinity;
+        bool found = false;
+
+        Vector3 flatTravel = Vector3.ProjectOnPlane(travelDirection, Vector3.up);
+        if (flatTravel.sqrMagnitude < 0.0001f)
+            flatTravel = transform.forward;
+        flatTravel.Normalize();
+
+        ConsiderSlideWall(flatTravel, ref bestHit, ref bestDistance, ref found);
+        ConsiderSlideWall(-flatTravel, ref bestHit, ref bestDistance, ref found);
+        ConsiderSlideWall(transform.right, ref bestHit, ref bestDistance, ref found);
+        ConsiderSlideWall(-transform.right, ref bestHit, ref bestDistance, ref found);
+        return found;
+    }
+
+    private void ConsiderSlideWall(Vector3 direction, ref RaycastHit bestHit, ref float bestDistance, ref bool found)
+    {
+        direction.y = 0f;
+        if (direction.sqrMagnitude < 0.0001f)
+            return;
+
+        Vector3 castOrigin = myCol != null ? myCol.bounds.center : transform.position;
+        if (!Physics.SphereCast(castOrigin, wallSphereRadius, direction.normalized,
+                out RaycastHit hit, wallCheckDistance, groundMask, QueryTriggerInteraction.Ignore) ||
+            !IsSlideWallSurface(hit.collider, hit.normal, transform) || hit.distance >= bestDistance)
+            return;
+
+        bestHit = hit;
+        bestDistance = hit.distance;
+        found = true;
+    }
+
+    public static bool IsSlideWallSurface(Collider candidate, Vector3 surfaceNormal, Transform playerRoot)
+    {
+        if (candidate == null || candidate.isTrigger || playerRoot == null ||
+            candidate.transform.root == playerRoot.root || Mathf.Abs(surfaceNormal.y) >= 0.85f)
+            return false;
+
+        if (candidate.GetComponentInParent<PlayerMovement>() != null ||
+            candidate.GetComponentInParent<NetworkProjectilePhysics>() != null ||
+            candidate.GetComponentInParent<BoundaryHazard>() != null)
+            return false;
+
+        Rigidbody body = candidate.attachedRigidbody;
+        if (body != null && !body.isKinematic)
+            return false;
+
+        if (candidate.CompareTag("Wall"))
+            return true;
+
+        Transform current = candidate.transform;
+        while (current != null)
+        {
+            if (current.name == "Breakaway Platforms" || current.name == "Tier Transition Ramps")
+                return true;
+            current = current.parent;
+        }
+
+        return false;
+    }
+
     public static bool IsWallJumpSurface(Collider candidate, Vector3 surfaceNormal, Transform playerRoot)
     {
         if (candidate == null || candidate.isTrigger || Mathf.Abs(surfaceNormal.y) > 0.25f)
@@ -559,7 +666,7 @@ void HandleJump()
         // Normal pointing mostly horizontal = wall hit  
         if (angle < 45f || (angle > 60f && angle < 120f))
         {
-            if (MovementSuppressed)
+            if (MovementSuppressed && movementSuppressionAllowsEnvironmentalRelease)
             {
                 bool isSliding = slideAbility != null && slideAbility.IsActive;
                 if (!isSliding)

@@ -45,6 +45,7 @@ public class BlackCubeKill : MonoBehaviour
         hasKilledLocalPlayer = true;
 
         Debug.Log("[BlackCubeKill] Local player touched a black-hole cube.");
+        LocalLethalFeedback.VibrateForAcceptedLocalContact();
         SfxManager.PlayLethalHit();
         GameManager.I.ReportLocalPlayerLost("You were consumed by the black hole.");
     }

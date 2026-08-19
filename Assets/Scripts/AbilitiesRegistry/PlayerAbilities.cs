@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
+using System.Collections;
 using PurrNet; 
 using PurrNet.Modules;
 using UnityEngine.SceneManagement;
@@ -23,6 +24,11 @@ public class PlayerAbilities : NetworkBehaviour
     private readonly float[] slotCooldownEnds = new float[3];
     private readonly AbilityCooldownButton[] cooldownVisuals = new AbilityCooldownButton[3];
     private bool hasStartedSkinLoad;
+    private Cam localCameraController;
+    private Coroutine serverTeleportWindup;
+    private GrappleAbility grappleAbility;
+    private Coroutine serverGrappleRoutine;
+    private float serverGrappleCooldownUntil;
 
 
     protected override void OnSpawned()
@@ -47,10 +53,13 @@ protected override void OnOwnerChanged(PlayerID? oldOwner, PlayerID? newOwner, b
 
 private void SetupLocalPlayer()
 {
+    EnsureGrappleAbility();
+    localCameraController = GetComponentInChildren<Cam>(true);
+
     // Cam owns the Camera and AudioListener lifecycle. Enabling either one
     // here races its first-person setup and can expose the prefab's stale
     // third-person transform for a frame during spawn or respawn.
-    Cam cameraController = GetComponentInChildren<Cam>(true);
+    Cam cameraController = localCameraController;
     if (cameraController == null)
     {
         Camera legacyCamera = GetComponentInChildren<Camera>(true);
@@ -77,6 +86,15 @@ private void SetupLocalPlayer()
     {
         Debug.LogError("[PlayerAbilities] UI Setup failed: " + e.Message);
     }
+}
+
+private void EnsureGrappleAbility()
+{
+    if (grappleAbility == null)
+        grappleAbility = GetComponent<GrappleAbility>();
+    if (grappleAbility == null)
+        grappleAbility = gameObject.AddComponent<GrappleAbility>();
+    registry?.Register(grappleAbility);
 }
 
 private async void LoadAndSyncSelectedSkin()
@@ -142,7 +160,7 @@ private void ApplySkinVisual(string skinId)
     if (beardEye != null) beardEye.gameObject.SetActive(!useCustomSkin);
     if (!useCustomSkin || tilt == null)
     {
-        RefreshLocalFirstPersonVisuals();
+        RefreshLocalFirstPersonVisuals(skinId);
         return;
     }
 
@@ -153,7 +171,7 @@ private void ApplySkinVisual(string skinId)
         Debug.LogError($"[PlayerAbilities] Game scene skin template 'skins/{templateName}' was not found.");
         if (beardBody != null) beardBody.gameObject.SetActive(true);
         if (beardEye != null) beardEye.gameObject.SetActive(true);
-        RefreshLocalFirstPersonVisuals();
+        RefreshLocalFirstPersonVisuals(skinId);
         return;
     }
 
@@ -169,14 +187,21 @@ private void ApplySkinVisual(string skinId)
         Destroy(collider);
     foreach (Rigidbody body in clone.GetComponentsInChildren<Rigidbody>(true))
         Destroy(body);
-    RefreshLocalFirstPersonVisuals();
+    RefreshLocalFirstPersonVisuals(skinId);
 }
 
-private void RefreshLocalFirstPersonVisuals()
+private void RefreshLocalFirstPersonVisuals(string skinId)
 {
-    Cam cameraController = GetComponentInChildren<Cam>(true);
+    Cam cameraController = GetLocalCameraController();
     if (cameraController != null)
-        cameraController.RefreshLocalFirstPersonVisuals();
+        cameraController.RefreshLocalFirstPersonVisuals(skinId);
+}
+
+private Cam GetLocalCameraController()
+{
+    if (localCameraController == null)
+        localCameraController = GetComponentInChildren<Cam>(true);
+    return localCameraController;
 }
 
 public static Transform FindSkinTemplateInScene(Scene scene, string templateName)
@@ -290,7 +315,166 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
             return;
         }
 
+        if (id == AbilityId.Teleport)
+        {
+            BeginServerTeleportWindup();
+            return;
+        }
+
         ObserversActivateAbility(id);
+    }
+
+    [ServerRpc]
+    private void RequestGrapple(Vector3 aimDirection, int slotIndex)
+    {
+        EnsureGrappleAbility();
+        if (serverGrappleRoutine != null || Time.time < serverGrappleCooldownUntil ||
+            aimDirection.sqrMagnitude < 0.0001f)
+            return;
+
+        Camera serverCamera = GetComponentInChildren<Camera>(true);
+        Vector3 origin = serverCamera != null
+            ? serverCamera.transform.position
+            : transform.position + Vector3.up * 1.1f;
+        if (!Physics.Raycast(origin, aimDirection.normalized, out RaycastHit hit,
+                GrappleAbility.MaximumRange, ~0, QueryTriggerInteraction.Ignore) ||
+            hit.collider == null || hit.collider.isTrigger ||
+            hit.collider.transform.root == transform.root ||
+            hit.collider.GetComponentInParent<PlayerMovement>() != null)
+            return;
+
+        BoundaryHazard hazard = hit.collider.GetComponentInParent<BoundaryHazard>();
+        NetworkProjectilePhysics projectile = hit.collider.GetComponentInParent<NetworkProjectilePhysics>();
+        bool movable = (hazard != null && hazard.IsArenaMass &&
+                        (hazard.Kind == BoundaryHazardKind.Cube || hazard.Kind == BoundaryHazardKind.ArenaBlackHole)) ||
+                       (projectile != null && projectile.GetComponentInChildren<BlackHoleKill>() != null);
+        if (hazard != null && !movable)
+            return;
+
+        if (projectile != null && !movable)
+            return;
+
+        Rigidbody targetBody = movable ? hit.rigidbody : null;
+        if (movable && targetBody == null)
+            return;
+        if (!movable && hit.rigidbody != null)
+            return;
+
+        NetworkIdentity targetIdentity = hit.collider.GetComponentInParent<NetworkIdentity>();
+        serverGrappleCooldownUntil = Time.time + GrappleAbility.CooldownSeconds;
+        ObserversBeginGrapple(hit.point, targetIdentity, movable);
+        if (owner.HasValue)
+            ConfirmGrappleCooldown(owner.Value, slotIndex);
+        serverGrappleRoutine = StartCoroutine(CompleteServerGrapple(targetBody, hit.point, movable));
+    }
+
+    private IEnumerator CompleteServerGrapple(Rigidbody targetBody, Vector3 staticAnchor, bool movable)
+    {
+        float visibleUntil = Time.time + 0.2f;
+        while (movable
+            ? targetBody != null && (Time.time < visibleUntil || Vector3.Distance(targetBody.position, transform.position) > 1.5f)
+            : Time.time < visibleUntil || Vector3.Distance(transform.position, staticAnchor) > 1.5f)
+        {
+            if (movable)
+                targetBody.AddForce((transform.position - targetBody.position).normalized * 36f, ForceMode.Acceleration);
+            yield return new WaitForFixedUpdate();
+        }
+        ObserversEndGrapple();
+        serverGrappleRoutine = null;
+    }
+
+    [TargetRpc]
+    private void ConfirmGrappleCooldown(PlayerID target, int slotIndex)
+    {
+        if (!isOwner || slotIndex < 0 || slotIndex >= slotCooldownEnds.Length)
+            return;
+        slotCooldownEnds[slotIndex] = Time.time + GrappleAbility.CooldownSeconds;
+        cooldownVisuals[slotIndex]?.BeginCooldown(GrappleAbility.CooldownSeconds);
+    }
+
+    [ObserversRpc]
+    private void ObserversBeginGrapple(Vector3 hitPoint, NetworkIdentity targetIdentity, bool movable)
+    {
+        EnsureGrappleAbility();
+        grappleAbility.BeginPresentation(hitPoint,
+            movable && targetIdentity != null ? targetIdentity.transform : null, movable);
+        if (isOwner)
+            GetLocalCameraController()?.ShowThrowArm((hitPoint - transform.position).normalized);
+    }
+
+    [ObserversRpc]
+    private void ObserversEndGrapple()
+    {
+        grappleAbility?.EndPresentation();
+    }
+
+    public void CancelGrappleForJump()
+    {
+        if (!isOwner || grappleAbility == null)
+            return;
+        grappleAbility.CancelForJump();
+        RequestCancelGrapple();
+    }
+
+    [ServerRpc]
+    private void RequestCancelGrapple()
+    {
+        if (serverGrappleRoutine != null)
+        {
+            StopCoroutine(serverGrappleRoutine);
+            serverGrappleRoutine = null;
+        }
+        ObserversEndGrapple();
+    }
+
+    private void BeginServerTeleportWindup()
+    {
+        if (serverTeleportWindup != null || registry == null ||
+            !registry.TryGet(AbilityId.Teleport, out var ability) ||
+            !(ability is TeleportAbility teleport))
+            return;
+
+        if (!teleport.TryPrepareWindup(out Vector3 start, out Vector3 destination, out Vector3 direction))
+        {
+            ObserversTeleportFailed(start, direction);
+            return;
+        }
+
+        ObserversBeginTeleportWindup(start, direction);
+        serverTeleportWindup = StartCoroutine(CompleteServerTeleportWindup(teleport, destination, direction));
+    }
+
+    private IEnumerator CompleteServerTeleportWindup(TeleportAbility teleport, Vector3 destination, Vector3 direction)
+    {
+        yield return new WaitForSeconds(TeleportAbility.WindupDuration);
+        if (teleport != null)
+            teleport.CompleteServerTeleport(destination);
+        ObserversCompleteTeleportWindup(destination, direction);
+        serverTeleportWindup = null;
+    }
+
+    [ObserversRpc]
+    private void ObserversBeginTeleportWindup(Vector3 start, Vector3 direction)
+    {
+        if (registry != null && registry.TryGet(AbilityId.Teleport, out var ability) &&
+            ability is TeleportAbility teleport)
+            teleport.BeginWindupPresentation(start, direction);
+    }
+
+    [ObserversRpc]
+    private void ObserversCompleteTeleportWindup(Vector3 destination, Vector3 direction)
+    {
+        if (registry != null && registry.TryGet(AbilityId.Teleport, out var ability) &&
+            ability is TeleportAbility teleport)
+            teleport.CompleteWindupPresentation(destination, direction);
+    }
+
+    [ObserversRpc]
+    private void ObserversTeleportFailed(Vector3 start, Vector3 direction)
+    {
+        if (registry != null && registry.TryGet(AbilityId.Teleport, out var ability) &&
+            ability is TeleportAbility teleport)
+            teleport.PlayFailurePresentation(start, direction);
     }
 
 private void ActivateNetworkThrow(AbilityId id, Vector3 spawnPosition, Vector3 aimDirection)
@@ -385,19 +569,23 @@ void UseSlot(int slotIndex)
 
     Debug.Log($"[PlayerAbilities] UseSlot {slotIndex} id={id}");
 
-    float cooldownDuration = GetCooldownDuration(id.Value);
-    BoundaryMatchController match = BoundaryMatchController.Instance;
-    if (match != null)
+    float cooldownDuration = 0f;
+    if (id != AbilityId.Grapple)
     {
-        if (match.Phase == BoundaryPhase.OuterRing)
-            cooldownDuration *= 0.94f;
-        else if (match.Phase == BoundaryPhase.MiddleRing)
-            cooldownDuration *= 0.88f;
-        else if (match.Phase == BoundaryPhase.InnerRing)
-            cooldownDuration *= 0.76f;
+        cooldownDuration = GetCooldownDuration(id.Value);
+        BoundaryMatchController match = BoundaryMatchController.Instance;
+        if (match != null)
+        {
+            if (match.Phase == BoundaryPhase.OuterRing)
+                cooldownDuration *= 0.94f;
+            else if (match.Phase == BoundaryPhase.MiddleRing)
+                cooldownDuration *= 0.88f;
+            else if (match.Phase == BoundaryPhase.InnerRing)
+                cooldownDuration *= 0.76f;
+        }
+        slotCooldownEnds[slotIndex] = Time.time + cooldownDuration;
+        cooldownVisuals[slotIndex]?.BeginCooldown(cooldownDuration);
     }
-    slotCooldownEnds[slotIndex] = Time.time + cooldownDuration;
-    cooldownVisuals[slotIndex]?.BeginCooldown(cooldownDuration);
 
     Transform aim = movement != null && movement.orientation != null
         ? movement.orientation
@@ -410,7 +598,30 @@ void UseSlot(int slotIndex)
         ? cameraDirection.normalized
         : transform.forward;
 
+    if (id == AbilityId.Grapple)
+    {
+        RequestGrapple(aimDirection, slotIndex);
+        return;
+    }
+
     RequestActivateAbility(id.Value, spawnPosition, aimDirection);
+
+    if (id == AbilityId.BlackThrow || id == AbilityId.AttractThrow || id == AbilityId.RepelThrow)
+    {
+        GetLocalCameraController()?.ShowThrowArm(aimDirection);
+    }
+}
+
+private void Update()
+{
+    if (!isOwner || registry == null)
+        return;
+
+    bool movementAbilityActive =
+        (registry.TryGet(AbilityId.Slide, out var slide) && slide is SlideAbility slideAbility && slideAbility.IsActive) ||
+        (registry.TryGet(AbilityId.Dash, out var dash) && dash is DashAbility dashAbility && dashAbility.IsActive);
+
+    localCameraController?.SetMovementArmActive(movementAbilityActive);
 }
 
 private float GetCooldownDuration(AbilityId id)

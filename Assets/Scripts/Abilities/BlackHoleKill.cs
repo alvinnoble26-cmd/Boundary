@@ -75,6 +75,7 @@ public class BlackHoleKill : MonoBehaviour
         hasTriggered = true;
 
         Debug.Log("[BlackHoleKill] Locally owned player touched thrown black hole.");
+        LocalLethalFeedback.VibrateForAcceptedLocalContact();
         SfxManager.PlayLethalHit();
 
         GameManager.I.ReportLocalPlayerLost("You were consumed by the black hole.");

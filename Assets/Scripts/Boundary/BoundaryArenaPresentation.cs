@@ -1,6 +1,11 @@
 using System.Collections.Generic;
+using System;
+using System.IO;
 using UnityEngine;
 using UnityEngine.Rendering;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 [DisallowMultipleComponent]
 public sealed class BoundaryArenaPresentation : MonoBehaviour
@@ -26,6 +31,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         public bool canCorrupt;
         public int corruptionHits;
         public float forcedCollapseAt = -1f;
+        public bool authoredActive = true;
     }
 
     private sealed class AccretionRing
@@ -76,7 +82,27 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
     private bool built;
     private bool buildVisuals;
     private bool renderSettingsCaptured;
+    private bool editorPreview;
     private int transitionRampCount;
+    private ArenaPreviewSnapshot pendingEditorPreviewSnapshot;
+
+    [Serializable]
+    private sealed class ArenaPreviewSnapshot
+    {
+        public string presentationSettings;
+        public List<ArenaPreviewTransform> transforms = new List<ArenaPreviewTransform>();
+    }
+
+    [Serializable]
+    private sealed class ArenaPreviewTransform
+    {
+        public string siblingPath;
+        public string namePath;
+        public bool activeSelf;
+        public Vector3 localPosition;
+        public Quaternion localRotation;
+        public Vector3 localScale;
+    }
 
     public int GeneratedPlatformCount => platforms.Count;
     public bool LegacyArenaHidden => disabledLegacyArena.Count > 0;
@@ -98,8 +124,100 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
     private void Awake()
     {
+        LoadAuthoredArenaSnapshot();
         Instance = this;
     }
+
+    private void LoadAuthoredArenaSnapshot()
+    {
+        if (!Application.isPlaying && !Application.isBatchMode)
+            return;
+
+        string settings = string.Empty;
+        TextAsset authoredSnapshot = Resources.Load<TextAsset>("Boundary/BoundaryArenaAuthoring");
+        if (authoredSnapshot != null)
+            settings = authoredSnapshot.text;
+
+#if UNITY_EDITOR
+        const string sessionKey = "Boundary.ArenaPreviewSettings";
+        string snapshotPath = Path.GetFullPath(Path.Combine(
+            Application.dataPath, "../Library", "BoundaryArenaPreview.PlayMode.json"));
+        if (File.Exists(snapshotPath))
+            settings = File.ReadAllText(snapshotPath);
+        else if (string.IsNullOrEmpty(settings))
+            settings = SessionState.GetString(sessionKey, string.Empty);
+#endif
+        if (string.IsNullOrEmpty(settings))
+        {
+            Debug.LogWarning("[BoundaryArenaPresentation] No saved arena preview overrides were available for Play Mode.");
+            return;
+        }
+
+        pendingEditorPreviewSnapshot = JsonUtility.FromJson<ArenaPreviewSnapshot>(settings);
+        if (pendingEditorPreviewSnapshot != null &&
+            !string.IsNullOrEmpty(pendingEditorPreviewSnapshot.presentationSettings))
+        {
+#if UNITY_EDITOR
+            EditorJsonUtility.FromJsonOverwrite(pendingEditorPreviewSnapshot.presentationSettings, this);
+#endif
+        }
+#if UNITY_EDITOR
+        else
+        {
+            // Accept preview data captured by the earlier settings-only handoff.
+            EditorJsonUtility.FromJsonOverwrite(settings, this);
+        }
+        if (File.Exists(snapshotPath))
+            File.Delete(snapshotPath);
+        SessionState.EraseString(sessionKey);
+#endif
+    }
+
+#if UNITY_EDITOR
+    public string CaptureEditorPreviewForPlayMode()
+    {
+        ArenaPreviewSnapshot snapshot = new ArenaPreviewSnapshot
+        {
+            presentationSettings = EditorJsonUtility.ToJson(this)
+        };
+        CapturePreviewTransforms(transform, transform, string.Empty, snapshot.transforms);
+        return JsonUtility.ToJson(snapshot);
+    }
+
+    private static void CapturePreviewTransforms(
+        Transform root, Transform parent, string parentPath, List<ArenaPreviewTransform> results)
+    {
+        for (int i = 0; i < parent.childCount; i++)
+        {
+            Transform child = parent.GetChild(i);
+            string path = string.IsNullOrEmpty(parentPath) ? i.ToString() : parentPath + "/" + i;
+            string namePath = BuildNamePath(child, root);
+            results.Add(new ArenaPreviewTransform
+            {
+                siblingPath = path,
+                namePath = namePath,
+                activeSelf = child.gameObject.activeSelf,
+                localPosition = child.localPosition,
+                localRotation = child.localRotation,
+                localScale = child.localScale
+            });
+            CapturePreviewTransforms(root, child, path, results);
+        }
+    }
+
+    private static string BuildNamePath(Transform target, Transform root)
+    {
+        var names = new List<string>();
+        Transform current = target;
+        while (current != null && current != root)
+        {
+            names.Add(current.name);
+            current = current.parent;
+        }
+        names.Reverse();
+        return string.Join("/", names);
+    }
+#endif
 
     private void Start()
     {
@@ -141,7 +259,12 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         foreach (Material material in generatedMaterials)
         {
             if (material != null)
-                Destroy(material);
+            {
+                if (Application.isPlaying)
+                    Destroy(material);
+                else
+                    DestroyImmediate(material);
+            }
         }
     }
 
@@ -184,8 +307,11 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
         // Only retire the fallback floor after its collision replacement is
         // complete. A rendering failure can therefore never remove physics.
-        DisableLegacyArena();
-        AlignSpawnsAndExistingPlayers();
+        if (!editorPreview)
+        {
+            DisableLegacyArena();
+            AlignSpawnsAndExistingPlayers();
+        }
 
         if (includeVisuals)
         {
@@ -206,8 +332,96 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         }
 
         built = true;
-        Debug.Log($"[BoundaryArenaPresentation] Built {GeneratedPlatformColliderCount} authoritative arena colliders (visuals={includeVisuals}).");
+        ApplyPendingEditorPreviewOverrides();
+        string buildKind = editorPreview ? "editor-preview" : "authoritative";
+        Debug.Log($"[BoundaryArenaPresentation] Built {GeneratedPlatformColliderCount} {buildKind} arena colliders (visuals={includeVisuals}).");
     }
+
+    private void ApplyPendingEditorPreviewOverrides()
+    {
+        if (pendingEditorPreviewSnapshot == null)
+            return;
+
+        foreach (ArenaPreviewTransform previewTransform in pendingEditorPreviewSnapshot.transforms)
+        {
+            Transform target = ResolveNamePath(transform, previewTransform.namePath);
+            if (target == null)
+                target = ResolveSiblingPath(transform, previewTransform.siblingPath);
+            if (target == null)
+                continue;
+
+            target.localPosition = previewTransform.localPosition;
+            target.localRotation = previewTransform.localRotation;
+            target.localScale = previewTransform.localScale;
+            target.gameObject.SetActive(previewTransform.activeSelf);
+        }
+
+        foreach (PlatformTile platform in platforms)
+        {
+            if (platform.transform == null)
+                continue;
+            platform.startPosition = platform.transform.position;
+            platform.startRotation = platform.transform.rotation;
+            platform.startScale = platform.transform.localScale;
+            platform.authoredActive = platform.transform.gameObject.activeSelf;
+        }
+
+        pendingEditorPreviewSnapshot = null;
+        Debug.Log("[BoundaryArenaPresentation] Applied the Game scene arena preview overrides for Play Mode.");
+    }
+
+    private static Transform ResolveNamePath(Transform root, string namePath)
+    {
+        if (string.IsNullOrEmpty(namePath))
+            return null;
+
+        Transform current = root;
+        string[] names = namePath.Split('/');
+        foreach (string childName in names)
+        {
+            Transform next = null;
+            for (int i = 0; i < current.childCount; i++)
+            {
+                Transform child = current.GetChild(i);
+                if (child.name == childName)
+                {
+                    next = child;
+                    break;
+                }
+            }
+            if (next == null)
+                return null;
+            current = next;
+        }
+        return current;
+    }
+
+    private static Transform ResolveSiblingPath(Transform root, string siblingPath)
+    {
+        Transform current = root;
+        string[] indices = siblingPath.Split('/');
+        foreach (string indexText in indices)
+        {
+            if (!int.TryParse(indexText, out int index) || index < 0 || index >= current.childCount)
+                return null;
+            current = current.GetChild(index);
+        }
+        return current;
+    }
+
+#if UNITY_EDITOR
+    public void BuildEditorPreview()
+    {
+        match = GetComponent<BoundaryMatchController>();
+        if (match == null)
+            return;
+
+        editorPreview = true;
+        buildVisuals = true;
+        platformProperties = new MaterialPropertyBlock();
+        BuildArena(true);
+    }
+#endif
 
     private void ApplyPlatformMaterial()
     {
@@ -556,6 +770,12 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         for (int i = 0; i < platforms.Count; i++)
         {
             PlatformTile tile = platforms[i];
+            if (!tile.authoredActive)
+            {
+                if (tile.transform.gameObject.activeSelf)
+                    tile.transform.gameObject.SetActive(false);
+                continue;
+            }
             bool removed = tile.collapseBand == 2 ? outerRemoved : tile.collapseBand == 1 && middleRemoved;
             bool transitioning = (tile.collapseBand == 2 && match.Transition == BoundaryTransition.ClosingOuterRing) ||
                                  (tile.collapseBand == 1 && match.Transition == BoundaryTransition.ClosingMiddleRing);
@@ -567,7 +787,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
                 continue;
             }
 
-            if (!tile.transform.gameObject.activeSelf)
+            if (tile.authoredActive && !tile.transform.gameObject.activeSelf)
                 tile.transform.gameObject.SetActive(true);
             if (tile.forcedCollapseAt >= 0f)
             {
@@ -604,7 +824,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             PlatformTile tile = platforms[i];
             tile.forcedCollapseAt = -1f;
             tile.corruptionHits = 0;
-            if (!tile.transform.gameObject.activeSelf)
+            if (tile.authoredActive && !tile.transform.gameObject.activeSelf)
                 tile.transform.gameObject.SetActive(true);
             ResetPlatform(tile);
         }
@@ -815,7 +1035,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         core.transform.position = match.SingularityPosition;
         core.transform.localScale = Vector3.one * 3.7f;
         core.GetComponent<Renderer>().sharedMaterial = coreMaterial;
-        Destroy(core.GetComponent<Collider>());
+        DestroyGeneratedObject(core.GetComponent<Collider>());
         singularityCore = core.transform;
 
         CreateAccretionRing(core.transform, "Hot Accretion Band", 2.35f, 0.24f,
@@ -968,8 +1188,23 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             renderer.sharedMaterial = fractureMaterial;
             renderer.enabled = false;
             fractureLines.Add(renderer);
-            Destroy(line.GetComponent<Collider>());
+            DestroyGeneratedObject(line.GetComponent<Collider>());
         }
+    }
+
+    private static void DestroyGeneratedObject(UnityEngine.Object generatedObject)
+    {
+        if (generatedObject == null)
+            return;
+
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            DestroyImmediate(generatedObject);
+            return;
+        }
+#endif
+        Destroy(generatedObject);
     }
 
     private void BuildVortexLines()

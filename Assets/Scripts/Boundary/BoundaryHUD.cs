@@ -38,7 +38,10 @@ public sealed class BoundaryHUD : MonoBehaviour
 
     private void Awake()
     {
-        Build();
+        if (!TryBindAuthoredHierarchy())
+            Build();
+
+        EnsureRuntimeAudio();
     }
 
     private void OnDestroy()
@@ -68,28 +71,36 @@ public sealed class BoundaryHUD : MonoBehaviour
 
     private void Build()
     {
-        canvas = gameObject.AddComponent<Canvas>();
+        canvas = GetComponent<Canvas>();
+        if (canvas == null)
+            canvas = gameObject.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 250;
-        CanvasScaler scaler = gameObject.AddComponent<CanvasScaler>();
+        CanvasScaler scaler = GetComponent<CanvasScaler>();
+        if (scaler == null)
+            scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
         scaler.matchWidthOrHeight = 0.5f;
-        gameObject.AddComponent<GraphicRaycaster>();
+        if (GetComponent<GraphicRaycaster>() == null)
+            gameObject.AddComponent<GraphicRaycaster>();
 
         RectTransform safeArea = CreateRect(transform, "Safe Area");
         Stretch(safeArea);
         safeArea.gameObject.AddComponent<SafeAreaFitter>();
+        GameExitButton.Create(safeArea);
 
         Image header = CreateImage(safeArea, "Phase Header", Deep);
         SetRect(header.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -50f), new Vector2(520f, 78f));
         phaseText = CreateText(header.transform, "OUTER RING", 26, TextAnchor.MiddleLeft, Color.white);
+        phaseText.name = "Phase Text";
         RectTransform phaseRect = phaseText.rectTransform;
         phaseRect.anchorMin = new Vector2(0f, 0f);
         phaseRect.anchorMax = new Vector2(0.72f, 1f);
         phaseRect.offsetMin = new Vector2(28f, 8f);
         phaseRect.offsetMax = new Vector2(-5f, -8f);
         timerText = CreateText(header.transform, "01:00", 29, TextAnchor.MiddleCenter, Cyan);
+        timerText.name = "Timer Text";
         RectTransform timerRect = timerText.rectTransform;
         timerRect.anchorMin = new Vector2(0.72f, 0f);
         timerRect.anchorMax = Vector2.one;
@@ -113,30 +124,92 @@ public sealed class BoundaryHUD : MonoBehaviour
             new Vector2(EventBannerWidth, EventBannerHeight));
         bannerTitle = CreateText(bannerPanel.transform, string.Empty, EventTitleFontSize,
             TextAnchor.MiddleCenter, Color.white);
+        bannerTitle.name = "Banner Title";
         SetRect(bannerTitle.rectTransform, new Vector2(0.5f, 0.73f), Vector2.zero, new Vector2(606f, 46f));
         bannerCountdown = CreateText(bannerPanel.transform, string.Empty, EventCountdownFontSize,
             TextAnchor.MiddleCenter, Danger);
+        bannerCountdown.name = "Banner Countdown";
         SetRect(bannerCountdown.rectTransform, new Vector2(0.5f, 0.44f), Vector2.zero, new Vector2(606f, 39f));
         bannerHint = CreateText(bannerPanel.transform, string.Empty, EventHintFontSize,
             TextAnchor.MiddleCenter, new Color(0.82f, 0.72f, 1f));
+        bannerHint.name = "Banner Hint";
         SetRect(bannerHint.rectTransform, new Vector2(0.5f, 0.15f), Vector2.zero, new Vector2(600f, 44f));
 
         horizonOverlay = CreateImage(safeArea, "Event Horizon Distortion", new Color(0.42f, 0.01f, 0.40f, 0f));
         Stretch(horizonOverlay.rectTransform);
         horizonOverlay.raycastTarget = false;
         horizonText = CreateText(horizonOverlay.transform, "EVENT HORIZON\nESCAPE NOW", 54, TextAnchor.MiddleCenter, Color.white);
+        horizonText.name = "Horizon Text";
         SetRect(horizonText.rectTransform, new Vector2(0.5f, 0.68f), Vector2.zero, new Vector2(900f, 180f));
 
-        audioSource = gameObject.AddComponent<AudioSource>();
-        audioSource.playOnAwake = false;
-        audioSource.spatialBlend = 0f;
-        audioSource.volume = 0.32f;
-        phaseCue = CreateTone("Boundary Phase Pulse", 76f, 0.7f, 0.34f);
-        disasterCue = CreateTone("Boundary Event Alert", 142f, 0.46f, 0.25f);
-        horizonCue = CreateTone("Event Horizon Warning", 220f, 0.30f, 0.18f);
         bannerPanel.gameObject.SetActive(false);
         horizonOverlay.gameObject.SetActive(false);
     }
+
+    private bool TryBindAuthoredHierarchy()
+    {
+        canvas = GetComponent<Canvas>();
+        Transform safeArea = transform.Find("Safe Area");
+        if (canvas == null || safeArea == null)
+            return false;
+
+        Transform header = safeArea.Find("Phase Header");
+        Transform progressBackground = header != null ? header.Find("Progress Background") : null;
+        Transform eventBanner = safeArea.Find("Event Banner");
+        Transform eventHorizon = safeArea.Find("Event Horizon Distortion");
+        if (header == null || progressBackground == null || eventBanner == null || eventHorizon == null)
+            return false;
+
+        phaseText = FindText(header, "Phase Text", 0);
+        timerText = FindText(header, "Timer Text", 1);
+        phaseFill = progressBackground.Find("Progress")?.GetComponent<Image>();
+        bannerPanel = eventBanner.GetComponent<Image>();
+        bannerTitle = FindText(eventBanner, "Banner Title", 0);
+        bannerCountdown = FindText(eventBanner, "Banner Countdown", 1);
+        bannerHint = FindText(eventBanner, "Banner Hint", 2);
+        horizonOverlay = eventHorizon.GetComponent<Image>();
+        horizonText = FindText(eventHorizon, "Horizon Text", 0);
+
+        return phaseText != null && timerText != null && phaseFill != null &&
+               bannerPanel != null && bannerTitle != null && bannerCountdown != null &&
+               bannerHint != null && horizonOverlay != null && horizonText != null;
+    }
+
+    private static Text FindText(Transform parent, string authoredName, int fallbackIndex)
+    {
+        Transform authored = parent.Find(authoredName);
+        if (authored != null && authored.TryGetComponent(out Text authoredText))
+            return authoredText;
+
+        Text[] texts = parent.GetComponentsInChildren<Text>(true);
+        return fallbackIndex >= 0 && fallbackIndex < texts.Length ? texts[fallbackIndex] : null;
+    }
+
+    private void EnsureRuntimeAudio()
+    {
+        audioSource = GetComponent<AudioSource>();
+        if (audioSource == null)
+            audioSource = gameObject.AddComponent<AudioSource>();
+        audioSource.playOnAwake = false;
+        audioSource.spatialBlend = 0f;
+        audioSource.volume = 0.32f;
+
+        if (!Application.isPlaying)
+            return;
+
+        phaseCue = CreateTone("Boundary Phase Pulse", 76f, 0.7f, 0.34f);
+        disasterCue = CreateTone("Boundary Event Alert", 142f, 0.46f, 0.25f);
+        horizonCue = CreateTone("Event Horizon Warning", 220f, 0.30f, 0.18f);
+    }
+
+#if UNITY_EDITOR
+    public void BuildForEditorAuthoring()
+    {
+        if (!TryBindAuthoredHierarchy())
+            Build();
+        EnsureRuntimeAudio();
+    }
+#endif
 
     private void UpdatePhaseHeader()
     {

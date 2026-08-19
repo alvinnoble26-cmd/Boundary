@@ -1,6 +1,9 @@
 "use strict";
 
 const {onRequest} = require("firebase-functions/v2/https");
+const {SignedDataVerifier, Environment} = require("@apple/app-store-server-library");
+const fs = require("fs");
+const path = require("path");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {defineSecret} = require("firebase-functions/params");
 const {initializeApp} = require("firebase-admin/app");
@@ -25,6 +28,23 @@ const REMATCH_CLEANUP_GRACE_MS = 90000;
 const ABANDONED_DEPLOYMENT_MS = 10 * 60 * 1000;
 const MAX_DEPLOYMENT_LIFETIME_MS = 10 * 60 * 1000;
 const APPLE_BUNDLE_ID = "com.alvin.entropy";
+const APPLE_ROOT_CA = fs.readFileSync(path.join(__dirname, "AppleRootCA-G3.cer"));
+
+function decodeJwsPayload(jws) {
+  const parts = String(jws).split(".");
+  if (parts.length !== 3) throw new Error("Invalid Apple transaction JWS");
+  return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+}
+
+async function verifyAppleJws(jws) {
+  const unverified = decodeJwsPayload(jws);
+  const environment = String(unverified.environment || "").toUpperCase() === "PRODUCTION"
+    ? Environment.PRODUCTION : Environment.SANDBOX;
+  const verifier = new SignedDataVerifier(
+      [APPLE_ROOT_CA], true, environment, APPLE_BUNDLE_ID,
+      Number(process.env.APPLE_APP_ID));
+  return verifier.verifyAndDecodeTransaction(jws);
+}
 const SUN_DUCKER_PRODUCT_ID = "com.alvin.entropy.skin.sunducker";
 const TURTLE_PRODUCT_ID = "com.alvin.entropy.skin.turtle";
 const SKIN_PRODUCTS = Object.freeze({
@@ -299,6 +319,7 @@ exports.verifyAppleSkinPurchase = onRequest({
   memory: "256MiB",
   cors: false,
   invoker: "public",
+  secrets: ["APPLE_ISSUER_ID", "APPLE_KEY_ID", "APPLE_PRIVATE_KEY", "APPLE_APP_ID"],
 }, async (req, res) => {
   if (req.method !== "POST") return sendJson(res, 405, {error: "POST required"});
   const authorization = String(req.get("authorization") || "");
@@ -311,13 +332,43 @@ exports.verifyAppleSkinPurchase = onRequest({
   }
 
   try {
-    const unityReceipt = JSON.parse(String(req.body && req.body.receipt || ""));
-    if (unityReceipt.Store !== "AppleAppStore" || !unityReceipt.Payload)
-      throw new Error("An Apple App Store receipt is required");
+    const rawReceipt = String(req.body && req.body.receipt || "");
+    const jws = String(req.body && req.body.jws || "");
+    // Validate the requested item before handling either StoreKit receipt
+    // format. Previously these declarations were below the JWS branch, which
+    // raised a JavaScript temporal-dead-zone ReferenceError for every StoreKit
+    // 2 transaction and made successful purchases appear recoverable.
     const productId = String(req.body && req.body.productId || SUN_DUCKER_PRODUCT_ID);
     const skinId = SKIN_PRODUCTS[productId];
     if (!skinId) throw new Error("Unsupported skin product ID");
-
+    let unityReceipt = null;
+    if (rawReceipt) {
+      try { unityReceipt = JSON.parse(rawReceipt); } catch (_) { /* StoreKit 2 */ }
+    }
+    if (jws) {
+      const transaction = await verifyAppleJws(jws);
+      if (transaction.bundleId !== APPLE_BUNDLE_ID) throw new Error("Transaction bundle ID does not match");
+      if (transaction.productId !== productId) throw new Error("Transaction product ID does not match");
+      if (transaction.revocationDate) throw new Error("Transaction has been revoked");
+      if (!transaction.transactionId) throw new Error("Transaction ID is missing");
+      const transactionId = String(transaction.originalTransactionId || transaction.transactionId);
+      const entitlementRef = db.collection("purchaseEntitlements").doc(transactionId);
+      const skinRef = db.collection("players").doc(caller.uid).collection("skins").doc(skinId);
+      await db.runTransaction(async (transactionWriter) => {
+        transactionWriter.set(entitlementRef, {
+          uid: caller.uid, uids: FieldValue.arrayUnion(caller.uid), productId,
+          store: "apple", environment: transaction.environment || "unknown",
+          transactionId: String(transaction.transactionId), verifiedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        transactionWriter.set(skinRef, {
+          owned: true, acquisitionType: "apple_iap", productId,
+          transactionId: String(transaction.transactionId), acquiredAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+      });
+      return sendJson(res, 200, {owned: true, skinId});
+    }
+    if (!unityReceipt || unityReceipt.Store !== "AppleAppStore" || !unityReceipt.Payload)
+      throw new Error("A StoreKit 2 transaction JWS is required");
     const verification = await verifyAppleReceipt(unityReceipt.Payload);
     if (verification.status !== 0) throw new Error(`Apple receipt status ${verification.status}`);
     const receipt = verification.receipt || {};

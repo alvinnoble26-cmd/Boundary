@@ -51,4 +51,15 @@ public class AbilitiesSelectUI : MonoBehaviour
         if (label != null)
             label.color = selected ? selectedColor : normalColor;
     }
+
+    public AbilityId AbilityId => abilityId;
+
+    public void Configure(AbilityId id, string displayName)
+    {
+        abilityId = id;
+        if (button == null) button = GetComponent<Button>();
+        if (label == null) label = GetComponentInChildren<TMP_Text>(true);
+        if (label != null) label.text = displayName;
+        Refresh();
+    }
 }

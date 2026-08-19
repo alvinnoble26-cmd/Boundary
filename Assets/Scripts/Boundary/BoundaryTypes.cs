@@ -181,7 +181,7 @@ public static class BoundaryMath
     {
         // Falling remains responsive away from the core, then progressively
         // lightens beneath it so its upward pull is not erased by 12x gravity.
-        return Mathf.Lerp(2.2f, 0.85f, Mathf.Clamp01(singularityProximity));
+        return Mathf.Lerp(2.45f, 0.85f, Mathf.Clamp01(singularityProximity));
     }
 
     public static Vector3 PlayerPullAcceleration(

@@ -271,12 +271,12 @@ MonoBehaviour:
   cam: {fileID: 5967964451342603314}
   camPivot: {fileID: 3566061499379271860}
   swipe: {fileID: 0}
-  firstPersonEyeOffset: {x: 0, y: 0.52, z: 0.08}
-  minimumFirstPersonEyeHeight: 0.72
+  firstPersonEyeOffset: {x: 0, y: 0.9, z: 0.28}
+  minimumFirstPersonEyeHeight: 0.9
   firstPersonMinPitch: -85
   firstPersonMaxPitch: 85
   firstPersonNearClip: 0.05
-  firstPersonFieldOfView: 85
+  firstPersonFieldOfView: 80
   lookDegreesPerPixelAtDefault: 0.32
   obstructionRadius: 0.07
   obstructionPadding: 0.025
@@ -597,6 +597,7 @@ GameObject:
   - component: {fileID: 948166568671555870}
   - component: {fileID: 4544751516407353875}
   - component: {fileID: 5931197452291881782}
+  - component: {fileID: 6754839201048572936}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -747,11 +748,11 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   maxSlopeAngle: 75
-  acceleration: 150
-  maxSpeed: 20
+  acceleration: 135
+  maxSpeed: 18
   deceleration: 50
   jumpForce: 18
-  fallGravityMultiplier: 12
+  fallGravityMultiplier: 13
   deadzone: 0.1
   inputSmoothing: 12
   groundedStopDeceleration: 42
@@ -820,7 +821,7 @@ MonoBehaviour:
   teleportFailVFX: {fileID: 4594305064576874191, guid: d0467414c35f2b349a4bb1219e454466, type: 3}
   vfxLifetime: 2
   vfxYOffset: 0
-  maxDistance: 30
+  maxDistance: 50
   skin: 0.05
   backoffSteps: 8
   snapToGround: 1
@@ -972,8 +973,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   objectToThrow: {fileID: 5883653943848685551, guid: 0316e51d9f81b4e5b9df63b1ea59ac4e, type: 3}
-  throwForce: 25
-  throwUpwardForce: 8
+  throwForce: 1
+  throwUpwardForce: 2
   cooldown: 3
   launchHeightAbovePlayerCenter: 1.35
   repulsionForce: 200
@@ -1059,6 +1060,24 @@ MonoBehaviour:
   escapeWindowSeconds: 1.6
   horizonHorizontalRadius: 10
   voidKillDepthBelowArena: 4
+--- !u!114 &6754839201048572936
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8887482223705562195}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a82f6c362dfd43e784d36f1e1d3e28c6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerWindPresentation
+  worldWindPrefab: {fileID: 1645123201969997353, guid: 292bfa542cd61114883916af45c0c4f3, type: 3}
+  cameraStreaksPrefab: {fileID: 5749892945899594870, guid: 797ee248261f4504f9071cdf2c4300d4, type: 3}
+  startSpeed: 1.2
+  maximumPresentationSpeed: 24
+  intensityResponse: 7
+  maximumStreaks: 32
 --- !u!1 &8938675066990083720
 GameObject:
   m_ObjectHideFlags: 0

@@ -13,7 +13,7 @@ public sealed class FixedJoystickLayout : MonoBehaviour
     private void Awake()
     {
         Canvas canvas = GetComponentInParent<Canvas>();
-        if (canvas != null)
+        if (canvas != null && !Application.isEditor && ControlLayoutSettings.HasSavedLayout)
             ControlLayoutSettings.ApplyToGameCanvas(canvas);
 
         OnScreenStick stick = GetComponent<OnScreenStick>();

@@ -167,6 +167,7 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
 
         reportedLoss = true;
         SetState(BoundaryKnockoutState.Consumed);
+        LocalLethalFeedback.VibrateForAcceptedLocalContact();
         SfxManager.PlayLethalHit();
         if (GameManager.I != null)
             GameManager.I.ReportLocalPlayerLost(reason);

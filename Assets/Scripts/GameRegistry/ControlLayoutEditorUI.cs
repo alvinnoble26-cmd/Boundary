@@ -33,9 +33,12 @@ public class ControlLayoutEditorUI : MonoBehaviour
         if (canvas == null)
             return;
 
+        RemoveStaleGeneratedUi(canvas.transform);
         EnsureEventSystem();
-        // This sits between the volume slider and the existing Back button.
-        editButton = CreateButton(canvas.transform, "Edit Controls", new Vector2(0.5f, 0.5f), new Vector2(0f, -78f), new Vector2(300f, 58f), AccentBlue, OpenEditor);
+        // Match the existing menu labels rather than covering Options with a
+        // blue card. Other Information is placed below this text control.
+        editButton = CreateMenuTextButton(canvas.transform, "Edit Controls",
+            new Vector2(0.5f, 0.5f), new Vector2(0f, -58f), new Vector2(360f, 42f), OpenEditor);
 
         editorPanel = CreateImage(canvas.transform, "ControlLayoutEditor", Navy).gameObject;
         StretchToParent((RectTransform)editorPanel.transform);
@@ -90,6 +93,26 @@ public class ControlLayoutEditorUI : MonoBehaviour
 
         editorPanel.SetActive(false);
         UpdateEditButtonVisibility();
+    }
+
+    private static void RemoveStaleGeneratedUi(Transform canvas)
+    {
+        var staleObjects = new List<GameObject>();
+        for (int i = 0; i < canvas.childCount; i++)
+        {
+            GameObject child = canvas.GetChild(i).gameObject;
+            if (child.name == "Edit ControlsButton" || child.name == "ControlLayoutEditor")
+                staleObjects.Add(child);
+        }
+
+        foreach (GameObject staleObject in staleObjects)
+        {
+            staleObject.SetActive(false);
+            if (Application.isPlaying)
+                Destroy(staleObject);
+            else
+                DestroyImmediate(staleObject);
+        }
     }
 
     private void Update()
@@ -275,6 +298,27 @@ public class ControlLayoutEditorUI : MonoBehaviour
         return image.gameObject;
     }
 
+    private static GameObject CreateMenuTextButton(Transform parent, string label, Vector2 anchor,
+        Vector2 position, Vector2 size, UnityEngine.Events.UnityAction action)
+    {
+        Image hitArea = CreateImage(parent, label + "Button", Color.clear);
+        RectTransform rect = hitArea.rectTransform;
+        rect.anchorMin = anchor;
+        rect.anchorMax = anchor;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+
+        Button button = hitArea.gameObject.AddComponent<Button>();
+        button.targetGraphic = hitArea;
+        button.onClick.AddListener(action);
+        Text text = CreateText(rect, label.ToUpperInvariant(), 32, TextAnchor.MiddleCenter,
+            new Color(0.90f, 0.20f, 0.02f, 1f), new Vector2(0.5f, 0.5f),
+            Vector2.zero, Vector2.zero, true);
+        hitArea.gameObject.AddComponent<MenuTextButtonFeedback>().Initialize(text);
+        return hitArea.gameObject;
+    }
+
     private static Text CreateText(Transform parent, string text, int fontSize, TextAnchor alignment, Color color,
         Vector2 anchor, Vector2 position, Vector2 size, bool stretch = false)
     {
@@ -403,6 +447,11 @@ public class ControlLayoutRuntime : MonoBehaviour
         Canvas[] canvases = Object.FindObjectsByType<Canvas>(FindObjectsSortMode.None);
         if (scene.name == "Game")
         {
+            // In the Editor the scene is the authoring source of truth. Device
+            // builds still apply a player's explicitly saved custom layout.
+            if (Application.isEditor || !ControlLayoutSettings.HasSavedLayout)
+                yield break;
+
             foreach (Canvas canvas in canvases)
             {
                 if (canvas.gameObject.scene == scene && canvas.name == "Canvas")

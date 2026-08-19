@@ -9,15 +9,18 @@ public static class ControlLayoutSettings
     public const float DefaultCameraSensitivity = 20f;
     public const float MinimumCameraSensitivity = 5f;
     public const float MaximumCameraSensitivity = 50f;
-    public const float DefaultCameraFieldOfView = 85f;
+    public const float DefaultCameraFieldOfView = 80f;
     public const float MinimumCameraFieldOfView = 60f;
     public const float MaximumCameraFieldOfView = 110f;
 
     private const string PreferenceKey = "settings.mobileControlLayout.v1";
     private const string SensitivityPreferenceKey = "settings.cameraSensitivity";
     private const string FieldOfViewPreferenceKey = "settings.cameraFieldOfView";
+    private const string CameraDepthTuningVersionKey = "settings.cameraDepthTuning.v1";
     private static float cachedCameraSensitivity = float.NaN;
     private static float cachedCameraFieldOfView = float.NaN;
+
+    public static bool HasSavedLayout => PlayerPrefs.HasKey(PreferenceKey);
 
     [Serializable]
     public class ControlEntry
@@ -146,6 +149,21 @@ public static class ControlLayoutSettings
 
     public static float LoadCameraFieldOfView()
     {
+        // The original 85-degree default made close hazards look deceptively
+        // distant. Migrate only people who were still on that old default;
+        // players who deliberately chose another FOV keep their preference.
+        if (!PlayerPrefs.HasKey(CameraDepthTuningVersionKey))
+        {
+            LayoutData layout = Load();
+            if (Mathf.Approximately(layout.cameraFieldOfView, 85f))
+            {
+                layout.cameraFieldOfView = DefaultCameraFieldOfView;
+                Save(layout);
+            }
+            PlayerPrefs.SetInt(CameraDepthTuningVersionKey, 1);
+            PlayerPrefs.Save();
+        }
+
         if (!float.IsNaN(cachedCameraFieldOfView))
             return cachedCameraFieldOfView;
 

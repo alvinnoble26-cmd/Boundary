@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using PurrNet;
 
@@ -33,6 +34,15 @@ public class TeleportAbility : MonoBehaviour, IAbility
     [SerializeField] private float groundRayDown = 3.0f;
 
     private PlayerAbilities playerAbilities;
+    private Coroutine pendingTeleport;
+    private PlayerMovement playerMovement;
+    private Transform tiltVisual;
+    private Quaternion windupBaseRotation;
+    private bool windupPresentationActive;
+    private float windupStartedAt;
+    private ParticleSystem windupStartVFX;
+
+    public const float WindupDuration = 0.5f;
 
     void Awake()
     {
@@ -40,13 +50,23 @@ public class TeleportAbility : MonoBehaviour, IAbility
         TryResolveRefs();
     }
 
+    private void OnDisable()
+    {
+        // Unity stops this component's coroutines on disable. Clear the handle
+        // so a respawn or scene re-entry cannot retain a stale pending state.
+        pendingTeleport = null;
+        ClearWindupPresentation();
+    }
+
     private void TryResolveRefs()
     {
         if (orientation == null)
         {
-            var pm = GetComponentInParent<PlayerMovement>();
-            orientation = pm?.orientation ?? transform;
+            playerMovement = GetComponentInParent<PlayerMovement>();
+            orientation = playerMovement?.orientation ?? transform;
         }
+        if (playerMovement == null)
+            playerMovement = GetComponentInParent<PlayerMovement>();
         if (rb == null)
             rb = GetComponentInParent<Rigidbody>();
         if (capsule == null)
@@ -55,10 +75,12 @@ public class TeleportAbility : MonoBehaviour, IAbility
             playerAbilities = GetComponentInParent<PlayerAbilities>();
     }
 
-    public void Activate()
+    public bool TryPrepareWindup(out Vector3 start, out Vector3 destination, out Vector3 dir)
     {
-        // Always check cooldown FIRST before anything else
-        if (!CooldownReady()) return;
+        start = Vector3.zero;
+        destination = Vector3.zero;
+        dir = Vector3.forward;
+        if (!CooldownReady()) return false;
 
         // Resolve refs if missing
         TryResolveRefs();
@@ -66,34 +88,124 @@ public class TeleportAbility : MonoBehaviour, IAbility
         if (orientation == null || rb == null || capsule == null)
         {
             Debug.LogWarning("[TeleportAbility] Missing refs, cannot activate.");
-            return;
+            return false;
         }
 
-        Vector3 start = rb.position;
-        Vector3 dir = orientation.forward;
+        start = rb.position;
+        dir = orientation.forward;
         dir.y = 0f;
-        if (dir.sqrMagnitude < 0.0001f) return;
+        if (dir.sqrMagnitude < 0.0001f) return false;
         dir.Normalize();
 
-        Vector3 destination = CalculateDestination(start, dir);
+        destination = CalculateDestination(start, dir);
 
         // Start cooldown immediately regardless of success/fail
         StartCooldown();
 
         if (destination == start)
         {
-            SpawnVFX(teleportFailVFX, start, dir);
+            return false;
+        }
+
+        return true;
+    }
+
+    // Kept for the existing non-networked activation contract. Multiplayer
+    // Teleport uses PlayerAbilities' server-owned wind-up sequence instead.
+    public void Activate()
+    {
+        if (!TryPrepareWindup(out Vector3 start, out Vector3 destination, out Vector3 dir))
+        {
+            SpawnVFX(teleportFailVFX, rb != null ? rb.position : transform.position, dir);
             return;
         }
 
-        SpawnVFX(teleportStartVFX, start, dir);
+        BeginWindupPresentation(start, dir);
+        pendingTeleport = StartCoroutine(CompleteTeleportAfterWindUp(start, destination, dir));
+    }
+
+    private IEnumerator CompleteTeleportAfterWindUp(Vector3 start, Vector3 destination, Vector3 dir)
+    {
+        yield return new WaitForSeconds(WindupDuration);
+
+        CompleteServerTeleport(destination);
+
+        CompleteWindupPresentation(destination, dir);
+        pendingTeleport = null;
+    }
+
+    public void BeginWindupPresentation(Vector3 start, Vector3 dir)
+    {
+        if (windupPresentationActive)
+            return;
+
+        TryResolveRefs();
+        Transform visual = playerMovement != null ? playerMovement.transform.Find("Visual") : null;
+        tiltVisual = visual != null ? visual.Find("Tilt") : null;
+        windupBaseRotation = tiltVisual != null ? tiltVisual.localRotation : Quaternion.identity;
+        windupPresentationActive = true;
+        windupStartedAt = Time.time;
+
+        if (playerMovement != null && playerMovement.isOwner)
+        {
+            playerMovement.SetMovementSuppressed(true, -1f, false);
+            if (rb != null)
+                rb.linearVelocity = Vector3.zero;
+        }
+
+        Cam cameraController = playerAbilities != null
+            ? playerAbilities.GetComponentInChildren<Cam>(true)
+            : null;
+        cameraController?.SetLookInputSuppressed(true);
+        cameraController?.ShowTeleportArm();
+        windupStartVFX = SpawnVFX(teleportStartVFX, start, dir);
+    }
+
+    public void CompleteServerTeleport(Vector3 destination)
+    {
+        if (rb == null)
+            return;
 
         rb.position = destination;
         rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
+    }
 
+    public void CompleteWindupPresentation(Vector3 destination, Vector3 dir)
+    {
+        ClearWindupPresentation();
         SpawnVFX(teleportEndVFX, destination, dir);
         SfxManager.PlayTeleport();
+    }
+
+    public void PlayFailurePresentation(Vector3 start, Vector3 dir)
+    {
+        ClearWindupPresentation();
+        SpawnVFX(teleportFailVFX, start, dir);
+    }
+
+    private void Update()
+    {
+        if (!windupPresentationActive || tiltVisual == null)
+            return;
+
+        float progress = Mathf.Clamp01((Time.time - windupStartedAt) / WindupDuration);
+        tiltVisual.localRotation = windupBaseRotation * Quaternion.Euler(0f, 360f * progress, 0f);
+    }
+
+    private void ClearWindupPresentation()
+    {
+        if (windupStartVFX != null)
+            Destroy(windupStartVFX.gameObject);
+        windupStartVFX = null;
+        if (tiltVisual != null)
+            tiltVisual.localRotation = windupBaseRotation;
+        if (playerMovement != null && playerMovement.isOwner)
+            playerMovement.SetMovementSuppressed(false);
+        if (playerAbilities != null)
+            playerAbilities.GetComponentInChildren<Cam>(true)?.SetLookInputSuppressed(false);
+        windupPresentationActive = false;
+        tiltVisual = null;
     }
 
     private Vector3 CalculateDestination(Vector3 start, Vector3 dir)
@@ -212,9 +324,9 @@ public class TeleportAbility : MonoBehaviour, IAbility
         return centerY - height * 0.5f;
     }
 
-    private void SpawnVFX(ParticleSystem prefab, Vector3 pos, Vector3 dir)
+    private ParticleSystem SpawnVFX(ParticleSystem prefab, Vector3 pos, Vector3 dir)
     {
-        if (prefab == null) return;
+        if (prefab == null) return null;
         Vector3 spawnPos = pos + Vector3.up * vfxYOffset;
         Quaternion rot = dir.sqrMagnitude > 0.0001f
             ? Quaternion.LookRotation(dir, Vector3.up)
@@ -222,6 +334,7 @@ public class TeleportAbility : MonoBehaviour, IAbility
         ParticleSystem ps = Instantiate(prefab, spawnPos, rot);
         ps.Play();
         Destroy(ps.gameObject, vfxLifetime);
+        return ps;
     }
 
     protected bool CooldownReady() => Time.time >= nextReadyTime;

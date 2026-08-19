@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Purchasing;
 using Unity.Services.Core;
@@ -22,6 +23,20 @@ public sealed class SkinPurchaseManager : MonoBehaviour
 
     private StoreController controller;
     private string requestedProductId;
+    // A transaction status belongs to one storefront item. Keeping this with
+    // the product prevents a Turtle purchase from changing the Sun Ducker card.
+    private string statusProductId;
+
+    public string StatusForProduct(string productId)
+    {
+        return statusProductId == productId ? StatusMessage : "";
+    }
+
+    private void SetStatus(string message, string productId = null)
+    {
+        StatusMessage = message;
+        statusProductId = productId;
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void Create()
@@ -64,7 +79,7 @@ public sealed class SkinPurchaseManager : MonoBehaviour
         catch (Exception e)
         {
             requestedProductId = null;
-            StatusMessage = "APP STORE INITIALIZATION FAILED — TRY AGAIN";
+            SetStatus("APP STORE INITIALIZATION FAILED — TRY AGAIN");
             Debug.LogWarning("[SkinShop] Store initialization failed: " + e.Message);
             Changed?.Invoke();
         }
@@ -98,7 +113,7 @@ public sealed class SkinPurchaseManager : MonoBehaviour
         if (PurchaseBusy) return;
 #if UNITY_IOS && !UNITY_EDITOR
         requestedProductId = productId;
-        StatusMessage = "CONNECTING TO APP STORE...";
+        SetStatus("CONNECTING TO APP STORE...", productId);
         Changed?.Invoke();
 
         Product product = controller?.GetProductById(productId);
@@ -115,7 +130,7 @@ public sealed class SkinPurchaseManager : MonoBehaviour
             }
             else
             {
-                StatusMessage = "APP STORE IS STILL LOADING — TAP AGAIN";
+                SetStatus("APP STORE IS STILL LOADING — TAP AGAIN", productId);
                 Changed?.Invoke();
             }
             return;
@@ -132,7 +147,7 @@ public sealed class SkinPurchaseManager : MonoBehaviour
         if (PurchaseBusy || product == null || !product.availableToPurchase) return;
         requestedProductId = null;
         PurchaseBusy = true;
-        StatusMessage = "PURCHASING...";
+        SetStatus("PURCHASING...", product.definition.id);
         SfxManager.PlaySkinPurchase();
         Changed?.Invoke();
         controller.PurchaseProduct(product);
@@ -143,16 +158,16 @@ public sealed class SkinPurchaseManager : MonoBehaviour
 #if UNITY_IOS && !UNITY_EDITOR
         if (controller == null)
         {
-            StatusMessage = "APP STORE IS STILL LOADING — TRY AGAIN";
+            SetStatus("APP STORE IS STILL LOADING — TRY AGAIN");
             Changed?.Invoke();
             return;
         }
-        StatusMessage = "RECOVERING PURCHASES...";
+        SetStatus("RECOVERING PURCHASES...");
         Changed?.Invoke();
         controller.RestoreTransactions((success, error) =>
         {
             Debug.Log("[SkinShop] Recover owned skins: " + success + " " + error);
-            StatusMessage = success ? "CHECKING OWNED SKINS..." : "RECOVERY FAILED — TRY AGAIN";
+            SetStatus(success ? "CHECKING OWNED SKINS..." : "RECOVERY FAILED — TRY AGAIN");
             Changed?.Invoke();
             if (success) controller.FetchPurchases();
         });
@@ -175,7 +190,7 @@ public sealed class SkinPurchaseManager : MonoBehaviour
                 TurtleDisplayPrice = turtleProduct.metadata.localizedPriceString;
         }
         controller.FetchPurchases();
-        StatusMessage = "";
+        SetStatus("");
         Changed?.Invoke();
         if (!string.IsNullOrEmpty(requestedProductId))
         {
@@ -187,26 +202,33 @@ public sealed class SkinPurchaseManager : MonoBehaviour
 
     private void OnProductsFetchFailed(ProductFetchFailed failure)
     {
+        string failedProductId = requestedProductId;
         requestedProductId = null;
-        StatusMessage = "UNAVAILABLE — CHECK APP STORE SETUP";
+        SetStatus("UNAVAILABLE — CHECK APP STORE SETUP", failedProductId);
         Debug.LogWarning("[SkinShop] Product fetch failed: " + failure);
         Changed?.Invoke();
     }
 
     private void OnStoreDisconnected(StoreConnectionFailureDescription failure)
     {
+        string failedProductId = requestedProductId;
         requestedProductId = null;
-        StatusMessage = "APP STORE CONNECTION FAILED — TRY AGAIN";
+        SetStatus("APP STORE CONNECTION FAILED — TRY AGAIN", failedProductId);
         Debug.LogWarning("[SkinShop] Store disconnected: " + failure);
         Changed?.Invoke();
     }
 
-    private void OnPurchasesFetchFailed(PurchasesFetchFailureDescription failure) =>
+    private void OnPurchasesFetchFailed(PurchasesFetchFailureDescription failure)
+    {
+        SetStatus("RECOVERY FAILED — TRY AGAIN");
         Debug.LogWarning("[SkinShop] Purchase recovery fetch failed: " + failure);
+        Changed?.Invoke();
+    }
 
     private void OnPurchasesFetched(Orders orders)
     {
-        StatusMessage = "";
+        SetStatus("");
+        Changed?.Invoke();
         foreach (ConfirmedOrder order in orders.ConfirmedOrders)
         {
             if (GetSupportedProductId(order) != null) VerifyRestoredOrderAsync(order);
@@ -224,25 +246,26 @@ public sealed class SkinPurchaseManager : MonoBehaviour
         string productId = GetSupportedProductId(order);
         try
         {
-            bool granted = productId != null && FirebaseManager.I != null &&
-                           await FirebaseManager.I.VerifyAppleSkinPurchaseAsync(
-                               order.Info.Receipt, productId);
+            FirebaseManager firebase = await WaitForFirebaseAsync();
+            bool granted = productId != null && firebase != null &&
+                           await firebase.VerifyAppleSkinPurchaseAsync(
+                               order.Info.Receipt, productId, order.Info.Apple?.jwsRepresentation);
             if (granted)
             {
                 controller.ConfirmPurchase(order);
-                StatusMessage = "OWNED";
+                SetStatus("OWNED", productId);
                 Debug.Log("[SkinShop] Purchase verified and saved: " + productId);
             }
             else
             {
-                StatusMessage = "PURCHASE NEEDS RECOVERY";
+                SetStatus("PURCHASE NEEDS RECOVERY", productId);
                 Debug.LogError("[SkinShop] The transaction completed, but secure verification " +
                                "did not finish. Recover Owned Skins will retry it.");
             }
         }
         catch (Exception e)
         {
-            StatusMessage = "PURCHASE NEEDS RECOVERY";
+            SetStatus("PURCHASE NEEDS RECOVERY", productId);
             Debug.LogError("[SkinShop] Secure purchase verification failed: " + e.Message +
                            ". Recover Owned Skins will retry it.");
         }
@@ -255,12 +278,16 @@ public sealed class SkinPurchaseManager : MonoBehaviour
 
     private async void VerifyRestoredOrderAsync(ConfirmedOrder order)
     {
-        if (FirebaseManager.I == null) return;
         string productId = GetSupportedProductId(order);
         if (productId == null) return;
         try
         {
-            await FirebaseManager.I.VerifyAppleSkinPurchaseAsync(order.Info.Receipt, productId);
+            FirebaseManager firebase = await WaitForFirebaseAsync();
+            bool granted = firebase != null && await firebase.VerifyAppleSkinPurchaseAsync(
+                order.Info.Receipt, productId, order.Info.Apple?.jwsRepresentation);
+            SetStatus(granted ? "OWNED" : "PURCHASE NEEDS RECOVERY", productId);
+            if (!granted)
+                Debug.LogWarning("[SkinShop] Restored transaction could not be verified for " + productId);
         }
         catch (Exception e)
         {
@@ -272,11 +299,28 @@ public sealed class SkinPurchaseManager : MonoBehaviour
         }
     }
 
+    // StoreKit may report restored transactions before the Firebase component
+    // in the first scene has completed anonymous sign-in. Do not discard those
+    // orders; wait briefly for the authenticated entitlement service instead.
+    private static async Task<FirebaseManager> WaitForFirebaseAsync()
+    {
+        const int maxFrames = 900; // about 15 seconds at 60 fps
+        for (int frame = 0; frame < maxFrames; frame++)
+        {
+            FirebaseManager firebase = FirebaseManager.I;
+            if (firebase != null && firebase.IsReady) return firebase;
+            await Task.Yield();
+        }
+
+        Debug.LogWarning("[SkinShop] Firebase was not ready to verify an Apple transaction.");
+        return null;
+    }
+
     private void OnPurchaseFailed(FailedOrder order)
     {
         PurchaseBusy = false;
         requestedProductId = null;
-        StatusMessage = "PURCHASE CANCELLED OR FAILED — TRY AGAIN";
+        SetStatus("PURCHASE CANCELLED OR FAILED — TRY AGAIN", GetSupportedProductId(order));
         Debug.LogWarning("[SkinShop] Purchase failed: " + order.FailureReason + " " + order.Details);
         Changed?.Invoke();
     }
@@ -285,7 +329,7 @@ public sealed class SkinPurchaseManager : MonoBehaviour
     {
         PurchaseBusy = false;
         requestedProductId = null;
-        StatusMessage = "WAITING FOR PURCHASE APPROVAL";
+        SetStatus("WAITING FOR PURCHASE APPROVAL", GetSupportedProductId(order));
         Debug.Log("[SkinShop] Purchase is waiting for approval.");
         Changed?.Invoke();
     }

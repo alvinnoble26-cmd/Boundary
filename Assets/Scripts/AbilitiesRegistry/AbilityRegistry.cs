@@ -20,4 +20,10 @@ public class AbilityRegistry : MonoBehaviour
     {
         return map.TryGetValue(id, out ability);
     }
+
+    public void Register(IAbility ability)
+    {
+        if (ability != null)
+            map[ability.Id] = ability;
+    }
 }

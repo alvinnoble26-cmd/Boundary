@@ -226,6 +226,76 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
+    public void SlideWallTangent_StaysHorizontalAndPreservesIncomingTravel()
+    {
+        Vector3 vertical = SlideAbility.SelectHorizontalWallTangent(Vector3.forward, Vector3.right);
+        Vector3 tilted = SlideAbility.SelectHorizontalWallTangent(
+            new Vector3(1f, 0f, 1f), new Vector3(0.6f, 0.5f, 0f));
+
+        Assert.That(vertical.y, Is.EqualTo(0f).Within(0.0001f));
+        Assert.That(Vector3.Dot(vertical, Vector3.right), Is.EqualTo(0f).Within(0.0001f));
+        Assert.That(Vector3.Dot(vertical, Vector3.forward), Is.GreaterThan(0f));
+        Assert.That(tilted.y, Is.EqualTo(0f).Within(0.0001f));
+        Assert.That(Vector3.Dot(tilted, new Vector3(0.6f, 0f, 0f)), Is.EqualTo(0f).Within(0.0001f));
+    }
+
+    [Test]
+    public void SlideWallEligibility_RejectsDynamicObjectsAndAllowsIntendedPlatformSides()
+    {
+        GameObject player = new GameObject("Player Root");
+        GameObject platformRoot = new GameObject("Breakaway Platforms");
+        GameObject platform = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        GameObject dynamicObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        try
+        {
+            platform.transform.SetParent(platformRoot.transform, false);
+            dynamicObject.AddComponent<Rigidbody>();
+
+            Assert.That(PlayerMovement.IsSlideWallSurface(
+                platform.GetComponent<Collider>(), Vector3.right, player.transform), Is.True);
+            Assert.That(PlayerMovement.IsSlideWallSurface(
+                platform.GetComponent<Collider>(), Vector3.up, player.transform), Is.False);
+            Assert.That(PlayerMovement.IsSlideWallSurface(
+                dynamicObject.GetComponent<Collider>(), Vector3.right, player.transform), Is.False);
+        }
+        finally
+        {
+            Object.DestroyImmediate(player);
+            Object.DestroyImmediate(platformRoot);
+            Object.DestroyImmediate(dynamicObject);
+        }
+    }
+
+    [Test]
+    public void SlideJump_UsesOneAndAHalfTimesNormalJumpForce()
+    {
+        Assert.That(SlideAbility.SlideJumpUpwardImpulse(7f), Is.EqualTo(10.5f).Within(0.0001f));
+    }
+
+    [Test]
+    public void PlayerWindIntensity_UsesActualSpeedThresholdsAndClamps()
+    {
+        Assert.That(PlayerWindPresentation.WorldWindIntensity(1.2f, 1.2f, 7f), Is.Zero);
+        Assert.That(PlayerWindPresentation.WorldWindIntensity(4.1f, 1.2f, 7f),
+            Is.EqualTo(0.5f).Within(0.0001f));
+        Assert.That(PlayerWindPresentation.WorldWindIntensity(20f, 1.2f, 7f), Is.EqualTo(1f));
+
+        Assert.That(PlayerWindPresentation.HighSpeedIntensity(7f, 7f, 24f), Is.Zero);
+        Assert.That(PlayerWindPresentation.HighSpeedIntensity(15.5f, 7f, 24f),
+            Is.EqualTo(0.5f).Within(0.0001f));
+        Assert.That(PlayerWindPresentation.HighSpeedIntensity(30f, 7f, 24f), Is.EqualTo(1f));
+    }
+
+    [Test]
+    public void GameExitButton_ArmsOnlyAfterAnInsideTapAndRequiresTheFullHold()
+    {
+        Assert.That(GameExitButton.ShouldArmAfterTap(true), Is.True);
+        Assert.That(GameExitButton.ShouldArmAfterTap(false), Is.False);
+        Assert.That(GameExitButton.HasCompletedHold(1.499f), Is.False);
+        Assert.That(GameExitButton.HasCompletedHold(GameExitButton.HoldDuration), Is.True);
+    }
+
+    [Test]
     public void GeneratedWalls_AreLargerAndMoreFrequentlyElevated()
     {
         Assert.That(BoundaryArenaPresentation.GeneratedWallSizeMultiplier, Is.EqualTo(1.12f));

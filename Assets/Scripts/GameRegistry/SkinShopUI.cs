@@ -25,9 +25,6 @@ public sealed class SkinShopUI : MonoBehaviour
     private Button beardButton;
     private Button turtleButton;
     private Button sunButton;
-    private Button deleteAccountButton;
-    private Text deleteAccountText;
-    private float deleteConfirmationExpiresAt;
     private int currentPage;
     private Coroutine pageAnimation;
     private Font font;
@@ -35,9 +32,6 @@ public sealed class SkinShopUI : MonoBehaviour
     private const float SideCardOffset = 455f;
     private const float SideCardScale = .68f;
     private const float SideCardAlpha = .58f;
-
-    private const string PrivacyUrl = "https://entropy-7c113.web.app/privacy";
-    private const string SupportUrl = "https://entropy-7c113.web.app/support";
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Install()
@@ -154,21 +148,6 @@ public sealed class SkinShopUI : MonoBehaviour
         Button next = MakeButton("NextSkin", panel.transform, "›", new Vector2(720, 25), new Vector2(90, 110));
         next.GetComponentInChildren<Text>().fontSize = 58;
         next.onClick.AddListener(NextPage);
-
-        Button restore = MakeButton("RestorePurchases", panel.transform, "RECOVER OWNED SKINS",
-            new Vector2(0, -348), new Vector2(330, 54));
-        restore.onClick.AddListener(() => SkinPurchaseManager.I?.RestorePurchases());
-
-        Button privacy = MakeButton("PrivacyPolicy", panel.transform, "PRIVACY",
-            new Vector2(-250, -425), new Vector2(190, 50));
-        privacy.onClick.AddListener(() => Application.OpenURL(PrivacyUrl));
-        Button support = MakeButton("Support", panel.transform, "SUPPORT",
-            new Vector2(0, -425), new Vector2(190, 50));
-        support.onClick.AddListener(() => Application.OpenURL(SupportUrl));
-        deleteAccountButton = MakeButton("DeleteAccount", panel.transform, "DELETE ACCOUNT",
-            new Vector2(250, -425), new Vector2(220, 50));
-        deleteAccountText = deleteAccountButton.GetComponentInChildren<Text>();
-        deleteAccountButton.onClick.AddListener(DeleteAccountClicked);
 
         ShowPage(0, false);
     }
@@ -359,48 +338,19 @@ public sealed class SkinShopUI : MonoBehaviour
         string selected = firebase?.SelectedSkin ?? "beard";
         bool turtleOwned = firebase != null && firebase.OwnsTurtle;
         bool sunOwned = firebase != null && firebase.OwnsSunDucker;
-        string purchaseStatus = purchases?.StatusMessage;
+        string turtlePurchaseStatus = purchases?.StatusForProduct(SkinPurchaseManager.TurtleProductId);
+        string sunPurchaseStatus = purchases?.StatusForProduct(SkinPurchaseManager.SunDuckerProductId);
 
         beardState.text = selected == "beard" ? "EQUIPPED" : "OWNED";
         turtleState.text = turtleOwned
             ? (selected == "turtle" ? "EQUIPPED" : "OWNED")
-            : (!string.IsNullOrEmpty(purchaseStatus) ? purchaseStatus : purchases?.TurtleDisplayPrice ?? "$0.29");
+            : (!string.IsNullOrEmpty(turtlePurchaseStatus) ? turtlePurchaseStatus : purchases?.TurtleDisplayPrice ?? "$0.29");
         sunState.text = sunOwned
             ? (selected == "sun_ducker" ? "EQUIPPED" : "OWNED")
-            : (!string.IsNullOrEmpty(purchaseStatus) ? purchaseStatus : purchases?.SunDuckerDisplayPrice ?? "$4.99");
+            : (!string.IsNullOrEmpty(sunPurchaseStatus) ? sunPurchaseStatus : purchases?.SunDuckerDisplayPrice ?? "$4.99");
         beardButton.interactable = selected != "beard";
         turtleButton.interactable = !turtleOwned || selected != "turtle";
         sunButton.interactable = !sunOwned || selected != "sun_ducker";
-    }
-
-    private async void DeleteAccountClicked()
-    {
-        if (FirebaseManager.I == null || deleteAccountButton == null) return;
-        if (Time.unscaledTime > deleteConfirmationExpiresAt)
-        {
-            deleteConfirmationExpiresAt = Time.unscaledTime + 6f;
-            deleteAccountText.text = "TAP AGAIN TO DELETE";
-            return;
-        }
-
-        deleteConfirmationExpiresAt = 0f;
-        deleteAccountButton.interactable = false;
-        deleteAccountText.text = "DELETING...";
-        try
-        {
-            await FirebaseManager.I.DeletePlayerAccountAsync();
-            deleteAccountText.text = "ACCOUNT DELETED";
-            Refresh();
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("[Account] Could not delete account: " + e.Message);
-            deleteAccountText.text = "DELETE FAILED — TRY AGAIN";
-        }
-        finally
-        {
-            deleteAccountButton.interactable = true;
-        }
     }
 
     private GameObject Ui(string name, Transform parent, Color color)

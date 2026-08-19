@@ -25,6 +25,7 @@ public class BlackKill : MonoBehaviour
         hasTriggered = true;
 
         Debug.Log("[BlackKill] Locally owned player touched arena black hole.");
+        LocalLethalFeedback.VibrateForAcceptedLocalContact();
         SfxManager.PlayLethalHit();
         GameManager.I.ReportLocalPlayerLost("You were consumed by the black hole.");
     }

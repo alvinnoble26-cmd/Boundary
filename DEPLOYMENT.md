@@ -64,6 +64,24 @@ firebase deploy --only functions --project entropy-7c113
 
 Do not deploy all targets when only one changed.
 
+## Updating the Edgegap image
+
+Only run these commands after the Unity dedicated-server build, container image
+build/publish, release checks, and explicit owner approval are complete.
+
+The repository helper updates the configured Edgegap application version to use
+an already-published image tag. It does not build or publish the image:
+
+```sh
+node tools/update-edgegap-image.mjs --firebase-secret entropy v21 <image-tag>
+```
+
+The helper reads the `EDGEGAP_API_TOKEN` Firebase secret and uses the local
+Docker credential helper when available. Do not print, commit, or paste the
+token. Record the image tag and successful Edgegap response in the release
+record. If the image has not already been published to the configured registry,
+stop before running this command.
+
 ## Rollback
 
 1. Identify the last verified tag.

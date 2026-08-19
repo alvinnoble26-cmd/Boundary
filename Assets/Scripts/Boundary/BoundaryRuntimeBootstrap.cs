@@ -48,11 +48,16 @@ public sealed class BoundaryRuntimeBootstrap : MonoBehaviour
         if (scene.name != "Game")
             return;
 
-        if (!Application.isBatchMode && FindFirstObjectByType<BoundaryHUD>() == null)
+        BoundaryHUD existingHud = FindFirstObjectByType<BoundaryHUD>();
+        if (!Application.isBatchMode && existingHud == null)
         {
             GameObject hud = new GameObject("Boundary HUD");
             SceneManager.MoveGameObjectToScene(hud, scene);
             hud.AddComponent<BoundaryHUD>();
+        }
+        else if (existingHud != null)
+        {
+            Debug.Log("[Boundary] Reusing the scene-authored Boundary HUD.");
         }
 
         if (spawnRoutine != null)

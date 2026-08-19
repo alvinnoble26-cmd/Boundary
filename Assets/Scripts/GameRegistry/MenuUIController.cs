@@ -15,6 +15,8 @@ public class MenuUIController : MonoBehaviour
     [Header("Win Screen UI")]
     [SerializeField] private Text winReasonText;
 
+    private bool leavingResultScreen;
+
     private void Start()
     {
         if (GameManager.I == null)
@@ -128,6 +130,10 @@ public class MenuUIController : MonoBehaviour
 
     public void ContinueToMainMenu()
     {
+        if (leavingResultScreen) return;
+        leavingResultScreen = true;
+        if (losePanel != null) losePanel.SetActive(false);
+        if (winPanel != null) winPanel.SetActive(false);
         if (GameManager.I != null)
             GameManager.I.ClearLastResult();
 

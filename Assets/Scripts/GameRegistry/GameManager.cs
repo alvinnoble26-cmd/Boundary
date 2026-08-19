@@ -780,18 +780,65 @@ isBusy = false;
         StartCoroutine(DisconnectRoutine());
     }
 
+    public void ExitGameToPlayPanel()
+    {
+        if (isBusy)
+            return;
+
+        ClearLastResult();
+        returnToServerSelector = false;
+        StopListeningForMatchResult();
+        StopListeningForRematch();
+        if (rematchDeadlineRoutine != null)
+        {
+            StopCoroutine(rematchDeadlineRoutine);
+            rematchDeadlineRoutine = null;
+        }
+        SetRematchStatus("");
+        StartCoroutine(DisconnectRoutine());
+    }
+
     private IEnumerator DisconnectRoutine()
     {
         isBusy = true;
 
-        if (net)
+        bool wasPractice = isPracticeMode;
+
+        if (net != null && net.isClient)
         {
             try { net.StopClient(); } catch { }
-            try { net.StopServer(); } catch { }
+
+            float disconnectWait = 0f;
+            while (net.clientState.ToString() != "Disconnected" && disconnectWait < 5f)
+            {
+                disconnectWait += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            yield return null;
+            yield return null;
         }
 
-        yield return null;
+        if (wasPractice && net != null && net.isServer)
+        {
+            try { net.StopServer(); } catch { }
 
+            float serverCleanupWait = 0f;
+            while (net.serverState.ToString() != "Disconnected" && serverCleanupWait < 5f)
+            {
+                serverCleanupWait += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            yield return null;
+            yield return null;
+        }
+
+        currentLobbyCode = "";
+        localLobbyRole = "";
+        receivedMatchResult = false;
+        hasLoadedGameScene = false;
+        isPracticeMode = false;
         SceneManager.LoadScene(menuSceneName);
     }
 

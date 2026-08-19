@@ -328,19 +328,21 @@ public class FirebaseManager : MonoBehaviour
         return true;
     }
 
-    public async Task<bool> VerifyAppleSkinPurchaseAsync(string receipt, string productId)
+    public async Task<bool> VerifyAppleSkinPurchaseAsync(string receipt, string productId, string appleJws = null)
     {
-        if (string.IsNullOrWhiteSpace(receipt) || string.IsNullOrWhiteSpace(productId)) return false;
+        if ((string.IsNullOrWhiteSpace(receipt) && string.IsNullOrWhiteSpace(appleJws)) || string.IsNullOrWhiteSpace(productId)) return false;
         string token = await GetIdTokenAsync();
-        string escaped = receipt.Replace("\\", "\\\\").Replace("\"", "\\\"")
+        string escaped = (receipt ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"")
+            .Replace("\n", "\\n").Replace("\r", "\\r");
+        string escapedJws = (appleJws ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"")
             .Replace("\n", "\\n").Replace("\r", "\\r");
         string escapedProductId = productId.Replace("\\", "\\\\").Replace("\"", "\\\"");
         using (UnityWebRequest request = new UnityWebRequest(
                    VerifyPurchaseUrl, UnityWebRequest.kHttpVerbPOST))
         {
             request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(
-                "{\"receipt\":\"" + escaped + "\",\"productId\":\"" +
-                escapedProductId + "\"}"));
+                "{\"receipt\":\"" + escaped + "\",\"jws\":\"" + escapedJws +
+                "\",\"productId\":\"" + escapedProductId + "\"}"));
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
             request.SetRequestHeader("Authorization", "Bearer " + token);

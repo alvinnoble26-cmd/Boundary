@@ -37,6 +37,9 @@ public class SlideAbility : MonoBehaviour, IAbility
     private bool active;
     private float endTime;
     private Vector3 dir;
+    private bool wallSliding;
+    private bool slideJumpExecuted;
+    private Vector3 lastWallNormal;
 
     void Awake()
     {
@@ -60,7 +63,6 @@ public class SlideAbility : MonoBehaviour, IAbility
         rb = pm ? pm.rb : null;
 
         if (pm == null || rb == null) return;
-        if (!pm.IsGrounded) return;
         if (active) return;
 
         Transform basis = pm.orientation ? pm.orientation : pm.transform;
@@ -79,10 +81,23 @@ public class SlideAbility : MonoBehaviour, IAbility
             dir.Normalize();
         }
 
+        bool hasFloorSupport = pm.IsGrounded;
+        RaycastHit wallHit = default;
+        bool hasWallSupport = !hasFloorSupport && pm.TryFindSlideWall(dir, out wallHit);
+        if (!hasFloorSupport && !hasWallSupport)
+            return;
+
         active = true;
+        wallSliding = hasWallSupport;
+        slideJumpExecuted = false;
+        if (hasWallSupport)
+        {
+            lastWallNormal = wallHit.normal;
+            dir = SelectHorizontalWallTangent(dir, wallHit.normal);
+        }
         endTime = Time.time + duration;
 
-        pm.SetMovementSuppressed(true, slideSpeedCap);
+        pm.SetMovementSuppressed(true, slideSpeedCap, false);
 
         if (visuals != null)
             visuals.localScale = new Vector3(originalVisualScale.x, crouchYScale, originalVisualScale.z);
@@ -98,11 +113,54 @@ public class SlideAbility : MonoBehaviour, IAbility
         if (!active || pm == null || rb == null) return;
 
         if (Time.time >= endTime) { Stop(); return; }
-        if (!pm.IsGrounded) { Stop(); return; }
-        if (pm.JumpPressedThisFrame) { Stop(); return; }
+
+        if (pm.IsGrounded)
+        {
+            wallSliding = false;
+        }
+        else if (pm.TryFindSlideWall(dir, out RaycastHit wallHit))
+        {
+            wallSliding = true;
+            lastWallNormal = wallHit.normal;
+            dir = SelectHorizontalWallTangent(dir, wallHit.normal);
+        }
+        else
+        {
+            ExecuteSlideJump(true);
+            return;
+        }
 
         MaintainSlideSpeed();
-        rb.AddForce(Vector3.down * 10f, ForceMode.Acceleration);
+        if (!wallSliding)
+            rb.AddForce(Vector3.down * 10f, ForceMode.Acceleration);
+    }
+
+    public bool TryManualSlideJump()
+    {
+        if (!active || slideJumpExecuted || rb == null || pm == null)
+            return false;
+
+        ExecuteSlideJump(false);
+        return true;
+    }
+
+    public static Vector3 SelectHorizontalWallTangent(Vector3 incomingDirection, Vector3 wallNormal)
+    {
+        Vector3 flatNormal = Vector3.ProjectOnPlane(wallNormal, Vector3.up);
+        Vector3 flatIncoming = Vector3.ProjectOnPlane(incomingDirection, Vector3.up);
+        if (flatNormal.sqrMagnitude < 0.0001f || flatIncoming.sqrMagnitude < 0.0001f)
+            return Vector3.zero;
+
+        Vector3 tangent = Vector3.ProjectOnPlane(flatIncoming, flatNormal.normalized);
+        if (tangent.sqrMagnitude < 0.0001f)
+            tangent = Vector3.Cross(Vector3.up, flatNormal);
+        tangent.Normalize();
+        return Vector3.Dot(tangent, flatIncoming) < 0f ? -tangent : tangent;
+    }
+
+    public static float SlideJumpUpwardImpulse(float normalJumpForce)
+    {
+        return normalJumpForce * 1.5f;
     }
 
     void Update()
@@ -162,6 +220,27 @@ public class SlideAbility : MonoBehaviour, IAbility
         }
     }
 
+    private void ExecuteSlideJump(bool automatic)
+    {
+        if (slideJumpExecuted || rb == null || pm == null)
+            return;
+
+        slideJumpExecuted = true;
+        Vector3 outwardImpulse = Vector3.zero;
+        if (automatic && wallSliding)
+        {
+            Vector3 flatNormal = Vector3.ProjectOnPlane(lastWallNormal, Vector3.up);
+            if (flatNormal.sqrMagnitude > 0.0001f)
+                outwardImpulse = flatNormal.normalized * (slideStartSpeed * 0.5f);
+        }
+
+        Stop();
+        Vector3 velocity = rb.linearVelocity;
+        rb.linearVelocity = new Vector3(velocity.x, 0f, velocity.z);
+        rb.AddForce(Vector3.up * SlideJumpUpwardImpulse(pm.jumpForce) + outwardImpulse, ForceMode.Impulse);
+        SfxManager.PlayJump();
+    }
+
     private void SpawnTrail()
     {
         if (trailPrefab == null) return;
@@ -176,8 +255,16 @@ public class SlideAbility : MonoBehaviour, IAbility
     private void Stop()
     {
         active = false;
+        wallSliding = false;
+        lastWallNormal = Vector3.zero;
         if (pm != null) pm.SetMovementSuppressed(false, -1f);
         if (visuals != null) visuals.localScale = originalVisualScale;
+    }
+
+    private void OnDisable()
+    {
+        if (active)
+            Stop();
     }
 
     protected bool CooldownReady() => Time.time >= nextReadyTime;
