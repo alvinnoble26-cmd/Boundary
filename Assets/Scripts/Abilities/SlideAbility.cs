@@ -395,6 +395,7 @@ public class SlideAbility : MonoBehaviour, IAbility
         Stop(true);
         rb.useGravity = true;
         pm.AllowSlideJumpVerticalSpeed(launchVelocity.y);
+        pm.MarkExitingSlope();
         rb.linearVelocity = launchVelocity;
         SfxManager.PlayJump();
     }

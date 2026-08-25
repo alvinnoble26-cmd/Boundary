@@ -563,6 +563,11 @@ void HandleJump()
         slideJumpVerticalSpeedAllowance = Mathf.Max(0f, launchSpeed);
     }
 
+    public void MarkExitingSlope()
+    {
+        exitingSlope = true;
+    }
+
     public static float ResolveVerticalSpeedCap(float configuredCap, float slideJumpAllowance)
     {
         return Mathf.Max(configuredCap, slideJumpAllowance);
