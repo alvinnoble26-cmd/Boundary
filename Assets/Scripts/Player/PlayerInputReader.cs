@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.OnScreen;
 using PurrNet;
 using System.Collections;
 
@@ -9,6 +10,7 @@ public class PlayerInputReader : NetworkBehaviour
     public InputActionReference jump;
 
     public Vector2 Move { get; private set; }
+    public bool IsJumpHeld => isOwner && jump != null && jump.action.IsPressed();
     bool jumpQueued;
     bool bound;
 
@@ -31,6 +33,8 @@ public class PlayerInputReader : NetworkBehaviour
             jump.action.performed += OnJump;
             bound = true;
         }
+
+        ConfigureJumpLookDrag();
 
         Debug.Log("[Input] Enabled for owner.");
     }
@@ -67,5 +71,27 @@ public class PlayerInputReader : NetworkBehaviour
         if (!jumpQueued) return false;
         jumpQueued = false;
         return true;
+    }
+
+    private static void ConfigureJumpLookDrag()
+    {
+        foreach (OnScreenButton button in Object.FindObjectsByType<OnScreenButton>(FindObjectsSortMode.None))
+        {
+            if (button.controlPath != "<Gamepad>/rightTrigger")
+                continue;
+
+            if (button.GetComponent<JumpLookButton>() == null)
+                button.gameObject.AddComponent<JumpLookButton>();
+            if (button.GetComponent<AbilityTouchTransferSource>() == null)
+                button.gameObject.AddComponent<AbilityTouchTransferSource>();
+        }
+
+        foreach (OnScreenStick stick in Object.FindObjectsByType<OnScreenStick>(FindObjectsSortMode.None))
+        {
+            if (stick.controlPath != "<Gamepad>/leftStick")
+                continue;
+            if (stick.GetComponent<AbilityTouchTransferSource>() == null)
+                stick.gameObject.AddComponent<AbilityTouchTransferSource>();
+        }
     }
 }

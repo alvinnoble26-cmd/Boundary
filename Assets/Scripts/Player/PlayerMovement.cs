@@ -37,6 +37,7 @@ public class PlayerMovement : NetworkBehaviour
     public float wallStickTime = 0.25f;
     public float wallSlideSpeed = 3.5f;
     public float wallAttachForce = 15f;
+    [Min(1f)] public float wallRunSpeedMultiplier = 1.5f;
 
     [Header("Tilt Settings")]
     public float uprightStrength = 10f;
@@ -49,17 +50,25 @@ public class PlayerMovement : NetworkBehaviour
 
     [Header("Boundary Physics")]
     [SerializeField, Min(5f)] private float maximumBoundaryVerticalSpeed = 26f;
+    private float slideJumpVerticalSpeedAllowance = -1f;
 
     [HideInInspector] public Rigidbody rb;
     [HideInInspector] public Vector2 moveInput;
 
     public bool IsGrounded => isGrounded;
+    public bool IsWallRunning => !isGrounded && wallStickCounter > 0f;
+    public Vector3 WallRunNormal => IsWallRunning ? wallNormal : Vector3.zero;
     public bool IsStableGrounded { get; private set; }
     public bool JumpPressedThisFrame { get; private set; }
     public bool MovementSuppressed { get; private set; }
     public float ExternalSpeedCap { get; private set; } = -1f;
+    public float ExternalSpeedMultiplier { get; private set; } = 1f;
+    private readonly System.Collections.Generic.Dictionary<int, float> externalSpeedModifiers =
+        new System.Collections.Generic.Dictionary<int, float>();
     private float preservedMomentumSpeedCap = -1f;
+    private float preservedMomentumStartedAt;
     private float preservedMomentumUntil;
+    [SerializeField, Min(0f)] private float grappleMomentumCarryDuration = 0.9f;
 
     public Vector3 LastFlatMoveDir { get; private set; } = Vector3.forward;
 
@@ -77,6 +86,8 @@ public class PlayerMovement : NetworkBehaviour
 
     private bool isGrounded;
     private bool jumpRequested;
+    private bool slideJumpExecutedThisStep;
+    private bool heldJumpUsedOnCurrentGroundContact;
     private bool movementSuppressionAllowsEnvironmentalRelease = true;
 
     private Vector3 wallNormal;
@@ -87,6 +98,19 @@ public class PlayerMovement : NetworkBehaviour
     private BoundaryPlayerState boundaryState;
     private float viewYaw;
     private bool hasViewYaw;
+
+    public float CurrentWallRunTilt
+    {
+        get
+        {
+            if (!IsWallRunning)
+                return 0f;
+
+            Transform basis = orientation ? orientation : transform;
+            Vector3 localWallNormal = basis.InverseTransformDirection(wallNormal);
+            return localWallNormal.x > 0f ? -wallTiltAngle : wallTiltAngle;
+        }
+    }
 
 // Add this field near the top with other private fields
 private SlideAbility slideAbility;
@@ -141,7 +165,29 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         }
     }
 
-    public void ReleaseMovementSuppressionPreservingMomentum()
+    public void SetExternalSpeedMultiplier(int sourceId, float multiplier)
+    {
+        if (sourceId == 0)
+            return;
+        externalSpeedModifiers[sourceId] = Mathf.Max(0.05f, multiplier);
+        RecalculateExternalSpeedMultiplier();
+    }
+
+    public void RemoveExternalSpeedMultiplier(int sourceId)
+    {
+        if (externalSpeedModifiers.Remove(sourceId))
+            RecalculateExternalSpeedMultiplier();
+    }
+
+    private void RecalculateExternalSpeedMultiplier()
+    {
+        float combined = 1f;
+        foreach (float multiplier in externalSpeedModifiers.Values)
+            combined *= multiplier;
+        ExternalSpeedMultiplier = Mathf.Clamp(combined, 0.2f, 2.5f);
+    }
+
+    public void ReleaseMovementSuppressionPreservingMomentum(float carryDuration = -1f)
     {
         MovementSuppressed = false;
         ExternalSpeedCap = -1f;
@@ -152,7 +198,9 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
 
         Vector3 velocity = rb.linearVelocity;
         preservedMomentumSpeedCap = new Vector3(velocity.x, 0f, velocity.z).magnitude;
-        preservedMomentumUntil = Time.time + 0.6f;
+        preservedMomentumStartedAt = Time.time;
+        float duration = carryDuration >= 0f ? carryDuration : grappleMomentumCarryDuration;
+        preservedMomentumUntil = Time.time + duration;
     }
 
     public void SetViewYaw(float yaw)
@@ -165,6 +213,9 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
     {
         
         if (!isOwner) return;
+        slideJumpExecutedThisStep = false;
+        if (slideJumpVerticalSpeedAllowance > 0f && rb != null && rb.linearVelocity.y <= 0f)
+            slideJumpVerticalSpeedAllowance = -1f;
         Vector2 raw = input != null ? input.Move : Vector2.zero;
         raw = Vector2.ClampMagnitude(raw, 1f);
         if (raw.magnitude < deadzone)
@@ -186,24 +237,40 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
 
         if (input != null && input.ConsumeJump())
         {
-            jumpRequested = true;
-            JumpPressedThisFrame = true;
-            GetComponent<PlayerAbilities>()?.CancelGrappleForJump();
+            RequestJump();
         }
         UpdateGrounded();
+
+        // A held jump is queued once per landing. This makes the mobile jump
+        // button continuously hop without turning a held press into repeated
+        // air or wall jumps.
+        if (!isGrounded)
+        {
+            heldJumpUsedOnCurrentGroundContact = false;
+        }
+        else if (input != null && input.IsJumpHeld && !heldJumpUsedOnCurrentGroundContact)
+        {
+            heldJumpUsedOnCurrentGroundContact = true;
+            RequestJump();
+        }
+
         UpdateBoundaryFooting();
         HandleWallDetection();
 
+        // Consume an active slide jump before either suppression or normal
+        // jump handling can downgrade it to a regular jump.
+        if (slideJumpExecutedThisStep || TryExecuteRequestedSlideJump())
+        {
+            ApplyBoundaryForces();
+            ApplyMasterRotation();
+            JumpPressedThisFrame = false;
+            jumpRequested = false;
+            slideJumpExecutedThisStep = false;
+            return;
+        }
+
         if (MovementSuppressed)
         {
-            if (slideAbility != null && slideAbility.IsActive && jumpRequested &&
-                slideAbility.TryManualSlideJump())
-            {
-                JumpPressedThisFrame = false;
-                jumpRequested = false;
-                return;
-            }
-
             ApplyBoundaryForces();
             ApplyMasterRotation();
             JumpPressedThisFrame = false;
@@ -217,10 +284,20 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         ApplyBoundaryForces();
         ApplyMasterRotation();
 
-        float cap = (ExternalSpeedCap > 0f) ? ExternalSpeedCap : maxSpeed;
-        if (preservedMomentumSpeedCap > cap)
+        float cap = ((ExternalSpeedCap > 0f) ? ExternalSpeedCap : maxSpeed) * ExternalSpeedMultiplier;
+        if (IsWallRunning)
+            cap *= wallRunSpeedMultiplier;
+        if (Time.time >= preservedMomentumUntil)
         {
-            cap = preservedMomentumSpeedCap;
+            preservedMomentumSpeedCap = -1f;
+        }
+        else if (preservedMomentumSpeedCap > cap)
+        {
+            float carryProgress = Mathf.InverseLerp(
+                preservedMomentumStartedAt,
+                preservedMomentumUntil,
+                Time.time);
+            cap = Mathf.Lerp(preservedMomentumSpeedCap, cap, carryProgress);
             Vector3 horizontalVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
             if (horizontalVelocity.magnitude <= maxSpeed)
                 preservedMomentumSpeedCap = -1f;
@@ -237,6 +314,27 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         JumpPressedThisFrame = false;
         //Cursor.lockState = CursorLockMode.None;
         //Cursor.visible = true;
+    }
+
+    private bool TryExecuteRequestedSlideJump()
+    {
+        if (!jumpRequested)
+            return false;
+
+        if (slideAbility == null || !slideAbility.IsActive)
+        {
+            SlideAbility[] slideAbilities = GetComponentsInChildren<SlideAbility>(true);
+            for (int index = 0; index < slideAbilities.Length; index++)
+            {
+                if (slideAbilities[index] != null && slideAbilities[index].IsActive)
+                {
+                    slideAbility = slideAbilities[index];
+                    break;
+                }
+            }
+        }
+
+        return slideAbility != null && slideAbility.IsActive && slideAbility.TryManualSlideJump();
     }
 
     void UpdateGrounded()
@@ -302,7 +400,7 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
                 if (rb.linearVelocity.y > 0f)
                     rb.AddForce(Vector3.down * 80f, ForceMode.Acceleration);
 
-                rb.useGravity = false;
+                rb.useGravity = true;
             }
             else
             {
@@ -372,18 +470,17 @@ void HandleWallDetection()
 
     void HandleGravityAndWallPhysics()
     {
-        if (!isGrounded && wallStickCounter > 0f)
+        if (IsWallRunning)
         {
             rb.AddForce(-wallNormal * wallAttachForce, ForceMode.Acceleration);
 
             Vector3 v = rb.linearVelocity;
-            if (v.y < -wallSlideSpeed)
-                rb.linearVelocity = new Vector3(v.x, -wallSlideSpeed, v.z);
-
-            rb.useGravity = true;
+            rb.linearVelocity = new Vector3(v.x, 0f, v.z);
+            rb.useGravity = false;
             return;
         }
 
+        rb.useGravity = true;
         if (rb.linearVelocity.y < 0f)
         {
             BoundaryMatchController match = BoundaryMatchController.Instance;
@@ -405,15 +502,21 @@ void HandleJump()
 
     if (isGrounded)
     {
-        rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
+        Vector3 horizontalVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
+        rb.useGravity = true;
+        rb.linearVelocity = new Vector3(horizontalVelocity.x, 0f, horizontalVelocity.z);
         rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+        rb.linearVelocity = new Vector3(horizontalVelocity.x, rb.linearVelocity.y, horizontalVelocity.z);
         SfxManager.PlayJump();
     }
     else if (wallStickCounter > 0f)
     {
         Vector3 jumpDir = (wallNormal + Vector3.up).normalized;
-        rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
+        Vector3 horizontalVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
+        rb.useGravity = true;
+        rb.linearVelocity = new Vector3(horizontalVelocity.x, 0f, horizontalVelocity.z);
         rb.AddForce(jumpDir * (wallJumpUp + wallJumpSide), ForceMode.Impulse);
+        rb.linearVelocity = new Vector3(horizontalVelocity.x, rb.linearVelocity.y, horizontalVelocity.z);
         wallStickCounter = 0f;
         SfxManager.PlayJump();
     }
@@ -421,6 +524,23 @@ void HandleJump()
     jumpRequested = false;
     exitingSlope = true;
 }
+
+    private void RequestJump()
+    {
+        jumpRequested = true;
+        JumpPressedThisFrame = true;
+        GetComponent<PlayerAbilities>()?.CancelGrappleForJump();
+
+        // Resolve slide jumps at the moment the input is queued. Waiting until
+        // later in FixedUpdate allowed suppression and component execution
+        // order to consume the request before SlideAbility saw it.
+        if (TryExecuteRequestedSlideJump())
+        {
+            jumpRequested = false;
+            heldJumpUsedOnCurrentGroundContact = true;
+            slideJumpExecutedThisStep = true;
+        }
+    }
 
     public void ApplyBoundaryImpulse(Vector3 velocityChange)
     {
@@ -436,6 +556,16 @@ void HandleJump()
             return;
 
         rb.AddForce(Vector3.ClampMagnitude(velocityChange, 60f), ForceMode.VelocityChange);
+    }
+
+    public void AllowSlideJumpVerticalSpeed(float launchSpeed)
+    {
+        slideJumpVerticalSpeedAllowance = Mathf.Max(0f, launchSpeed);
+    }
+
+    public static float ResolveVerticalSpeedCap(float configuredCap, float slideJumpAllowance)
+    {
+        return Mathf.Max(configuredCap, slideJumpAllowance);
     }
 
     private void UpdateBoundaryFooting()
@@ -463,6 +593,10 @@ void HandleJump()
             match.EffectivePullStrength,
             IsStableGrounded);
         rb.AddForce(acceleration, ForceMode.Acceleration);
+        // Slope movement may disable built-in gravity while grounded. Boundary
+        // recovery at the arena edge must never leave the player gravity-free,
+        // except while a wall run is actively holding the player in place.
+        rb.useGravity = !IsWallRunning;
 
         Vector3 radial = rb.position - match.ArenaCenter;
         radial.y = 0f;
@@ -489,8 +623,10 @@ void HandleJump()
         BoundaryHazard.ApplyLocalFields(this);
 
         Vector3 velocity = rb.linearVelocity;
-        if (velocity.y > maximumBoundaryVerticalSpeed)
-            rb.linearVelocity = new Vector3(velocity.x, maximumBoundaryVerticalSpeed, velocity.z);
+        float verticalSpeedCap = ResolveVerticalSpeedCap(
+            maximumBoundaryVerticalSpeed, slideJumpVerticalSpeedAllowance);
+        if (velocity.y > verticalSpeedCap)
+            rb.linearVelocity = new Vector3(velocity.x, verticalSpeedCap, velocity.z);
     }
 
     void ApplyMasterRotation()
@@ -501,11 +637,7 @@ void HandleJump()
         Transform basis = orientation ? orientation : transform;
         float yaw = hasViewYaw ? viewYaw : basis.eulerAngles.y;
 
-        if (!isGrounded && wallStickCounter > 0f)
-        {
-            Vector3 localWallNormal = basis.InverseTransformDirection(wallNormal);
-            zTilt = localWallNormal.x > 0 ? -wallTiltAngle : wallTiltAngle;
-        }
+        zTilt = CurrentWallRunTilt;
 
         Vector3 currentEuler = rb.rotation.eulerAngles;
         float tiltBlend = 1f - Mathf.Exp(-uprightStrength * Time.fixedDeltaTime);
@@ -657,6 +789,9 @@ void HandleJump()
     private void OnCollisionEnter(Collision collision)
 {
     if (!isOwner) return;
+
+    if (slideAbility != null && slideAbility.HandleObstacleCollision(collision))
+        return;
 
     // If we hit a ceiling or steep wall, release suppression
     foreach (ContactPoint contact in collision.contacts)

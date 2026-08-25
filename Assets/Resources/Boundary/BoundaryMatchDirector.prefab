@@ -76,8 +76,8 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  outerRingDuration: 60
-  middleRingDuration: 50
+  outerRingDuration: 90
+  middleRingDuration: 80
   transitionDuration: 7
   arenaFloorY: -0.9
   outerRadius: 106

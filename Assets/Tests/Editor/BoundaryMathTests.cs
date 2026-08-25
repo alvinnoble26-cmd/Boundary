@@ -1,12 +1,140 @@
 #if UNITY_EDITOR
+using System.Linq;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UnityEngine.Rendering;
 
 public sealed class BoundaryMathTests
 {
+    [Test]
+    public void AbilityInformationPanel_IsEditorAuthoredWithEveryAbilityAndNavigation()
+    {
+        GameObject canvasObject = new GameObject("Ability Guide Test Canvas", typeof(Canvas));
+        GameObject menuObject = new GameObject("AbilitiesMenu", typeof(RectTransform));
+        menuObject.transform.SetParent(canvasObject.transform, false);
+        GameObject backObject = new GameObject("BackButton (3)", typeof(RectTransform), typeof(Image), typeof(Button));
+        backObject.transform.SetParent(menuObject.transform, false);
+        RectTransform backRect = (RectTransform)backObject.transform;
+        backRect.anchoredPosition = new Vector2(1.5f, -201f);
+        backRect.sizeDelta = new Vector2(88f, 19.07f);
+        backRect.localScale = new Vector3(0.128f, 2.56f, 0.02f);
+        GameObject backTextObject = new GameObject("Text (TMP)", typeof(RectTransform), typeof(TextMeshProUGUI));
+        backTextObject.transform.SetParent(backObject.transform, false);
+        TMP_Text backText = backTextObject.GetComponent<TMP_Text>();
+        backText.text = "BACK";
+        backText.fontSize = 30f;
+        backText.fontStyle = FontStyles.Bold;
+        backText.color = new Color(0.9f, 0.3f, 0.1f, 1f);
+        try
+        {
+            AbilityInformationUI information = menuObject.AddComponent<AbilityInformationUI>();
+            information.EnsureBuilt();
+
+            Transform button = menuObject.transform.Find(AbilityInformationUI.InformationButtonName);
+            Transform panel = canvasObject.transform.Find(AbilityInformationUI.InformationPanelName);
+            Assert.That(button, Is.Not.Null);
+            Assert.That(button.GetComponent<Button>(), Is.Not.Null);
+            Button informationButton = button.GetComponent<Button>();
+            RectTransform informationRect = (RectTransform)button;
+            Assert.That(informationRect.anchoredPosition.y, Is.EqualTo(backRect.anchoredPosition.y));
+            Assert.That(informationRect.anchoredPosition.x, Is.GreaterThan(backRect.anchoredPosition.x));
+            Assert.That(button.GetComponent<Image>().enabled, Is.True);
+            Assert.That(button.GetComponent<Image>().color.a, Is.Zero);
+            Assert.That(button.GetComponent<Image>().raycastTarget, Is.True);
+            TMP_Text informationText = button.GetComponentInChildren<TMP_Text>(true);
+            Assert.That(informationButton.targetGraphic, Is.SameAs(informationText));
+            Assert.That(informationText.font, Is.SameAs(backText.font));
+            Assert.That(informationText.fontSize, Is.EqualTo(backText.fontSize));
+            Assert.That(informationText.color, Is.EqualTo(backText.color));
+            Assert.That(informationButton.colors.pressedColor, Is.Not.EqualTo(Color.white));
+            Assert.That(panel, Is.Not.Null);
+            Assert.That(panel.GetComponent<Image>().color, Is.EqualTo(Color.black));
+            Assert.That(panel.Find("Header/Back Button")?.GetComponent<Button>(), Is.Not.Null);
+            Transform viewport = panel.Find("Ability Guide Viewport");
+            Assert.That(viewport?.GetComponent<RectMask2D>(), Is.Not.Null);
+            Assert.That(viewport?.GetComponent<Mask>(), Is.Null);
+            Assert.That(panel.GetComponentsInChildren<TMP_Text>(true)
+                .Count(text => text.name == "Description"), Is.EqualTo(9));
+
+            information.ShowInformation();
+            Assert.That(panel.gameObject.activeSelf, Is.True);
+            information.HideInformation();
+            Assert.That(panel.gameObject.activeSelf, Is.False);
+        }
+        finally
+        {
+            Object.DestroyImmediate(canvasObject);
+        }
+    }
+
+    [Test]
+    public void GrappleTraversal_PreservesAndBuildsSpeedWhileRedirectingTowardAnchor()
+    {
+        Vector3 velocity = GrappleAbility.CalculateTraversalVelocity(
+            Vector3.right * 45f,
+            Vector3.forward,
+            0.5f);
+
+        Assert.That(velocity.magnitude, Is.EqualTo(92.5f).Within(0.001f));
+        Assert.That(Vector3.Angle(velocity, Vector3.forward), Is.LessThan(0.01f));
+    }
+
+    [Test]
+    public void GrappleTraversal_CapsSpeedAndLaunchesFromRest()
+    {
+        Vector3 cappedVelocity = GrappleAbility.CalculateTraversalVelocity(
+            Vector3.forward * 94f,
+            Vector3.forward,
+            1f);
+        Vector3 launchVelocity = GrappleAbility.CalculateTraversalVelocity(
+            Vector3.zero,
+            Vector3.up,
+            Time.fixedDeltaTime);
+
+        Assert.That(cappedVelocity.magnitude, Is.EqualTo(GrappleAbility.MaximumTraversalSpeed).Within(0.001f));
+        Assert.That(launchVelocity.magnitude, Is.GreaterThan(GrappleAbility.MinimumTraversalSpeed));
+        Assert.That(Vector3.Angle(launchVelocity, Vector3.up), Is.LessThan(0.01f));
+    }
+
+    [Test]
+    public void GrappleTimeout_EndsAtFourSeconds()
+    {
+        Assert.That(GrappleAbility.HasTimedOut(10f, 13.99f), Is.False);
+        Assert.That(GrappleAbility.HasTimedOut(10f, 14f), Is.True);
+    }
+
+    [Test]
+    public void GrappleArrivalTolerance_ReleasesFourUnitsFromAnchor()
+    {
+        Assert.That(GrappleAbility.ReleaseDistance, Is.EqualTo(4f).Within(0.001f));
+    }
+
+    [Test]
+    public void BlackHoleContact_DealsSixtyDamagePerSecond()
+    {
+        Assert.That(BoundaryMath.BlackHoleDamage(1f), Is.EqualTo(60f).Within(0.001f));
+        Assert.That(BoundaryMath.BlackHoleDamage(0.1f), Is.EqualTo(6f).Within(0.001f));
+    }
+
+    [Test]
+    public void BlackHoleDarknessField_UsesThirtyUnitVisualRadiusWithoutFullBlackout()
+    {
+        Assert.That(BlackHoleKill.DarknessRadius, Is.EqualTo(30f));
+        Assert.That(BlackHoleKill.DarknessExposureStops, Is.EqualTo(-2.2f));
+    }
+
+    [Test]
+    public void Damage_ClampsHealthBetweenZeroAndMaximum()
+    {
+        Assert.That(BoundaryMath.ApplyDamage(100f, 30f), Is.EqualTo(70f).Within(0.001f));
+        Assert.That(BoundaryMath.ApplyDamage(10f, 30f), Is.Zero);
+        Assert.That(BoundaryMath.ApplyDamage(100f, -10f), Is.EqualTo(100f));
+    }
+
     [Test]
     public void OutOfBoundsMargin_TracksShrinkingRingPhase()
     {
@@ -116,11 +244,17 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
-    public void ArenaMassPopulation_LeavesExactlyOneQuarterForInnerRing()
+    public void ArenaMassPopulation_IncludesRequestedFloorAndFloatingHazards()
     {
-        Assert.That(BoundaryMatchController.ArenaMassPopulation, Is.EqualTo(20));
-        Assert.That(BoundaryMatchController.ArenaMassInnerSurvivors,
-            Is.EqualTo(BoundaryMatchController.ArenaMassPopulation / 4));
+        Assert.That(BoundaryMatchController.GroundArenaMassesPerKind, Is.EqualTo(22));
+        Assert.That(BoundaryMatchController.FloatingArenaMassesPerKind, Is.EqualTo(18));
+        Assert.That(BoundaryMatchController.ArenaMassPopulation, Is.EqualTo(80));
+        Assert.That(BoundaryMatchController.IsArenaBlackHole(21), Is.False);
+        Assert.That(BoundaryMatchController.IsArenaBlackHole(22), Is.True);
+        Assert.That(BoundaryMatchController.IsFloatingArenaMass(43), Is.False);
+        Assert.That(BoundaryMatchController.IsFloatingArenaMass(44), Is.True);
+        Assert.That(BoundaryMatchController.IsArenaBlackHole(62), Is.True);
+        Assert.That(BoundaryMatchController.PlatformHitsToCollapse, Is.EqualTo(5));
     }
 
     [Test]
@@ -158,11 +292,31 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
-    public void ArenaCubesAndGroundBlackHoles_AreLethalOnContact()
+    public void BlackCubesAndBlackHolesUseHealthDamageInsteadOfInstantDeath()
     {
-        Assert.That(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.Cube, true), Is.True);
-        Assert.That(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.ArenaBlackHole, true), Is.True);
+        Assert.That(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.Cube, true), Is.False);
+        Assert.That(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.ArenaBlackHole, true), Is.False);
         Assert.That(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.ArenaBlackHole, false), Is.False);
+    }
+
+    [Test]
+    public void ArenaMasses_LeaveHalfOfEachKindAfterInitialBoundaryCollapse()
+    {
+        int cubeSurvivors = 0;
+        int blackHoleSurvivors = 0;
+        for (int variant = 0; variant < 10; variant++)
+        {
+            if (BoundaryMath.SurvivesInitialBoundaryCollapse(variant))
+                cubeSurvivors++;
+        }
+        for (int variant = 10; variant < 20; variant++)
+        {
+            if (BoundaryMath.SurvivesInitialBoundaryCollapse(variant))
+                blackHoleSurvivors++;
+        }
+
+        Assert.That(cubeSurvivors, Is.EqualTo(5));
+        Assert.That(blackHoleSurvivors, Is.EqualTo(5));
     }
 
     [Test]
@@ -240,6 +394,14 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
+    public void SlideActivation_RequiresFloorOrWallSupport()
+    {
+        Assert.That(SlideAbility.HasValidActivationSupport(false, false), Is.False);
+        Assert.That(SlideAbility.HasValidActivationSupport(true, false), Is.True);
+        Assert.That(SlideAbility.HasValidActivationSupport(false, true), Is.True);
+    }
+
+    [Test]
     public void SlideWallEligibility_RejectsDynamicObjectsAndAllowsIntendedPlatformSides()
     {
         GameObject player = new GameObject("Player Root");
@@ -267,9 +429,69 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
-    public void SlideJump_UsesOneAndAHalfTimesNormalJumpForce()
+    public void SlideJump_UsesTwiceNormalUpwardImpulse()
     {
-        Assert.That(SlideAbility.SlideJumpUpwardImpulse(7f), Is.EqualTo(10.5f).Within(0.0001f));
+        float normalImpulse = 7f;
+        float slideImpulse = SlideAbility.SlideJumpUpwardImpulse(normalImpulse);
+
+        Assert.That(slideImpulse,
+            Is.EqualTo(normalImpulse * SlideAbility.SlideJumpImpulseMultiplier).Within(0.0001f));
+        Assert.That(SlideAbility.SlideJumpHeightMultiplier, Is.EqualTo(4f));
+    }
+
+    [Test]
+    public void SlideJump_PreservesIncomingHorizontalVelocity()
+    {
+        Vector3 incoming = new Vector3(42f, -3f, -17f);
+        Vector3 result = SlideAbility.CalculateSlideJumpVelocity(
+            incoming, 7f, Vector3.zero);
+
+        Assert.That(result.x, Is.EqualTo(incoming.x).Within(0.0001f));
+        Assert.That(result.z, Is.EqualTo(incoming.z).Within(0.0001f));
+        Assert.That(result.y, Is.EqualTo(14f).Within(0.0001f));
+    }
+
+    [Test]
+    public void SlideJumpAllowance_PreventsBoundaryCapFromShorteningAscent()
+    {
+        Assert.That(PlayerMovement.ResolveVerticalSpeedCap(22f, 14f),
+            Is.EqualTo(22f));
+        Assert.That(PlayerMovement.ResolveVerticalSpeedCap(22f, 28f),
+            Is.EqualTo(28f).Within(0.0001f));
+    }
+
+    [Test]
+    public void SlideSpeed_DoesNotApplyAnExtraMultiplier()
+    {
+        Assert.That(SlideAbility.IncreasedSlideSpeed(80f), Is.EqualTo(80f).Within(0.0001f));
+    }
+
+    [Test]
+    public void SlideObstacleCollision_RemovesIntoWallVelocityWithoutRandomBounce()
+    {
+        Vector3 headOn = SlideAbility.ResolveObstacleCollisionVelocity(
+            new Vector3(-3f, 2f, 11f), Vector3.forward, Vector3.back, 12f);
+        Vector3 glancing = SlideAbility.ResolveObstacleCollisionVelocity(
+            new Vector3(8f, -1f, 8f), new Vector3(1f, 0f, 1f), Vector3.back, 12f);
+
+        Assert.That(new Vector3(headOn.x, 0f, headOn.z), Is.EqualTo(Vector3.zero));
+        Assert.That(headOn.y, Is.EqualTo(2f));
+        Assert.That(Vector3.Dot(glancing, Vector3.back), Is.EqualTo(0f).Within(0.0001f));
+        Assert.That(glancing.x, Is.GreaterThan(0f));
+        Assert.That(glancing.y, Is.EqualTo(-1f));
+    }
+
+    [Test]
+    public void SlideJump_EndsActiveSlideSteering()
+    {
+        Assert.That(SlideAbility.ShouldEndSlideAfterJump(false), Is.True);
+        Assert.That(SlideAbility.ShouldEndSlideAfterJump(true), Is.True);
+    }
+
+    [Test]
+    public void SlideContinuesAfterLosingFloorOrWallSupport()
+    {
+        Assert.That(SlideAbility.ShouldEndSlideAfterSupportLoss(), Is.False);
     }
 
     [Test]
@@ -522,6 +744,8 @@ public sealed class BoundaryMathTests
             ControlLayoutEditorUI editor = canvasObject.AddComponent<ControlLayoutEditorUI>();
             editor.Build(options);
 
+            Assert.That(canvasObject.GetComponent<GraphicRaycaster>(), Is.Not.Null,
+                "The generated controls editor canvas must participate in UI raycasts.");
             Transform topBar = canvasObject.transform.Find("ControlLayoutEditor/TopBar");
             Assert.That(topBar, Is.Not.Null);
             RectTransform sensitivity = topBar.Find("SensitivitySlider") as RectTransform;
@@ -553,6 +777,42 @@ public sealed class BoundaryMathTests
     }
 
     [Test]
+    public void SavedControlLayout_CanBeReappliedAfterButtonsMoveToCanvas()
+    {
+        GameObject canvasObject = new GameObject("Saved Controls Canvas", typeof(Canvas));
+        try
+        {
+            CreateRect("Image", canvasObject.transform);
+            RectTransform buttonRoot = CreateRect("ButtonBR", canvasObject.transform);
+            CreateRect("Button", buttonRoot);
+            CreateRect("A1", buttonRoot);
+            CreateRect("A2", buttonRoot);
+            CreateRect("A3", buttonRoot);
+
+            Canvas canvas = canvasObject.GetComponent<Canvas>();
+            ControlLayoutSettings.ApplyToGameCanvas(canvas);
+            ControlLayoutSettings.ApplyToGameCanvas(canvas);
+
+            ControlLayoutSettings.ControlEntry savedA1 = ControlLayoutSettings.Load().Find("A1");
+            RectTransform appliedA1 = canvas.transform.Find("A1") as RectTransform;
+            Assert.That(appliedA1, Is.Not.Null);
+            Assert.That(appliedA1.anchorMin.x, Is.EqualTo(savedA1.x).Within(0.0001f));
+            Assert.That(appliedA1.anchorMin.y, Is.EqualTo(savedA1.y).Within(0.0001f));
+        }
+        finally
+        {
+            Object.DestroyImmediate(canvasObject);
+        }
+    }
+
+    private static RectTransform CreateRect(string name, Transform parent)
+    {
+        GameObject gameObject = new GameObject(name, typeof(RectTransform));
+        gameObject.transform.SetParent(parent, false);
+        return (RectTransform)gameObject.transform;
+    }
+
+    [Test]
     public void FirstPersonOwner_HidesOnlyItsBodyRenderersAndRestoresTheirState()
     {
         GameObject player = new GameObject("First Person Player Test");
@@ -572,13 +832,33 @@ public sealed class BoundaryMathTests
             GameObject pivot = new GameObject("CameraPivot");
             pivot.transform.SetParent(player.transform, false);
             Cam cameraController = pivot.AddComponent<Cam>();
+            GameObject cameraObject = new GameObject("Owner Camera", typeof(Camera));
+            cameraObject.transform.SetParent(player.transform, false);
+            cameraController.cam = cameraObject.transform;
+            int originalBodyLayer = bodyRenderer.gameObject.layer;
+            ShadowCastingMode originalBodyMode = bodyRenderer.shadowCastingMode;
 
             cameraController.SetLocalVisualVisibility(true);
-            Assert.That(bodyRenderer.forceRenderingOff, Is.True);
+            Assert.That(bodyRenderer.forceRenderingOff, Is.False,
+                "The Practice owner body must stay enabled.");
+            Assert.That(bodyRenderer.gameObject.layer, Is.EqualTo(originalBodyLayer),
+                "Camera presentation must not alter player collision layers.");
+            LocalPlayerCameraBodyFilter bodyFilter =
+                cameraObject.GetComponent<LocalPlayerCameraBodyFilter>();
+            Assert.That(bodyFilter, Is.Not.Null);
+            Assert.That(bodyRenderer.shadowCastingMode, Is.EqualTo(originalBodyMode),
+                "Scene view must see the normal player body outside owner-camera rendering.");
+
+            bodyFilter.ApplyOwnerCameraFilter();
+            Assert.That(bodyRenderer.shadowCastingMode, Is.EqualTo(ShadowCastingMode.ShadowsOnly),
+                "Only the owning first-person camera must hide the local body.");
+            bodyFilter.RestoreOwnerCameraFilter();
+            Assert.That(bodyRenderer.shadowCastingMode, Is.EqualTo(originalBodyMode));
             Assert.That(eyeRenderer.forceRenderingOff, Is.True);
 
             cameraController.SetLocalVisualVisibility(false);
             Assert.That(bodyRenderer.forceRenderingOff, Is.False);
+            Assert.That(bodyRenderer.gameObject.layer, Is.EqualTo(originalBodyLayer));
             Assert.That(eyeRenderer.forceRenderingOff, Is.True,
                 "A renderer hidden before first-person setup must stay hidden.");
         }
@@ -611,6 +891,37 @@ public sealed class BoundaryMathTests
         {
             Object.DestroyImmediate(lookObject);
             Object.DestroyImmediate(eventSystemObject);
+        }
+    }
+
+    [Test]
+    public void AbilityTouchTransfer_ArmsAndActivatesOnlyOnMatchingRelease()
+    {
+        GameObject buttonObject = new GameObject("Transfer Ability", typeof(RectTransform),
+            typeof(Image), typeof(Button), typeof(AbilityTouchTransferTarget));
+        try
+        {
+            int pressCount = 0;
+            int releaseCount = 0;
+            int cancelCount = 0;
+            AbilityTouchTransferTarget target = buttonObject.GetComponent<AbilityTouchTransferTarget>();
+            target.Configure(() => releaseCount++, () => pressCount++, () => cancelCount++);
+
+            Assert.That(target.BeginTransferredTouch(7), Is.True);
+            Assert.That(pressCount, Is.EqualTo(1));
+            target.ReleaseTransferredTouch(8);
+            Assert.That(releaseCount, Is.Zero, "Another finger must not activate the ability.");
+            target.ReleaseTransferredTouch(7);
+            Assert.That(releaseCount, Is.EqualTo(1));
+
+            Assert.That(target.BeginTransferredTouch(9), Is.True);
+            target.CancelTransferredTouch(9);
+            Assert.That(cancelCount, Is.EqualTo(1));
+            Assert.That(releaseCount, Is.EqualTo(1), "Leaving an ability must not activate it.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(buttonObject);
         }
     }
 

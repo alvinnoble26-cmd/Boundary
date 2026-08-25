@@ -35,7 +35,12 @@ public class LoadoutManager : MonoBehaviour
     private void Start()
     {
         if (SceneManager.GetActiveScene().name == "Menu")
+        {
             EnsureGrappleSelector();
+            EnsureHollowSelector();
+            EnsureVoidSelector();
+            EnsureAbilityInformationUI();
+        }
     }
 
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -44,6 +49,34 @@ public class LoadoutManager : MonoBehaviour
             return;
 
         EnsureGrappleSelector();
+        EnsureHollowSelector();
+        EnsureVoidSelector();
+        EnsureAbilityInformationUI();
+    }
+
+    public static AbilityInformationUI EnsureAbilityInformationUI()
+    {
+        GameObject abilitiesMenu = GameObject.Find("AbilitiesMenu");
+        if (abilitiesMenu == null)
+        {
+            Transform[] transforms = Resources.FindObjectsOfTypeAll<Transform>();
+            foreach (Transform candidate in transforms)
+            {
+                if (candidate != null && candidate.name == "AbilitiesMenu" && candidate.gameObject.scene.IsValid())
+                {
+                    abilitiesMenu = candidate.gameObject;
+                    break;
+                }
+            }
+        }
+        if (abilitiesMenu == null)
+            return null;
+
+        AbilityInformationUI information = abilitiesMenu.GetComponent<AbilityInformationUI>();
+        if (information == null)
+            information = abilitiesMenu.AddComponent<AbilityInformationUI>();
+        information.EnsureBuilt();
+        return information;
     }
 
     public static AbilitiesSelectUI EnsureGrappleSelector()
@@ -83,6 +116,58 @@ public class LoadoutManager : MonoBehaviour
         grapple.transform.SetAsLastSibling();
         grapple.Configure(AbilityId.Grapple, "Grapple");
         return grapple;
+    }
+
+    public static AbilitiesSelectUI EnsureHollowSelector()
+    {
+        AbilitiesSelectUI[] selectors = FindObjectsByType<AbilitiesSelectUI>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (AbilitiesSelectUI selector in selectors)
+        {
+            if (selector.AbilityId == AbilityId.Hollow)
+                return selector;
+        }
+
+        AbilitiesSelectUI template = EnsureGrappleSelector();
+        if (template == null)
+            return null;
+
+        AbilitiesSelectUI hollow = Instantiate(template, template.transform.parent);
+        hollow.gameObject.name = "Hollow";
+        RectTransform rect = hollow.transform as RectTransform;
+        RectTransform templateRect = template.transform as RectTransform;
+        if (rect != null && templateRect != null)
+            rect.anchoredPosition = templateRect.anchoredPosition + new Vector2(0f, 46f);
+
+        hollow.transform.SetAsLastSibling();
+        hollow.Configure(AbilityId.Hollow, "Hollow");
+        return hollow;
+    }
+
+    public static AbilitiesSelectUI EnsureVoidSelector()
+    {
+        AbilitiesSelectUI[] selectors = FindObjectsByType<AbilitiesSelectUI>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (AbilitiesSelectUI selector in selectors)
+        {
+            if (selector.AbilityId == AbilityId.Void)
+                return selector;
+        }
+
+        AbilitiesSelectUI template = EnsureHollowSelector();
+        if (template == null)
+            return null;
+
+        AbilitiesSelectUI voidSelector = Instantiate(template, template.transform.parent);
+        voidSelector.gameObject.name = "Void";
+        RectTransform rect = voidSelector.transform as RectTransform;
+        RectTransform templateRect = template.transform as RectTransform;
+        if (rect != null && templateRect != null)
+            rect.anchoredPosition = templateRect.anchoredPosition + new Vector2(0f, 46f);
+
+        voidSelector.transform.SetAsLastSibling();
+        voidSelector.Configure(AbilityId.Void, "Void");
+        return voidSelector;
     }
 
     public bool IsSelected(AbilityId id)

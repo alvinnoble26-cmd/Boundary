@@ -1,6 +1,5 @@
 using UnityEngine;
 
-[ExecuteAlways]
 public class SafeAreaFitter : MonoBehaviour
 {
     RectTransform rect;

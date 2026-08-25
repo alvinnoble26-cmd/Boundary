@@ -9,6 +9,9 @@ public sealed class BoundaryHUD : MonoBehaviour
     public const int EventTitleFontSize = 29;
     public const int EventCountdownFontSize = 23;
     public const int EventHintFontSize = 15;
+    private const float HealthBarWidth = 540f;
+    private const float HealthBarHeight = 18f;
+    private const float HealthBarInset = 2f;
 
     private static readonly Color Deep = new Color(0.025f, 0.008f, 0.05f, 0.94f);
     private static readonly Color Purple = new Color(0.52f, 0.10f, 0.88f, 1f);
@@ -25,6 +28,20 @@ public sealed class BoundaryHUD : MonoBehaviour
     private Image phaseFill;
     private Image bannerPanel;
     private Image horizonOverlay;
+    private Transform safeAreaRoot;
+    private Image healthFill;
+    private Image healthTrail;
+    private Text healthText;
+    private GameObject healthOutline;
+    private readonly Image[] damageBorder = new Image[4];
+    private readonly RectTransform[] healthParticles = new RectTransform[12];
+    private readonly Vector2[] healthParticleVelocity = new Vector2[12];
+    private readonly float[] healthParticleLife = new float[12];
+    private float displayedHealth = -1f;
+    private float trailingHealth = BoundaryMath.MaximumHealth;
+    private float trailCatchupStartsAt;
+    private float trailCatchupRate;
+    private float damageTintRemaining;
     private AudioSource audioSource;
     private AudioClip phaseCue;
     private AudioClip disasterCue;
@@ -41,6 +58,7 @@ public sealed class BoundaryHUD : MonoBehaviour
         if (!TryBindAuthoredHierarchy())
             Build();
 
+        EnsureHealthPresentation();
         EnsureRuntimeAudio();
     }
 
@@ -66,6 +84,7 @@ public sealed class BoundaryHUD : MonoBehaviour
         UpdatePhaseHeader();
         UpdateBanner();
         UpdateHorizon();
+        UpdateHealthPresentation();
         PlayStateCues();
     }
 
@@ -86,6 +105,7 @@ public sealed class BoundaryHUD : MonoBehaviour
             gameObject.AddComponent<GraphicRaycaster>();
 
         RectTransform safeArea = CreateRect(transform, "Safe Area");
+        safeAreaRoot = safeArea;
         Stretch(safeArea);
         safeArea.gameObject.AddComponent<SafeAreaFitter>();
         GameExitButton.Create(safeArea);
@@ -152,6 +172,7 @@ public sealed class BoundaryHUD : MonoBehaviour
         Transform safeArea = transform.Find("Safe Area");
         if (canvas == null || safeArea == null)
             return false;
+        safeAreaRoot = safeArea;
 
         Transform header = safeArea.Find("Phase Header");
         Transform progressBackground = header != null ? header.Find("Progress Background") : null;
@@ -173,6 +194,209 @@ public sealed class BoundaryHUD : MonoBehaviour
         return phaseText != null && timerText != null && phaseFill != null &&
                bannerPanel != null && bannerTitle != null && bannerCountdown != null &&
                bannerHint != null && horizonOverlay != null && horizonText != null;
+    }
+
+    private void EnsureHealthPresentation()
+    {
+        if (safeAreaRoot == null || healthFill != null)
+            return;
+
+        // The bar is deliberately transparent behind its fill. Health loss
+        // therefore removes visible bar area instead of revealing a solid UI
+        // background on the right.
+        Image background = CreateImage(safeAreaRoot, "Health Bar", Color.clear);
+        background.raycastTarget = false;
+        SetRect(background.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 48f),
+            new Vector2(HealthBarWidth, HealthBarHeight));
+
+        healthTrail = CreateImage(background.transform, "Chip Damage", new Color(1f, 0.28f, 0.12f, 1f));
+        ConfigureLeftWidthFill(healthTrail);
+        healthFill = CreateImage(background.transform, "Health", Color.white);
+        ConfigureLeftWidthFill(healthFill);
+        healthOutline = CreateHealthOutline(background.transform);
+
+        healthText = CreateText(safeAreaRoot, "100.0 / 100", 19, TextAnchor.MiddleRight, Color.white);
+        healthText.name = "Health Value";
+        SetRect(healthText.rectTransform, new Vector2(0.5f, 0f), new Vector2(205f, 70f), new Vector2(150f, 28f));
+
+        RectTransform particleArea = CreateRect(safeAreaRoot, "Health Damage Particles");
+        SetRect(particleArea, new Vector2(0.5f, 0f), new Vector2(0f, 48f),
+            new Vector2(HealthBarWidth, 54f));
+        for (int index = 0; index < healthParticles.Length; index++)
+        {
+            Image particle = CreateImage(particleArea, "Particle", Color.white);
+            particle.raycastTarget = false;
+            RectTransform particleRect = particle.rectTransform;
+            particleRect.anchorMin = particleRect.anchorMax = new Vector2(0.5f, 0.5f);
+            particleRect.sizeDelta = Vector2.one * 6f;
+            particle.gameObject.SetActive(false);
+            healthParticles[index] = particleRect;
+        }
+
+        RectTransform borderRoot = CreateRect(safeAreaRoot, "Damage Border");
+        Stretch(borderRoot);
+        damageBorder[0] = CreateBorder(borderRoot, "Top", new Vector2(0f, 1f), new Vector2(1f, 1f),
+            new Vector2(0f, -26f), Vector2.zero);
+        damageBorder[1] = CreateBorder(borderRoot, "Bottom", new Vector2(0f, 0f), new Vector2(1f, 0f),
+            Vector2.zero, new Vector2(0f, 26f));
+        damageBorder[2] = CreateBorder(borderRoot, "Left", new Vector2(0f, 0f), new Vector2(0f, 1f),
+            Vector2.zero, new Vector2(26f, 0f));
+        damageBorder[3] = CreateBorder(borderRoot, "Right", new Vector2(1f, 0f), new Vector2(1f, 1f),
+            new Vector2(-26f, 0f), Vector2.zero);
+    }
+
+    private void UpdateHealthPresentation()
+    {
+        if (localState == null || healthFill == null)
+            return;
+
+        float current = localState.CurrentHealth;
+        if (displayedHealth < 0f)
+        {
+            displayedHealth = current;
+            trailingHealth = current;
+        }
+
+        if (current < displayedHealth - 0.01f)
+        {
+            bool trailWasCaughtUp = trailingHealth <= displayedHealth + 0.01f;
+            trailingHealth = Mathf.Max(trailingHealth, displayedHealth);
+            if (trailWasCaughtUp)
+                trailCatchupStartsAt = Time.unscaledTime + 0.16f;
+            trailCatchupRate = Mathf.Max(12f, (trailingHealth - current) / 0.34f);
+            damageTintRemaining = 0.28f;
+            SpawnHealthParticles(current / BoundaryMath.MaximumHealth);
+            Cam localCamera = localState.GetComponentInChildren<Cam>(true);
+            if (localCamera != null)
+                localCamera.RequestDamageShake();
+        }
+
+        displayedHealth = current;
+        if (Time.unscaledTime >= trailCatchupStartsAt)
+            trailingHealth = Mathf.MoveTowards(trailingHealth, current, trailCatchupRate * Time.unscaledDeltaTime);
+        else
+            trailingHealth = Mathf.Max(trailingHealth, current);
+
+        SetHealthBarWidth(healthFill.rectTransform, localState.Health01);
+        SetHealthBarWidth(healthTrail.rectTransform, trailingHealth / BoundaryMath.MaximumHealth);
+        healthFill.gameObject.SetActive(current > 0.01f);
+        healthTrail.gameObject.SetActive(trailingHealth > 0.01f);
+        healthText.gameObject.SetActive(current > 0.01f);
+        healthOutline.SetActive(current > 0.01f);
+        healthText.text = $"{current:0.0} / 100";
+
+        damageTintRemaining = Mathf.Max(0f, damageTintRemaining - Time.unscaledDeltaTime);
+        float lowHealthTint = current < 20f
+            ? 0.14f + Mathf.Sin(Time.unscaledTime * 4.5f) * 0.035f
+            : 0f;
+        float hitTint = damageTintRemaining > 0f ? 0.18f * (damageTintRemaining / 0.28f) : 0f;
+        Color borderColor = new Color(1f, 0.04f, 0.04f, Mathf.Max(lowHealthTint, hitTint));
+        foreach (Image border in damageBorder)
+            if (border != null)
+                border.color = borderColor;
+
+        UpdateHealthParticles();
+    }
+
+    private void SpawnHealthParticles(float health01)
+    {
+        float halfWidth = (HealthBarWidth - HealthBarInset * 2f) * 0.5f;
+        float edgeX = Mathf.Lerp(-halfWidth, halfWidth, Mathf.Clamp01(health01));
+        int spawned = 0;
+        for (int index = 0; index < healthParticles.Length && spawned < 6; index++)
+        {
+            if (healthParticleLife[index] > 0f)
+                continue;
+
+            RectTransform particle = healthParticles[index];
+            particle.gameObject.SetActive(true);
+            particle.anchoredPosition = new Vector2(edgeX, Random.Range(-8f, 8f));
+            healthParticleVelocity[index] = new Vector2(Random.Range(-75f, 75f), Random.Range(55f, 145f));
+            healthParticleLife[index] = Random.Range(0.22f, 0.38f);
+            particle.sizeDelta = Vector2.one * Random.Range(3f, 7f);
+            spawned++;
+        }
+    }
+
+    private void UpdateHealthParticles()
+    {
+        float delta = Time.unscaledDeltaTime;
+        for (int index = 0; index < healthParticles.Length; index++)
+        {
+            if (healthParticleLife[index] <= 0f)
+                continue;
+
+            healthParticleLife[index] -= delta;
+            if (healthParticleLife[index] <= 0f)
+            {
+                healthParticles[index].gameObject.SetActive(false);
+                continue;
+            }
+
+            healthParticleVelocity[index].y -= 240f * delta;
+            healthParticles[index].anchoredPosition += healthParticleVelocity[index] * delta;
+        }
+    }
+
+    private static void ConfigureLeftWidthFill(Image image)
+    {
+        image.raycastTarget = false;
+        RectTransform rect = image.rectTransform;
+        rect.anchorMin = new Vector2(0f, 0f);
+        rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 0.5f);
+        rect.anchoredPosition = new Vector2(HealthBarInset, 0f);
+        rect.sizeDelta = new Vector2(HealthBarWidth - HealthBarInset * 2f, -HealthBarInset * 2f);
+    }
+
+    private static void SetHealthBarWidth(RectTransform rect, float health01)
+    {
+        float width = (HealthBarWidth - HealthBarInset * 2f) * Mathf.Clamp01(health01);
+        rect.sizeDelta = new Vector2(width, -HealthBarInset * 2f);
+    }
+
+    private static GameObject CreateHealthOutline(Transform parent)
+    {
+        GameObject outline = new GameObject("Health Outline", typeof(RectTransform));
+        outline.layer = 5;
+        outline.transform.SetParent(parent, false);
+        RectTransform root = (RectTransform)outline.transform;
+        Stretch(root);
+        Color gray = new Color(0.45f, 0.45f, 0.45f, 0.9f);
+        CreateOutlineEdge(outline.transform, "Top", new Vector2(0f, 1f), new Vector2(1f, 1f),
+            new Vector2(0f, -1f), Vector2.zero, gray);
+        CreateOutlineEdge(outline.transform, "Bottom", new Vector2(0f, 0f), new Vector2(1f, 0f),
+            Vector2.zero, new Vector2(0f, 1f), gray);
+        CreateOutlineEdge(outline.transform, "Left", new Vector2(0f, 0f), new Vector2(0f, 1f),
+            Vector2.zero, new Vector2(1f, 0f), gray);
+        CreateOutlineEdge(outline.transform, "Right", new Vector2(1f, 0f), new Vector2(1f, 1f),
+            new Vector2(-1f, 0f), Vector2.zero, gray);
+        return outline;
+    }
+
+    private static void CreateOutlineEdge(Transform parent, string name, Vector2 anchorMin,
+        Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax, Color color)
+    {
+        Image edge = CreateImage(parent, name, color);
+        edge.raycastTarget = false;
+        RectTransform rect = edge.rectTransform;
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.offsetMin = offsetMin;
+        rect.offsetMax = offsetMax;
+    }
+
+    private static Image CreateBorder(Transform parent, string name, Vector2 anchorMin,
+        Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
+    {
+        Image border = CreateImage(parent, name, new Color(1f, 0f, 0f, 0f));
+        border.raycastTarget = false;
+        RectTransform rect = border.rectTransform;
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.offsetMin = offsetMin;
+        rect.offsetMax = offsetMax;
+        return border;
     }
 
     private static Text FindText(Transform parent, string authoredName, int fallbackIndex)
@@ -307,6 +531,11 @@ public sealed class BoundaryHUD : MonoBehaviour
         {
             if (match.Phase != BoundaryPhase.Waiting || match.Transition != BoundaryTransition.None)
                 Play(phaseCue, 0.55f);
+            if (match.Transition == BoundaryTransition.ClosingOuterRing &&
+                previousTransition != BoundaryTransition.ClosingOuterRing)
+                SfxManager.PlayOuterRingClosing();
+            if (match.Transition != BoundaryTransition.None && match.Transition != previousTransition)
+                PlayBoundaryCollapseFeedback();
             previousPhase = match.Phase;
             previousTransition = match.Transition;
         }
@@ -323,6 +552,19 @@ public sealed class BoundaryHUD : MonoBehaviour
             previousKnockout != knockout)
             Play(horizonCue, 0.52f);
         previousKnockout = knockout;
+    }
+
+    private void PlayBoundaryCollapseFeedback()
+    {
+        if (localState == null || !localState.isOwner)
+            return;
+
+#if UNITY_IOS && !UNITY_EDITOR
+        Handheld.Vibrate();
+#endif
+
+        Cam localCamera = localState.GetComponentInChildren<Cam>(true);
+        localCamera?.RequestBoundaryCollapseShake();
     }
 
     private void Play(AudioClip clip, float volume)

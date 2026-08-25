@@ -24,7 +24,7 @@ public sealed class PlayerWindPresentation : MonoBehaviour
     private Vector3 lastObservedPosition;
     private bool hasObservedPosition;
     private float nextSpawnAt;
-    private int patternPhase;
+    private int perimeterSequence;
 
     private void Awake()
     {
@@ -47,7 +47,7 @@ public sealed class PlayerWindPresentation : MonoBehaviour
         DestroyWorldWind();
 
         if (movement != null && movement.isOwner)
-            UpdateOwnerCameraStreaks(observedSpeed, observedVelocity, responseRate);
+            UpdateOwnerCameraStreaks(smoothedPlanarSpeed, observedVelocity, responseRate);
         else
             DestroyCameraStreaks();
     }
@@ -152,8 +152,10 @@ public sealed class PlayerWindPresentation : MonoBehaviour
 
         if (Time.time >= nextSpawnAt)
         {
-            EmitRadialStreakPattern(smoothedHighSpeedIntensity, worldVelocity);
-            nextSpawnAt = Time.time + Mathf.Lerp(0.16f, 0.028f, smoothedHighSpeedIntensity);
+            if (!streaks.isPlaying)
+                streaks.Play();
+            EmitPerimeterStreak(smoothedHighSpeedIntensity, worldVelocity);
+            nextSpawnAt = Time.time + Mathf.Lerp(0.075f, 0.018f, smoothedHighSpeedIntensity);
         }
     }
 
@@ -171,7 +173,9 @@ public sealed class PlayerWindPresentation : MonoBehaviour
 
         GameObject effect = Instantiate(cameraStreaksPrefab, cameraController.cam, false);
         effect.name = "LocalOuterSpeedStreaks";
-        effect.transform.localPosition = new Vector3(0f, 0f, 1.3f);
+        // Particle positions already include their camera depth. Offsetting the root as well
+        // doubles that depth and visually pulls viewport-edge particles toward the center.
+        effect.transform.localPosition = Vector3.zero;
         effect.transform.localRotation = Quaternion.identity;
         effect.transform.localScale = Vector3.one;
         streaks = effect.GetComponent<ParticleSystem>();
@@ -184,6 +188,7 @@ public sealed class PlayerWindPresentation : MonoBehaviour
         main.loop = false;
         main.playOnAwake = false;
         main.maxParticles = maximumStreaks;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
         ParticleSystem.EmissionModule emission = streaks.emission;
         emission.enabled = false;
         ConfigureParticleMaterial(streaks, ref streakMaterial, "LocalWindStreakMaterial");
@@ -210,7 +215,7 @@ public sealed class PlayerWindPresentation : MonoBehaviour
         particleRenderer.trailMaterial = material;
     }
 
-    private void EmitRadialStreakPattern(float intensity, Vector3 worldVelocity)
+    private void EmitPerimeterStreak(float intensity, Vector3 worldVelocity)
     {
         if (cameraController == null || cameraController.cam == null || streaks == null)
             return;
@@ -220,35 +225,65 @@ public sealed class PlayerWindPresentation : MonoBehaviour
             return;
 
         float depth = 1.3f;
-        float halfHeight = Mathf.Tan(unityCamera.fieldOfView * Mathf.Deg2Rad * 0.5f) * depth;
-        float halfWidth = halfHeight * unityCamera.aspect;
-        float phaseDegrees = patternPhase++ % 2 == 0 ? 0f : 45f;
         Vector3 cameraRelativeVelocity = cameraController.cam.InverseTransformDirection(worldVelocity);
-        Vector3 screenTravel = new Vector3(cameraRelativeVelocity.x, cameraRelativeVelocity.y, 0f);
-        if (screenTravel.sqrMagnitude > 0.0001f)
-            screenTravel.Normalize();
-        float forwardSign = cameraRelativeVelocity.z >= 0f ? 1f : -1f;
-        int streakCount = Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(2f, 8f, intensity)), 2, 8);
-
-        for (int index = 0; index < streakCount; index++)
+        float inset = Mathf.Lerp(0.035f, 0.012f, intensity);
+        Vector2 viewportPosition = PerimeterViewportPosition(perimeterSequence++, inset);
+        Vector3 worldPosition = unityCamera.ViewportToWorldPoint(new Vector3(
+            viewportPosition.x, viewportPosition.y, depth));
+        Vector3 localPosition = streaks.transform.InverseTransformPoint(worldPosition);
+        Vector2 radial = (viewportPosition - new Vector2(0.5f, 0.5f)).normalized;
+        Vector2 screenDirection = ScreenFlowDirection(cameraRelativeVelocity, radial);
+        float forwardAmount = cameraRelativeVelocity.sqrMagnitude > 0.0001f
+            ? cameraRelativeVelocity.normalized.z
+            : 0f;
+        // Air moves opposite the player: forward travel brings streaks toward the
+        // camera and expands them outward; backward travel recedes and contracts.
+        float depthTravel = -forwardAmount * Mathf.Lerp(0.35f, 1.4f, intensity);
+        Vector3 travel = new Vector3(screenDirection.x, screenDirection.y, depthTravel).normalized;
+        float sizeVariation = 0.82f + Mathf.Repeat(perimeterSequence * 0.381966f, 1f) * 0.36f;
+        ParticleSystem.EmitParams particle = new ParticleSystem.EmitParams
         {
-            float angle = (phaseDegrees + index * (360f / streakCount)) * Mathf.Deg2Rad;
-            Vector3 edgePosition = new Vector3(
-                Mathf.Cos(angle) * halfWidth,
-                Mathf.Sin(angle) * halfHeight,
-                0f);
-            Vector3 radial = edgePosition.normalized;
-            Vector3 travel = (radial + screenTravel * 0.55f).normalized * forwardSign;
-            ParticleSystem.EmitParams particle = new ParticleSystem.EmitParams
-            {
-                position = edgePosition * Mathf.Lerp(0.86f, 0.96f, intensity) + Vector3.forward * depth,
-                velocity = travel * Mathf.Lerp(1.5f, 5.5f, intensity),
-                startLifetime = Mathf.Lerp(0.08f, 0.15f, intensity),
-                startSize = Mathf.Lerp(0.0015f, 0.004f, intensity),
-                startColor = Color.white
-            };
-            streaks.Emit(particle, 1);
+            position = localPosition,
+            velocity = travel * Mathf.Lerp(2.2f, 6.8f, intensity),
+            startLifetime = Mathf.Lerp(0.11f, 0.19f, intensity),
+            startSize = Mathf.Lerp(0.002f, 0.0045f, intensity) * sizeVariation,
+            startColor = Color.white
+        };
+        streaks.Emit(particle, 1);
+    }
+
+    public static Vector2 PerimeterViewportPosition(int sequence, float inset)
+    {
+        inset = Mathf.Clamp(inset, 0f, 0.49f);
+        int positiveSequence = Mathf.Max(0, sequence);
+        int side = positiveSequence % 4;
+        int lap = positiveSequence / 4;
+        float edgeT = Mathf.Lerp(inset, 1f - inset,
+            Mathf.Repeat((lap + 0.5f) * 0.61803398875f, 1f));
+        switch (side)
+        {
+            case 0: return new Vector2(inset, edgeT);
+            case 1: return new Vector2(edgeT, 1f - inset);
+            case 2: return new Vector2(1f - inset, 1f - edgeT);
+            default: return new Vector2(1f - edgeT, inset);
         }
+    }
+
+    public static Vector2 ScreenFlowDirection(Vector3 cameraRelativeVelocity, Vector2 radial)
+    {
+        if (radial.sqrMagnitude < 0.0001f)
+            radial = Vector2.up;
+        radial.Normalize();
+
+        if (cameraRelativeVelocity.sqrMagnitude < 0.0001f)
+            return radial;
+
+        Vector3 localDirection = cameraRelativeVelocity.normalized;
+        Vector2 oppositeLateralMotion = new Vector2(-localDirection.x, -localDirection.y);
+        float forwardAmount = localDirection.z;
+        Vector2 direction = radial * forwardAmount +
+            oppositeLateralMotion * Mathf.Lerp(1f, 0.38f, Mathf.Abs(forwardAmount));
+        return direction.sqrMagnitude > 0.0001f ? direction.normalized : radial;
     }
 
     public static float WorldWindIntensity(float planarSpeed, float startThreshold, float normalSpeed)
@@ -290,6 +325,7 @@ public sealed class PlayerWindPresentation : MonoBehaviour
             streakMaterial = null;
         }
         nextSpawnAt = 0f;
+        perimeterSequence = 0;
         smoothedHighSpeedIntensity = 0f;
     }
 }

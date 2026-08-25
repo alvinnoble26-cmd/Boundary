@@ -58,6 +58,27 @@ public enum BoundaryHazardKind
 
 public static class BoundaryMath
 {
+    public const float MaximumHealth = 100f;
+    public const float BlackHoleDamagePerSecond = 60f;
+
+    public static float BlackHoleDamage(float contactSeconds)
+    {
+        return Mathf.Max(0f, contactSeconds) * BlackHoleDamagePerSecond;
+    }
+
+    public static float ApplyDamage(float currentHealth, float damage)
+    {
+        return Mathf.Clamp(currentHealth - Mathf.Max(0f, damage), 0f, MaximumHealth);
+    }
+
+    public static bool SurvivesInitialBoundaryCollapse(int arenaMassVariant)
+    {
+        // Arena cubes use variants 0-9 and black holes use 10-19. Keeping the
+        // even variants leaves exactly five of each kind after the first ring
+        // collapse, without needing any client-side random selection.
+        return (arenaMassVariant & 1) == 0;
+    }
+
     public static float OutOfBoundsMargin(BoundaryPhase phase)
     {
         switch (phase)
@@ -144,8 +165,7 @@ public static class BoundaryMath
 
     public static bool IsLethalContactHazard(BoundaryHazardKind kind, bool isArenaMass)
     {
-        return kind == BoundaryHazardKind.Cube ||
-               (isArenaMass && kind == BoundaryHazardKind.ArenaBlackHole);
+        return false;
     }
 
     public static float DensePlatformSpacing(float platformSize, float seamOverlap)
@@ -224,7 +244,6 @@ public static class BoundaryMath
             Vector3 inward = flatOffset.sqrMagnitude > 0.01f ? -flatOffset.normalized : Vector3.zero;
             float outsideDistance = horizontalDistance - ringRadius;
             pull += inward * Mathf.Min(19f, 5.5f + outsideDistance * 1.05f);
-            pull += Vector3.up * Mathf.Min(22f, 7f + outsideDistance * 1.20f);
         }
 
         return Vector3.ClampMagnitude(pull, 50f);

@@ -193,11 +193,20 @@ public static class ControlLayoutSettings
         Transform buttonRoot = canvas.transform.Find("ButtonBR");
 
         ApplyControl(canvas.transform, FindDirectChild(canvas.transform, "Image"), layout.Find("Move"), 175f);
-        ApplyControl(canvas.transform, buttonRoot != null ? buttonRoot.Find("Button") : null, layout.Find("Jump"), 250f);
-        ApplyControl(canvas.transform, buttonRoot != null ? buttonRoot.Find("A1") : null, layout.Find("A1"), 150f);
-        ApplyControl(canvas.transform, buttonRoot != null ? buttonRoot.Find("A2") : null, layout.Find("A2"), 150f);
-        ApplyControl(canvas.transform, buttonRoot != null ? buttonRoot.Find("A3") : null, layout.Find("A3"), 150f);
+        ApplyControl(canvas.transform, FindRuntimeButton(canvas.transform, buttonRoot, "Button"), layout.Find("Jump"), 250f);
+        ApplyControl(canvas.transform, FindRuntimeButton(canvas.transform, buttonRoot, "A1"), layout.Find("A1"), 150f);
+        ApplyControl(canvas.transform, FindRuntimeButton(canvas.transform, buttonRoot, "A2"), layout.Find("A2"), 150f);
+        ApplyControl(canvas.transform, FindRuntimeButton(canvas.transform, buttonRoot, "A3"), layout.Find("A3"), 150f);
         ApplyCrosshair(canvas, layout.Find(CrosshairControlId));
+    }
+
+    private static Transform FindRuntimeButton(Transform canvas, Transform buttonRoot, string name)
+    {
+        // Applying a layout moves controls out of ButtonBR so they use full-
+        // screen normalized anchors. Look in both locations so the saved
+        // layout can be reapplied after startup systems finish initializing.
+        Transform directChild = FindDirectChild(canvas, name);
+        return directChild != null ? directChild : buttonRoot != null ? buttonRoot.Find(name) : null;
     }
 
     private static void ApplyCrosshair(Canvas canvas, ControlEntry entry)

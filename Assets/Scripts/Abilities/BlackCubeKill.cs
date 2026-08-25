@@ -7,8 +7,6 @@ using UnityEngine;
 /// </summary>
 public class BlackCubeKill : MonoBehaviour
 {
-    private bool hasKilledLocalPlayer;
-
     private void OnTriggerEnter(Collider other)
     {
         HandleContact(other);
@@ -20,6 +18,17 @@ public class BlackCubeKill : MonoBehaviour
             HandleContact(collision.collider);
     }
 
+    private void OnTriggerStay(Collider other)
+    {
+        RegisterServerPlayerContact(other);
+    }
+
+    private void OnCollisionStay(Collision collision)
+    {
+        if (collision != null)
+            RegisterServerPlayerContact(collision.collider);
+    }
+
     private void HandleContact(Collider other)
     {
         if (other == null)
@@ -28,26 +37,22 @@ public class BlackCubeKill : MonoBehaviour
         PlayerMovement hitPlayer = other.GetComponentInParent<PlayerMovement>();
         if (hitPlayer != null)
         {
-            KillLocalPlayer(hitPlayer);
+            RegisterServerPlayerContact(other);
             return;
         }
 
         TryConsumeMovableCube(other);
     }
 
-    private void KillLocalPlayer(PlayerMovement hitPlayer)
+    private void RegisterServerPlayerContact(Collider other)
     {
-        // Every peer has a physics copy of the arena. Only the client that owns
-        // the contacted player may report that player's loss.
-        if (hasKilledLocalPlayer || hitPlayer == null || !hitPlayer.isOwner || GameManager.I == null)
+        NetworkManager net = NetworkManager.main;
+        if (net == null || !net.isServer || other == null)
             return;
 
-        hasKilledLocalPlayer = true;
-
-        Debug.Log("[BlackCubeKill] Local player touched a black-hole cube.");
-        LocalLethalFeedback.VibrateForAcceptedLocalContact();
-        SfxManager.PlayLethalHit();
-        GameManager.I.ReportLocalPlayerLost("You were consumed by the black hole.");
+        BoundaryPlayerState state = other.GetComponentInParent<BoundaryPlayerState>();
+        if (state != null)
+            state.ServerRegisterBlackHoleContact(gameObject.GetInstanceID());
     }
 
     private void TryConsumeMovableCube(Collider other)

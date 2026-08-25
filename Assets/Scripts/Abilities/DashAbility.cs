@@ -31,13 +31,23 @@ public class DashAbility : MonoBehaviour, IAbility
 
     [Header("Trail")]
     [SerializeField] private GameObject trailPrefab;
+    [SerializeField] private GameObject greenHitPrefab;
     [SerializeField] private float trailLifetime = 0.4f;
 
     private bool active;
+    private bool observerPresentationActive;
     private float endTime;
+    private float presentationStartedAt;
+    private float presentationEndsAt;
     private Vector3 dashDir;
 
     private Quaternion originalTiltLocalRot;
+    private GameObject dashFlashRoot;
+    private Transform activationRing;
+    private Material dashFlashMaterial;
+
+    private static readonly Color DashBlue = new Color(0.12f, 0.62f, 1f, 0.9f);
+    private static readonly Color DashWhite = new Color(0.92f, 0.98f, 1f, 0.95f);
 
     void Awake()
     {
@@ -69,18 +79,21 @@ public class DashAbility : MonoBehaviour, IAbility
     if (rb == null && pm != null) rb = pm.rb;
 
     if (Time.time < nextReadyTime) return;
-        nextReadyTime = Time.time + cooldownSeconds;
+        nextReadyTime = Time.time + PlayerAbilities.GetPhaseAdjustedCooldown(cooldownSeconds);
 
         if (active) return;
 
-        dashDir = orientation.forward;
-        if (flattenY) dashDir.y = 0f;
+        dashDir = GetActivationDirection();
         if (dashDir.sqrMagnitude < 0.0001f) return;
-        dashDir.Normalize();
 
         active = true;
+        observerPresentationActive = false;
         endTime = Time.time + duration;
+        presentationStartedAt = Time.time;
+        presentationEndsAt = endTime;
         SpawnTrail();
+        SpawnGreenHit();
+        BeginFlashPresentation();
         SfxManager.PlayDash();
 
         Vector3 v = rb.linearVelocity;
@@ -108,23 +121,63 @@ public class DashAbility : MonoBehaviour, IAbility
 
     void Update()
     {
-        if (tiltVisual == null) return;
-
-        Quaternion target = originalTiltLocalRot;
-
-        if (active)
+        if (tiltVisual != null)
         {
-            Quaternion face = Quaternion.LookRotation(dashDir, Vector3.up);
-            Quaternion lean = Quaternion.Euler(leanForwardAngle, 0f, 0f);
-            Quaternion worldRot = face * lean;
+            Quaternion target = originalTiltLocalRot;
 
-            if (tiltVisual.parent != null)
-                target = Quaternion.Inverse(tiltVisual.parent.rotation) * worldRot;
-            else
-                target = worldRot;
+            if (active)
+            {
+                Quaternion face = Quaternion.LookRotation(dashDir, Vector3.up);
+                Quaternion lean = Quaternion.Euler(leanForwardAngle, 0f, 0f);
+                Quaternion worldRot = face * lean;
+
+                if (tiltVisual.parent != null)
+                    target = Quaternion.Inverse(tiltVisual.parent.rotation) * worldRot;
+                else
+                    target = worldRot;
+            }
+
+            tiltVisual.localRotation = Quaternion.Slerp(tiltVisual.localRotation, target,
+                leanLerp * Time.deltaTime);
+        }
+        if (!active && observerPresentationActive && Time.time >= presentationEndsAt)
+        {
+            observerPresentationActive = false;
+            SpawnEndBurst();
+            EndFlashPresentation();
         }
 
-        tiltVisual.localRotation = Quaternion.Slerp(tiltVisual.localRotation, target, leanLerp * Time.deltaTime);
+        UpdateFlashPresentation();
+    }
+
+    // The owner simulates movement. Other players receive this through the
+    // server observer RPC and render the same flash without touching physics.
+    public void PlayObserverPresentation(Vector3 direction)
+    {
+        if (active)
+            return;
+
+        direction = flattenY ? Vector3.ProjectOnPlane(direction, Vector3.up) : direction;
+        if (direction.sqrMagnitude < 0.0001f)
+            direction = transform.forward;
+        dashDir = direction.normalized;
+        observerPresentationActive = true;
+        presentationStartedAt = Time.time;
+        presentationEndsAt = presentationStartedAt + duration;
+        SpawnTrail();
+        SpawnGreenHit();
+        BeginFlashPresentation();
+        SfxManager.PlayDash();
+    }
+
+    public Vector3 GetActivationDirection()
+    {
+        Vector3 direction = orientation != null ? orientation.forward : transform.forward;
+        if (flattenY)
+            direction.y = 0f;
+        if (direction.sqrMagnitude < 0.0001f)
+            direction = transform.forward;
+        return direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.forward;
     }
 
     private void MaintainDashVelocity()
@@ -172,9 +225,177 @@ public class DashAbility : MonoBehaviour, IAbility
         Destroy(go, trailLifetime);
     }
 
+    private void SpawnGreenHit()
+    {
+        if (greenHitPrefab == null)
+            return;
+
+        GameObject effect = Instantiate(greenHitPrefab,
+            trailSpawnPoint.position + Vector3.up * 0.8f, Quaternion.identity, trailSpawnPoint);
+        effect.name = "Dash Green Hit";
+        effect.transform.localScale = Vector3.one * 0.65f;
+        Destroy(effect, Mathf.Max(duration, trailLifetime));
+    }
+
     private void Stop()
     {
         active = false;
+        observerPresentationActive = false;
+        SpawnEndBurst();
+        EndFlashPresentation();
         if (pm != null) pm.SetMovementSuppressed(false, -1f);
+    }
+
+    private void OnDisable()
+    {
+        observerPresentationActive = false;
+        EndFlashPresentation();
+    }
+
+    // Explicit URP material setup prevents imported legacy VFX shaders from
+    // falling back to Unity's magenta error material on mobile builds.
+    private void BeginFlashPresentation()
+    {
+        EndFlashPresentation();
+        dashFlashMaterial = CreateDashFlashMaterial();
+        if (dashFlashMaterial == null)
+            return;
+
+        GameObject ringRoot = new GameObject("Dash Activation Ring");
+        ringRoot.transform.position = rb != null ? rb.position + Vector3.up * 0.04f : transform.position;
+        activationRing = ringRoot.transform;
+        CreateRing(activationRing, 0.55f, 0.055f, DashBlue, 32);
+        CreateRing(activationRing, 0.31f, 0.035f, DashWhite, 24);
+
+        dashFlashRoot = new GameObject("Dash Speed Trail");
+        dashFlashRoot.transform.SetParent(trailSpawnPoint, false);
+        dashFlashRoot.transform.localPosition = Vector3.zero;
+        dashFlashRoot.transform.rotation = Quaternion.LookRotation(dashDir, Vector3.up);
+        CreateSpeedTrail(dashFlashRoot);
+        CreateDirectionalStreaks(dashFlashRoot.transform);
+    }
+
+    private void UpdateFlashPresentation()
+    {
+        if (!active && !observerPresentationActive)
+            return;
+
+        float progress = Mathf.InverseLerp(presentationStartedAt, presentationEndsAt, Time.time);
+        if (activationRing != null)
+        {
+            float scale = Mathf.Lerp(1f, 3.1f, progress);
+            activationRing.localScale = new Vector3(scale, 1f, scale);
+        }
+
+        if (dashFlashRoot != null)
+            dashFlashRoot.transform.rotation = Quaternion.LookRotation(dashDir, Vector3.up);
+    }
+
+    private void CreateSpeedTrail(GameObject parent)
+    {
+        TrailRenderer trail = parent.AddComponent<TrailRenderer>();
+        trail.time = 0.18f;
+        trail.minVertexDistance = 0.06f;
+        trail.widthMultiplier = 0.32f;
+        trail.material = dashFlashMaterial;
+        trail.startColor = DashWhite;
+        trail.endColor = new Color(DashBlue.r, DashBlue.g, DashBlue.b, 0f);
+    }
+
+    private void CreateDirectionalStreaks(Transform parent)
+    {
+        for (int index = 0; index < 7; index++)
+        {
+            float lateral = (index - 3) * 0.14f;
+            float height = 0.3f + (index % 3) * 0.25f;
+            LineRenderer streak = CreateLine(parent, "Dash Streak", 2, 0.035f,
+                index % 2 == 0 ? DashWhite : DashBlue);
+            streak.SetPosition(0, new Vector3(lateral, height, 0.45f));
+            streak.SetPosition(1, new Vector3(lateral * 1.8f, height, -1.65f - index * 0.1f));
+        }
+    }
+
+    private void CreateRing(Transform parent, float radius, float width, Color color, int points)
+    {
+        LineRenderer ring = CreateLine(parent, "Dash Ring", points + 1, width, color);
+        for (int index = 0; index <= points; index++)
+        {
+            float angle = index / (float)points * Mathf.PI * 2f;
+            ring.SetPosition(index, new Vector3(Mathf.Cos(angle) * radius, 0f,
+                Mathf.Sin(angle) * radius));
+        }
+    }
+
+    private LineRenderer CreateLine(Transform parent, string effectName, int count, float width,
+        Color color)
+    {
+        GameObject lineObject = new GameObject(effectName, typeof(LineRenderer));
+        lineObject.transform.SetParent(parent, false);
+        LineRenderer line = lineObject.GetComponent<LineRenderer>();
+        line.useWorldSpace = false;
+        line.positionCount = count;
+        line.widthMultiplier = width;
+        line.numCornerVertices = 2;
+        line.numCapVertices = 2;
+        line.material = dashFlashMaterial;
+        line.startColor = color;
+        line.endColor = new Color(color.r, color.g, color.b, 0f);
+        return line;
+    }
+
+    private void SpawnEndBurst()
+    {
+        Material material = CreateDashFlashMaterial();
+        if (material == null)
+            return;
+
+        GameObject burstObject = new GameObject("Dash End Burst", typeof(ParticleSystem));
+        burstObject.transform.position = rb != null ? rb.position + Vector3.up * 0.75f : transform.position;
+        ParticleSystem particles = burstObject.GetComponent<ParticleSystem>();
+        ParticleSystem.MainModule main = particles.main;
+        main.loop = false;
+        main.duration = 0.32f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.18f, 0.32f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(2.5f, 5f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.035f, 0.09f);
+        main.startColor = new ParticleSystem.MinMaxGradient(DashWhite, DashBlue);
+        main.maxParticles = 40;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        ParticleSystem.EmissionModule emission = particles.emission;
+        emission.rateOverTime = 0f;
+        emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 30) });
+        ParticleSystem.ShapeModule shape = particles.shape;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 34f;
+        shape.rotation = new Vector3(0f, 180f, 0f);
+        ParticleSystemRenderer renderer = burstObject.GetComponent<ParticleSystemRenderer>();
+        renderer.sharedMaterial = material;
+        particles.Play();
+        Destroy(burstObject, 0.8f);
+        Destroy(material, 0.8f);
+    }
+
+    private void EndFlashPresentation()
+    {
+        if (activationRing != null)
+            Destroy(activationRing.gameObject, 0.12f);
+        activationRing = null;
+        if (dashFlashRoot != null)
+            Destroy(dashFlashRoot, trailLifetime);
+        dashFlashRoot = null;
+        if (dashFlashMaterial != null)
+            Destroy(dashFlashMaterial, trailLifetime);
+        dashFlashMaterial = null;
+    }
+
+    private static Material CreateDashFlashMaterial()
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (shader == null)
+            return null;
+
+        Material material = new Material(shader) { name = "DashFlashURP" };
+        material.SetColor("_BaseColor", Color.white);
+        return material;
     }
 }

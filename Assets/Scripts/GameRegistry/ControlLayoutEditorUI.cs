@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -34,7 +35,7 @@ public class ControlLayoutEditorUI : MonoBehaviour
             return;
 
         RemoveStaleGeneratedUi(canvas.transform);
-        EnsureEventSystem();
+        EnsureCanvasInput(canvas);
         // Match the existing menu labels rather than covering Options with a
         // blue card. Other Information is placed below this text control.
         editButton = CreateMenuTextButton(canvas.transform, "Edit Controls",
@@ -396,14 +397,54 @@ public class ControlLayoutEditorUI : MonoBehaviour
         rect.offsetMax = Vector2.zero;
     }
 
-    private static void EnsureEventSystem()
+    private static void EnsureCanvasInput(Canvas canvas)
     {
-        if (EventSystem.current != null)
+        GraphicRaycaster raycaster = canvas.GetComponent<GraphicRaycaster>();
+        if (raycaster == null)
+            raycaster = canvas.gameObject.AddComponent<GraphicRaycaster>();
+        raycaster.enabled = true;
+
+        if (!Application.isPlaying)
             return;
 
-        var eventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
-        if (Application.isPlaying)
-            Object.DontDestroyOnLoad(eventSystem);
+        EventSystem selected = null;
+        foreach (EventSystem candidate in Resources.FindObjectsOfTypeAll<EventSystem>())
+        {
+            if (candidate == null || !candidate.gameObject.scene.IsValid())
+                continue;
+            if (candidate.GetComponent<InputSystemUIInputModule>() != null)
+            {
+                selected = candidate;
+                break;
+            }
+        }
+
+        if (selected == null)
+        {
+            var eventSystemObject = new GameObject(
+                "Control Layout EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+            selected = eventSystemObject.GetComponent<EventSystem>();
+            eventSystemObject.GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
+            Object.DontDestroyOnLoad(eventSystemObject);
+        }
+
+        selected.gameObject.SetActive(true);
+        selected.enabled = true;
+        InputSystemUIInputModule selectedInput = selected.GetComponent<InputSystemUIInputModule>();
+        if (selectedInput != null)
+            selectedInput.enabled = true;
+
+        foreach (EventSystem candidate in Resources.FindObjectsOfTypeAll<EventSystem>())
+        {
+            if (candidate == null || candidate == selected || !candidate.gameObject.scene.IsValid())
+                continue;
+
+            candidate.enabled = false;
+            foreach (BaseInputModule inputModule in candidate.GetComponents<BaseInputModule>())
+                inputModule.enabled = false;
+        }
+
+        EventSystem.current = selected;
     }
 }
 
@@ -447,9 +488,7 @@ public class ControlLayoutRuntime : MonoBehaviour
         Canvas[] canvases = Object.FindObjectsByType<Canvas>(FindObjectsSortMode.None);
         if (scene.name == "Game")
         {
-            // In the Editor the scene is the authoring source of truth. Device
-            // builds still apply a player's explicitly saved custom layout.
-            if (Application.isEditor || !ControlLayoutSettings.HasSavedLayout)
+            if (!ControlLayoutSettings.HasSavedLayout)
                 yield break;
 
             foreach (Canvas canvas in canvases)

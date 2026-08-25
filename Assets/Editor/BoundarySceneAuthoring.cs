@@ -14,6 +14,7 @@ public static class BoundarySceneAuthoring
     private const string GameScenePath = "Assets/Scenes/Game.unity";
     private const string MenuScenePath = "Assets/Scenes/Menu.unity";
     private const string PreviewName = "Boundary Arena Preview (Editor Only)";
+    private const string RuntimeAuthoredArenaName = "Boundary Authored Stadium";
     private static readonly string[] MenuPreviewRoots =
     {
         "SkinsPanel", "ControlLayoutEditor", "Edit ControlsButton"
@@ -23,10 +24,23 @@ public static class BoundarySceneAuthoring
     static BoundarySceneAuthoring()
     {
         EditorApplication.playModeStateChanged += OnPlayModeChanged;
-        EditorSceneManager.sceneOpened += (_, __) => QueuePreviewRefresh();
         EditorSceneManager.sceneSaving += OnSceneSaving;
-        EditorApplication.hierarchyChanged += QueuePreviewRefresh;
-        QueuePreviewRefresh();
+        EditorSceneManager.sceneOpened += (scene, _) =>
+        {
+            ConvertLoadedArenaPreviewToSceneObject();
+            EnsureMenuAbilitySelectors(scene);
+        };
+        EditorApplication.delayCall += () =>
+        {
+            ConvertLoadedArenaPreviewToSceneObject();
+            EnsureMenuAbilitySelectors(SceneManager.GetActiveScene());
+        };
+    }
+
+    private static void OnPlayModeChanged(PlayModeStateChange state)
+    {
+        if (state == PlayModeStateChange.EnteredEditMode)
+            ConvertLoadedArenaPreviewToSceneObject();
     }
 
     [MenuItem("Boundary/Authoring/Refresh Edit Mode Arena Preview")]
@@ -75,6 +89,15 @@ public static class BoundarySceneAuthoring
             AbilitiesSelectUI grapple = LoadoutManager.EnsureGrappleSelector();
             if (grapple != null)
                 EditorUtility.SetDirty(grapple.gameObject);
+            AbilitiesSelectUI hollow = LoadoutManager.EnsureHollowSelector();
+            if (hollow != null)
+                EditorUtility.SetDirty(hollow.gameObject);
+            AbilitiesSelectUI voidSelector = LoadoutManager.EnsureVoidSelector();
+            if (voidSelector != null)
+                EditorUtility.SetDirty(voidSelector.gameObject);
+            AbilityInformationUI abilityInformation = LoadoutManager.EnsureAbilityInformationUI();
+            if (abilityInformation != null)
+                EditorUtility.SetDirty(abilityInformation.gameObject);
             EditorSceneManager.MarkSceneDirty(menuScene);
             EditorSceneManager.SaveScene(menuScene);
 
@@ -131,15 +154,27 @@ public static class BoundarySceneAuthoring
         return null;
     }
 
-    private static void OnPlayModeChanged(PlayModeStateChange state)
+    private static Transform FindChildRecursive(Transform root, string childName)
     {
-        if (state == PlayModeStateChange.ExitingEditMode)
+        for (int i = 0; i < root.childCount; i++)
         {
-            CaptureArenaPreviewSettings();
-            DestroyPreviews();
+            Transform child = root.GetChild(i);
+            if (child.name == childName)
+                return child;
+            Transform nested = FindChildRecursive(child, childName);
+            if (nested != null)
+                return nested;
         }
-        else if (state == PlayModeStateChange.EnteredEditMode)
-            QueuePreviewRefresh();
+        return null;
+    }
+
+    private static void ClearPreviewFlags(Transform root)
+    {
+        root.gameObject.hideFlags = HideFlags.None;
+        if (root.CompareTag("EditorOnly"))
+            root.tag = "Untagged";
+        for (int i = 0; i < root.childCount; i++)
+            ClearPreviewFlags(root.GetChild(i));
     }
 
     private static void CaptureArenaPreviewSettings()
@@ -192,6 +227,61 @@ public static class BoundarySceneAuthoring
         EditorApplication.delayCall += RefreshPreview;
     }
 
+    private static void ConvertLoadedArenaPreviewToSceneObject()
+    {
+        if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling)
+            return;
+
+        Scene scene = SceneManager.GetActiveScene();
+        if (!scene.IsValid() || scene.name != "Game")
+            return;
+
+        GameObject preview = FindNamedInScene(scene, PreviewName);
+        if (preview == null)
+            return;
+
+        bool changed = false;
+        if (PrefabUtility.IsPartOfPrefabInstance(preview))
+        {
+            PrefabUtility.UnpackPrefabInstance(
+                PrefabUtility.GetOutermostPrefabInstanceRoot(preview),
+                PrefabUnpackMode.Completely,
+                InteractionMode.AutomatedAction);
+            changed = true;
+        }
+
+        changed |= MakeArenaPreviewSaveable(preview.transform);
+        foreach (BlackKill legacyCore in Resources.FindObjectsOfTypeAll<BlackKill>())
+        {
+            if (legacyCore == null || legacyCore.gameObject.scene != scene ||
+                legacyCore.transform.IsChildOf(preview.transform))
+            {
+                continue;
+            }
+
+            if (legacyCore.gameObject.activeSelf)
+            {
+                legacyCore.gameObject.SetActive(false);
+                changed = true;
+            }
+        }
+        Transform stadium = FindChildRecursive(preview.transform, "Boundary Generated Stadium");
+        if (stadium != null)
+        {
+            stadium.SetParent(null, true);
+            stadium.name = RuntimeAuthoredArenaName;
+            ClearPreviewFlags(stadium);
+            UnityEngine.Object.DestroyImmediate(preview);
+            changed = true;
+        }
+
+        if (changed)
+        {
+            EditorSceneManager.MarkSceneDirty(scene);
+            Debug.Log("[Boundary Authoring] Converted the stadium to permanent scene-owned runtime geometry.");
+        }
+    }
+
     private static void RefreshPreview()
     {
         refreshing = false;
@@ -218,6 +308,9 @@ public static class BoundarySceneAuthoring
             DestroyArenaPreview();
             return;
         }
+
+        if (FindNamedInScene(activeScene, RuntimeAuthoredArenaName) != null)
+            return;
 
         GameObject existingPreview = GameObject.Find(PreviewName);
         if (existingPreview != null)
@@ -279,6 +372,24 @@ public static class BoundarySceneAuthoring
         }
         Debug.Log("[Boundary Authoring] Built editor-only Menu UI preview.");
         SceneView.RepaintAll();
+    }
+
+    private static void EnsureMenuAbilitySelectors(Scene scene)
+    {
+        if (!scene.IsValid() || scene.path != MenuScenePath ||
+            EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling)
+            return;
+
+        AbilitiesSelectUI voidSelector = LoadoutManager.EnsureVoidSelector();
+        AbilityInformationUI abilityInformation = LoadoutManager.EnsureAbilityInformationUI();
+        if (voidSelector == null && abilityInformation == null)
+            return;
+
+        if (voidSelector != null)
+            EditorUtility.SetDirty(voidSelector.gameObject);
+        if (abilityInformation != null)
+            EditorUtility.SetDirty(abilityInformation.gameObject);
+        EditorSceneManager.MarkSceneDirty(scene);
     }
 
     private static void MarkPreviewComponent(Component component)

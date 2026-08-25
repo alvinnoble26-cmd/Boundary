@@ -123,17 +123,13 @@ catch (System.InvalidOperationException)
             matchStarted = false;
             joinInProgress = false;
 
-            string code = await GenerateUnusedLobbyCode();
+            string code = GenerateLobbyCode();
 
             if (string.IsNullOrEmpty(code))
             {
                 ShowError("Could not create lobby. Try again.");
                 return;
             }
-
-            currentLobbyCode = code;
-            if (GameManager.I != null)
-                GameManager.I.SetLobbyInfo(code, "host");
 
             DocumentReference lobbyRef = db.Collection("lobbies").Document(code);
             DateTime expiresAtUtc = DateTime.UtcNow.AddMinutes(LobbyMinutesUntilExpire);
@@ -161,7 +157,35 @@ catch (System.InvalidOperationException)
                 { "rematchRound", 0 }
             };
 
-            await lobbyRef.SetAsync(lobbyData);
+            // Lobby reads are restricted to participants. This create is
+            // intentionally blind: if a randomly selected code is already in
+            // use, Firestore rejects it because the create rule cannot match
+            // an existing document. Retry with a new invitation code.
+            bool created = false;
+            for (int attempt = 0; attempt < 20; attempt++)
+            {
+                code = attempt == 0 ? code : GenerateLobbyCode();
+                currentLobbyCode = code;
+                lobbyRef = db.Collection("lobbies").Document(code);
+                lobbyData["code"] = code;
+
+                try
+                {
+                    await lobbyRef.SetAsync(lobbyData);
+                    created = true;
+                    break;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("[FirebaseLobby] Lobby code create attempt failed: " + e.Message);
+                }
+            }
+
+            if (!created)
+                throw new InvalidOperationException("Could not create a unique lobby code.");
+
+            if (GameManager.I != null)
+                GameManager.I.SetLobbyInfo(code, "host");
 
             Debug.Log("[FirebaseLobby] Created lobby: " + code);
 
@@ -190,19 +214,9 @@ catch (System.InvalidOperationException)
         }
     }
 
-    private async Task<string> GenerateUnusedLobbyCode()
+    private string GenerateLobbyCode()
     {
-        for (int i = 0; i < 20; i++)
-        {
-            string code = UnityEngine.Random.Range(0, 10000).ToString("0000");
-
-            DocumentSnapshot snapshot = await db.Collection("lobbies").Document(code).GetSnapshotAsync();
-
-            if (!snapshot.Exists)
-                return code;
-        }
-
-        return "";
+        return UnityEngine.Random.Range(0, 10000).ToString("0000");
     }
 
     private void OnCodeTyped(string value)
@@ -241,54 +255,6 @@ catch (System.InvalidOperationException)
             if (account == null)
                 throw new InvalidOperationException("Player account is not ready.");
 
-            DocumentSnapshot snapshot = await lobbyRef.GetSnapshotAsync();
-
-            if (!snapshot.Exists)
-            {
-                Debug.Log("[FirebaseLobby] Lobby does not exist.");
-                ShowError("Invalid code.");
-                joinInProgress = false;
-                return;
-            }
-
-            string status = snapshot.ContainsField("status")
-                ? snapshot.GetValue<string>("status")
-                : "";
-
-            int players = snapshot.ContainsField("players")
-                ? snapshot.GetValue<int>("players")
-                : 0;
-
-            if (snapshot.ContainsField("expiresAt"))
-            {
-                Timestamp expiresAt = snapshot.GetValue<Timestamp>("expiresAt");
-                DateTime expiresAtUtc = expiresAt.ToDateTime();
-
-                if (DateTime.UtcNow > expiresAtUtc)
-                {
-                    Debug.Log("[FirebaseLobby] Lobby expired.");
-                    ShowError("Lobby expired.");
-                    joinInProgress = false;
-                    return;
-                }
-            }
-
-            if (status != "waiting")
-            {
-                Debug.Log("[FirebaseLobby] Lobby is not waiting. Status=" + status);
-                ShowError("Lobby is full.");
-                joinInProgress = false;
-                return;
-            }
-
-            if (players >= 2)
-            {
-                Debug.Log("[FirebaseLobby] Lobby already has 2 players.");
-                ShowError("Lobby is full.");
-                joinInProgress = false;
-                return;
-            }
-
             Dictionary<string, object> updates = new Dictionary<string, object>
             {
                 { "players", 2 },
@@ -296,6 +262,9 @@ catch (System.InvalidOperationException)
                 { "joinerUid", account.UserId }
             };
 
+            // A guest has no read permission until this succeeds. The Firestore
+            // update rule atomically verifies that the target is an open,
+            // single-player lobby and records this user as its joiner.
             await lobbyRef.UpdateAsync(updates);
 
             Debug.Log("[FirebaseLobby] Joined lobby successfully: " + code);

@@ -10,6 +10,8 @@ using UnityEngine.SceneManagement;
 /// </summary>
 public sealed class BoundaryRuntimeBootstrap : MonoBehaviour
 {
+    private const string AuthoredSingularityCoreName = "Boundary Singularity Core";
+
     private Coroutine spawnRoutine;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -48,6 +50,8 @@ public sealed class BoundaryRuntimeBootstrap : MonoBehaviour
         if (scene.name != "Game")
             return;
 
+        AlignSpawnPointsToGround(scene);
+
         BoundaryHUD existingHud = FindFirstObjectByType<BoundaryHUD>();
         if (!Application.isBatchMode && existingHud == null)
         {
@@ -63,6 +67,37 @@ public sealed class BoundaryRuntimeBootstrap : MonoBehaviour
         if (spawnRoutine != null)
             StopCoroutine(spawnRoutine);
         spawnRoutine = StartCoroutine(SpawnDirectorWhenReady(scene));
+    }
+
+    private static void AlignSpawnPointsToGround(Scene scene)
+    {
+        GameObject[] spawnPoints = GameObject.FindGameObjectsWithTag("SpawnPoint");
+        foreach (GameObject spawnPoint in spawnPoints)
+        {
+            if (spawnPoint == null || spawnPoint.scene != scene)
+                continue;
+
+            Vector3 origin = spawnPoint.transform.position + Vector3.up * 200f;
+            RaycastHit[] hits = Physics.RaycastAll(origin, Vector3.down, 400f,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            float nearestDistance = float.PositiveInfinity;
+            RaycastHit groundHit = default;
+            foreach (RaycastHit hit in hits)
+            {
+                if (hit.collider == null || hit.normal.y < 0.55f || hit.distance >= nearestDistance)
+                    continue;
+
+                nearestDistance = hit.distance;
+                groundHit = hit;
+            }
+
+            if (nearestDistance < float.PositiveInfinity)
+            {
+                Vector3 position = spawnPoint.transform.position;
+                position.y = groundHit.point.y + 1.15f;
+                spawnPoint.transform.position = position;
+            }
+        }
     }
 
     private IEnumerator SpawnDirectorWhenReady(Scene gameScene)
@@ -108,6 +143,19 @@ public sealed class BoundaryRuntimeBootstrap : MonoBehaviour
 
     private static Vector3 ResolveSingularityPosition(Scene gameScene)
     {
+        Transform[] transforms = FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (Transform candidate in transforms)
+        {
+            if (candidate != null &&
+                candidate.gameObject.scene == gameScene &&
+                candidate.name == AuthoredSingularityCoreName)
+            {
+                return candidate.position;
+            }
+        }
+
+        // Older scenes did not have an authored core. Retain their existing
+        // BlackKill fallback rather than changing their arena center.
         BlackKill[] cores = FindObjectsByType<BlackKill>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         BlackKill best = null;
         foreach (BlackKill core in cores)

@@ -16,11 +16,7 @@ public class TouchLookHandler : MonoBehaviour, IDragHandler, IPointerDownHandler
     {
         if (!dragging) return;
 
-        // Kill tiny jitter
-        var d = eventData.delta;
-        if (d.sqrMagnitude < 0.25f) d = Vector2.zero; // tweak if needed
-
-        LookDelta = d;
+        SubmitLookDelta(eventData.delta);
     }
 
     public void OnPointerUp(PointerEventData eventData)
@@ -37,5 +33,33 @@ public class TouchLookHandler : MonoBehaviour, IDragHandler, IPointerDownHandler
         Vector2 value = LookDelta;
         LookDelta = Vector2.zero;
         return value;
+    }
+
+    public void SubmitLookDelta(Vector2 delta)
+    {
+        // Kill tiny jitter.
+        if (delta.sqrMagnitude < 0.25f)
+            delta = Vector2.zero;
+
+        LookDelta = delta;
+    }
+}
+
+/// <summary>
+/// Forwards a drag that starts on the jump button to the look area. The
+/// OnScreenButton keeps its pressed state, so this supports hold-to-jump and
+/// camera look with the same touch.
+/// </summary>
+[DisallowMultipleComponent]
+public sealed class JumpLookButton : MonoBehaviour, IDragHandler
+{
+    private TouchLookHandler touchLook;
+
+    public void OnDrag(PointerEventData eventData)
+    {
+        if (touchLook == null)
+            touchLook = FindFirstObjectByType<TouchLookHandler>();
+
+        touchLook?.SubmitLookDelta(eventData.delta);
     }
 }

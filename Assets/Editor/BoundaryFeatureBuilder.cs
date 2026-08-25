@@ -230,11 +230,12 @@ public static class BoundaryFeatureValidator
             Vector3.zero, new Vector3(0f, 32f, 0f), Vector3.zero, -1f, 106f, 5.5f, true);
         Require(grounded.magnitude < airborne.magnitude * 0.2f,
             "Stable footing must meaningfully reduce singularity pull.");
-        Require(BoundaryMatchController.ArenaMassPopulation == 20,
-            "The arena must begin with twenty interactive masses.");
-        Require(BoundaryMatchController.ArenaMassInnerSurvivors * 4 ==
-                BoundaryMatchController.ArenaMassPopulation,
-            "Exactly one quarter of arena masses must reach the inner ring.");
+        Require(BoundaryMatchController.ArenaMassPopulation == 80 &&
+                BoundaryMatchController.GroundArenaMassesPerKind == 22 &&
+                BoundaryMatchController.FloatingArenaMassesPerKind == 18,
+            "The arena must begin with 22 floor and 18 floating masses of each kind.");
+        Require(BoundaryMatchController.PlatformHitsToCollapse == 5,
+            "Arena platforms must withstand five cube or black-hole hits.");
         Require(Mathf.Approximately(BoundaryMatchController.HazardSizeMultiplier, 1.6f) &&
                 Mathf.Approximately(BoundaryMatchController.ArenaMassCubeScale, 4.48f) &&
                 Mathf.Approximately(BoundaryMatchController.ArenaMassBlackHoleScale, 2.8f) &&
@@ -256,9 +257,9 @@ public static class BoundaryFeatureValidator
                 controllerSettings.FindProperty("middlePull").floatValue <= 1.05f &&
                 controllerSettings.FindProperty("innerPull").floatValue <= 2.75f,
             "Boundary singularity gravity must remain at the reduced level.");
-        Require(BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.Cube, true) &&
-                BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.ArenaBlackHole, true),
-            "Arena cubes and ground black holes must be lethal on contact.");
+        Require(!BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.Cube, true) &&
+                !BoundaryMath.IsLethalContactHazard(BoundaryHazardKind.ArenaBlackHole, true),
+            "Arena black cubes and black holes must use server-authoritative health damage.");
         Require(BoundaryMath.DensePlatformSpacing(9.2f, 0.4f) < 9.2f,
             "Platform colliders must overlap instead of leaving slide-breaking seams.");
         Require(BoundaryMath.TierRampSlopeDegrees(2.25f, 14f) < 10f,

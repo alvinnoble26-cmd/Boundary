@@ -148,7 +148,6 @@ public sealed class SkinPurchaseManager : MonoBehaviour
         requestedProductId = null;
         PurchaseBusy = true;
         SetStatus("PURCHASING...", product.definition.id);
-        SfxManager.PlaySkinPurchase();
         Changed?.Invoke();
         controller.PurchaseProduct(product);
     }
@@ -254,6 +253,7 @@ public sealed class SkinPurchaseManager : MonoBehaviour
             {
                 controller.ConfirmPurchase(order);
                 SetStatus("OWNED", productId);
+                SfxManager.PlaySkinPurchase();
                 Debug.Log("[SkinShop] Purchase verified and saved: " + productId);
             }
             else

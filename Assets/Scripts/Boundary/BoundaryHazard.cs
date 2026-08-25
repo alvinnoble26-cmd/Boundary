@@ -9,6 +9,8 @@ using UnityEngine.Rendering;
 public sealed class BoundaryHazard : NetworkBehaviour
 {
     private static readonly List<BoundaryHazard> ActiveHazards = new List<BoundaryHazard>();
+    private static bool hollowGlowActive;
+    private static bool darknessGlowActive;
 
     private readonly SyncVar<BoundaryHazardKind> kind = new(BoundaryHazardKind.Cube, ownerAuth: false);
     private readonly SyncVar<uint> spawnTick = new(0u, ownerAuth: false);
@@ -50,10 +52,26 @@ public sealed class BoundaryHazard : NetworkBehaviour
     private float desiredOrbitHeight;
     private Material cubeMaterial;
     private Material sphereMaterial;
+    private Material tesseractMaterial;
+    private Material tesseractCoreMaterial;
+    private Transform tesseractRig;
+    private Transform tesseractInnerFrame;
     private Transform blackHoleRig;
     private readonly List<Transform> blackHoleRings = new List<Transform>();
     private readonly List<float> blackHoleRingSpeeds = new List<float>();
     private readonly List<Material> blackHoleMaterials = new List<Material>();
+
+    private static readonly Vector2Int[] TesseractEdges =
+    {
+        new Vector2Int(0, 1), new Vector2Int(0, 2), new Vector2Int(0, 4),
+        new Vector2Int(1, 3), new Vector2Int(1, 5), new Vector2Int(2, 3),
+        new Vector2Int(2, 6), new Vector2Int(3, 7), new Vector2Int(4, 5),
+        new Vector2Int(4, 6), new Vector2Int(5, 7), new Vector2Int(6, 7)
+    };
+
+    private static readonly Color TesseractBlue = new Color(0.025f, 0.38f, 1f);
+    private Color tesseractGlowColor = TesseractBlue;
+    private float tesseractGlowIntensity = 18f;
 
     public BoundaryHazardKind Kind => kind.value;
     public int Variant => variant.value;
@@ -114,6 +132,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
             GameObject sphere = CreateRuntimeVisual(PrimitiveType.Sphere, "SphereVisual", Vector3.one * 1.65f);
             sphere.SetActive(false);
         }
+        EnsureTesseractRig();
         EnsureBlackHoleRig();
     }
 
@@ -127,6 +146,103 @@ public sealed class BoundaryHazard : NetworkBehaviour
         if (visualCollider != null)
             Destroy(visualCollider);
         return visual;
+    }
+
+    private void EnsureTesseractRig()
+    {
+        Transform cubeVisual = transform.Find("CubeVisual");
+        if (cubeVisual == null)
+            return;
+
+        Transform existing = cubeVisual.Find("Tesseract Wireframe");
+        if (existing != null)
+        {
+            tesseractRig = existing;
+            return;
+        }
+
+        tesseractRig = new GameObject("Tesseract Wireframe").transform;
+        tesseractRig.SetParent(cubeVisual, false);
+        tesseractMaterial = CreateMaterial(Color.black, TesseractBlue, 18f);
+        tesseractCoreMaterial = CreateMaterial(
+            new Color(0.001f, 0.006f, 0.025f), TesseractBlue, 5.5f);
+
+        GameObject core = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        core.name = "Compressed Blue Void Core";
+        core.transform.SetParent(tesseractRig, false);
+        core.transform.localScale = Vector3.one * 0.34f;
+        Collider coreCollider = core.GetComponent<Collider>();
+        if (coreCollider != null)
+            Destroy(coreCollider);
+        core.GetComponent<Renderer>().sharedMaterial = tesseractCoreMaterial;
+
+        Vector3 innerOffset = new Vector3(0.16f, -0.12f, 0.14f);
+        CreateTesseractCube("Outer Frame", Vector3.zero, 0.56f, 0.052f, 0.070f);
+        tesseractInnerFrame = CreateTesseractCube(
+            "Inner Frame", innerOffset, 0.285f, 0.035f, 0.048f);
+        for (int corner = 0; corner < 8; corner++)
+        {
+            CreateTesseractLine(
+                "Dimensional Link " + (corner + 1),
+                TesseractCorner(corner, Vector3.zero, 0.56f),
+                TesseractCorner(corner, innerOffset, 0.285f),
+                0.032f);
+        }
+    }
+
+    private Transform CreateTesseractCube(string frameName, Vector3 center, float halfSize,
+        float lineWidth, float nodeRadius)
+    {
+        Transform frame = new GameObject(frameName).transform;
+        frame.SetParent(tesseractRig, false);
+        for (int edge = 0; edge < TesseractEdges.Length; edge++)
+        {
+            Vector2Int endpoints = TesseractEdges[edge];
+            CreateTesseractLine("Edge " + (edge + 1),
+                TesseractCorner(endpoints.x, center, halfSize),
+                TesseractCorner(endpoints.y, center, halfSize), lineWidth, frame);
+        }
+        for (int corner = 0; corner < 8; corner++)
+            CreateTesseractNode("Node " + (corner + 1), TesseractCorner(corner, center, halfSize), nodeRadius, frame);
+        return frame;
+    }
+
+    private void CreateTesseractLine(string lineName, Vector3 start, Vector3 end, float width,
+        Transform parent = null)
+    {
+        LineRenderer line = new GameObject(lineName, typeof(LineRenderer)).GetComponent<LineRenderer>();
+        line.transform.SetParent(parent != null ? parent : tesseractRig, false);
+        line.useWorldSpace = false;
+        line.positionCount = 2;
+        line.startWidth = width;
+        line.endWidth = width;
+        line.numCornerVertices = 2;
+        line.numCapVertices = 2;
+        line.startColor = line.endColor = TesseractBlue;
+        line.sharedMaterial = tesseractMaterial;
+        line.SetPosition(0, start);
+        line.SetPosition(1, end);
+    }
+
+    private void CreateTesseractNode(string nodeName, Vector3 position, float radius, Transform parent)
+    {
+        GameObject node = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        node.name = nodeName;
+        node.transform.SetParent(parent, false);
+        node.transform.localPosition = position;
+        node.transform.localScale = Vector3.one * radius * 2f;
+        Collider nodeCollider = node.GetComponent<Collider>();
+        if (nodeCollider != null)
+            Destroy(nodeCollider);
+        node.GetComponent<Renderer>().sharedMaterial = tesseractMaterial;
+    }
+
+    private static Vector3 TesseractCorner(int index, Vector3 center, float halfSize)
+    {
+        return center + new Vector3(
+            (index & 1) == 0 ? -halfSize : halfSize,
+            (index & 2) == 0 ? -halfSize : halfSize,
+            (index & 4) == 0 ? -halfSize : halfSize);
     }
 
     private void EnsureBlackHoleRig()
@@ -257,6 +373,8 @@ public sealed class BoundaryHazard : NetworkBehaviour
         ActiveHazards.Remove(this);
         if (cubeMaterial != null) Destroy(cubeMaterial);
         if (sphereMaterial != null) Destroy(sphereMaterial);
+        if (tesseractMaterial != null) Destroy(tesseractMaterial);
+        if (tesseractCoreMaterial != null) Destroy(tesseractCoreMaterial);
         foreach (Material material in blackHoleMaterials)
         {
             if (material != null)
@@ -273,6 +391,15 @@ public sealed class BoundaryHazard : NetworkBehaviour
             Mathf.Abs(transform.localScale.x - networkScale.value) > 0.01f)
         {
             transform.localScale = Vector3.one * networkScale.value;
+        }
+
+        if (tesseractRig != null && tesseractRig.gameObject.activeSelf)
+        {
+            tesseractRig.Rotate(new Vector3(9f, 17f, 5f) * Time.deltaTime, Space.Self);
+            if (tesseractInnerFrame != null)
+                tesseractInnerFrame.Rotate(new Vector3(-21f, 13f, -16f) * Time.deltaTime, Space.Self);
+            float pulse = 0.88f + Mathf.Sin(Time.time * 5.4f + variant.value * 0.37f) * 0.12f;
+            ApplyTesseractEmission(pulse);
         }
 
         if (blackHoleRig == null || !blackHoleRig.gameObject.activeSelf)
@@ -318,7 +445,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
     {
         kind.value = hazardKind;
         spawnTick.value = serverSpawnTick;
-        lifetime.value = 190f;
+        lifetime.value = 250f;
         variant.value = populationIndex;
         arenaMass.value = true;
         survivesInner.value = innerRingSurvivor;
@@ -408,6 +535,81 @@ public sealed class BoundaryHazard : NetworkBehaviour
         }
 
         return affected;
+    }
+
+    public static int ServerApplyArenaMassGravity(Vector3 center, float radius, float acceleration)
+    {
+        if (radius <= 0f || acceleration <= 0f)
+            return 0;
+
+        int affected = 0;
+        for (int index = ActiveHazards.Count - 1; index >= 0; index--)
+        {
+            BoundaryHazard hazard = ActiveHazards[index];
+            if (hazard == null)
+            {
+                ActiveHazards.RemoveAt(index);
+                continue;
+            }
+            if (!hazard.isServer || !hazard.arenaMass.value || hazard.absorptionStarted ||
+                hazard.body == null ||
+                (hazard.kind.value != BoundaryHazardKind.Cube &&
+                 hazard.kind.value != BoundaryHazardKind.ArenaBlackHole))
+                continue;
+
+            Vector3 delta = center - hazard.body.worldCenterOfMass;
+            float distance = delta.magnitude;
+            if (distance <= 0.05f || distance >= radius)
+                continue;
+
+            if (hazard.body.isKinematic)
+            {
+                hazard.body.isKinematic = false;
+                hazard.body.useGravity = false;
+            }
+            hazard.RegisterAbilityInfluence();
+            hazard.body.WakeUp();
+            hazard.body.AddForce(delta.normalized * acceleration *
+                Mathf.Clamp01(1f - distance / radius), ForceMode.Acceleration);
+            affected++;
+        }
+
+        return affected;
+    }
+
+    public static void SetHollowGlowForAll(bool enabled)
+    {
+        hollowGlowActive = enabled;
+        for (int index = ActiveHazards.Count - 1; index >= 0; index--)
+        {
+            BoundaryHazard hazard = ActiveHazards[index];
+            if (hazard == null)
+            {
+                ActiveHazards.RemoveAt(index);
+                continue;
+            }
+            hazard.ApplyArenaMassGlow();
+        }
+    }
+
+    public static void SetDarknessGlowForAll(bool enabled)
+    {
+        darknessGlowActive = enabled;
+        for (int index = ActiveHazards.Count - 1; index >= 0; index--)
+        {
+            BoundaryHazard hazard = ActiveHazards[index];
+            if (hazard == null)
+            {
+                ActiveHazards.RemoveAt(index);
+                continue;
+            }
+            hazard.ApplyArenaMassGlow();
+        }
+    }
+
+    public static bool ShouldGlowDuringHollow(int populationIndex)
+    {
+        return populationIndex >= 0;
     }
 
     public void ServerPulse(bool outward)
@@ -553,7 +755,9 @@ public sealed class BoundaryHazard : NetworkBehaviour
         float bodyClearance = kind.value == BoundaryHazardKind.ArenaBlackHole
             ? sphereCollider.radius * transform.lossyScale.y
             : boxCollider.size.y * transform.lossyScale.y * 0.5f;
-        float desiredY = match.PlatformSurfaceYAtRadius(flat.magnitude) + bodyClearance;
+        float desiredY = BoundaryMatchController.IsFloatingArenaMass(variant.value)
+            ? serverTarget.y
+            : match.PlatformSurfaceYAtRadius(flat.magnitude) + bodyClearance;
         body.AddForce(Vector3.up * ((desiredY - body.position.y) * 5.2f), ForceMode.Acceleration);
         if (body.linearVelocity.magnitude > 30f)
             body.linearVelocity = body.linearVelocity.normalized * 30f;
@@ -564,9 +768,9 @@ public sealed class BoundaryHazard : NetworkBehaviour
         if (!arenaMass.value || survivesInner.value)
             return false;
 
-        bool absorbInOuter = (variant.value & 1) == 1;
-        return (absorbInOuter && activeTransition == BoundaryTransition.ClosingOuterRing) ||
-               (!absorbInOuter && activeTransition == BoundaryTransition.ClosingMiddleRing);
+        bool survivesInitialCollapse = BoundaryMath.SurvivesInitialBoundaryCollapse(variant.value);
+        return (!survivesInitialCollapse && activeTransition == BoundaryTransition.ClosingOuterRing) ||
+               (survivesInitialCollapse && activeTransition == BoundaryTransition.ClosingMiddleRing);
     }
 
     private void TickRainSingularity()
@@ -667,7 +871,8 @@ public sealed class BoundaryHazard : NetworkBehaviour
         if (collision == null)
             return;
 
-        if (isServer && arenaMass.value && kind.value == BoundaryHazardKind.ArenaBlackHole)
+        if (isServer && arenaMass.value &&
+            (kind.value == BoundaryHazardKind.ArenaBlackHole || kind.value == BoundaryHazardKind.Cube))
         {
             BoundaryBreakawayPlatform platform = collision.collider.GetComponentInParent<BoundaryBreakawayPlatform>();
             if (platform != null &&
@@ -680,7 +885,17 @@ public sealed class BoundaryHazard : NetworkBehaviour
         }
 
         PlayerMovement movement = collision.collider.GetComponentInParent<PlayerMovement>();
-        if (movement == null || !movement.isOwner)
+        if (movement == null)
+            return;
+
+        if (isServer && (kind.value == BoundaryHazardKind.ArenaBlackHole ||
+                         kind.value == BoundaryHazardKind.Cube))
+        {
+            movement.GetComponent<BoundaryPlayerState>()?.ServerRegisterBlackHoleContact(gameObject.GetInstanceID());
+            return;
+        }
+
+        if (!movement.isOwner)
             return;
 
         if (BoundaryMath.IsLethalContactHazard(kind.value, arenaMass.value))
@@ -706,6 +921,17 @@ public sealed class BoundaryHazard : NetworkBehaviour
                 ? BoundaryMath.DisasterPower(BoundaryDisaster.OrbitalStrike)
                 : 1f);
         movement.ApplyBoundaryImpulse(direction.normalized * impact);
+    }
+
+    private void OnCollisionStay(Collision collision)
+    {
+        if (!isServer || collision == null ||
+            (kind.value != BoundaryHazardKind.ArenaBlackHole && kind.value != BoundaryHazardKind.Cube))
+            return;
+
+        BoundaryPlayerState state = collision.collider.GetComponentInParent<BoundaryPlayerState>();
+        if (state != null)
+            state.ServerRegisterBlackHoleContact(gameObject.GetInstanceID());
     }
 
     private void OnTriggerEnter(Collider other)
@@ -808,17 +1034,22 @@ public sealed class BoundaryHazard : NetworkBehaviour
         }
 
         cubeRenderer.gameObject.SetActive(!sphere);
+        bool tesseractCube = kind.value == BoundaryHazardKind.Cube;
+        cubeRenderer.enabled = !tesseractCube;
+        if (tesseractRig != null)
+            tesseractRig.gameObject.SetActive(tesseractCube);
         sphereRenderer.gameObject.SetActive(sphere);
         if (blackHoleRig != null)
             blackHoleRig.gameObject.SetActive(sphere);
 
         if (cubeMaterial == null)
-            cubeMaterial = CreateMaterial(new Color(0.12f, 0.08f, 0.20f), new Color(0.65f, 0.16f, 1f), 2.5f);
+            cubeMaterial = CreateMaterial(new Color(0.012f, 0.002f, 0.022f), new Color(0.22f, 0.015f, 0.32f), 1.35f);
         if (sphereMaterial == null)
-            sphereMaterial = CreateMaterial(new Color(0.005f, 0.002f, 0.012f), new Color(0.45f, 0.05f, 1f), 5f);
+            sphereMaterial = CreateMaterial(Color.black, Color.black, 0f);
 
         cubeRenderer.sharedMaterial = cubeMaterial;
         sphereRenderer.sharedMaterial = sphereMaterial;
+        SetTesseractEmission(TesseractBlue, 18f);
 
         switch (kind.value)
         {
@@ -835,11 +1066,63 @@ public sealed class BoundaryHazard : NetworkBehaviour
                 SetEmission(new Color(0.35f, 0.08f, 0.9f), 4.5f);
                 break;
             case BoundaryHazardKind.ArenaBlackHole:
-                SetEmission(new Color(0.16f, 0.62f, 1f), 6.5f);
+                SetArenaBlackHolePalette();
                 break;
         }
 
+        ApplyArenaMassGlow();
+
         visualApplied = true;
+    }
+
+    private void ApplyArenaMassGlow()
+    {
+        if (!buildVisuals || !arenaMass.value || !ShouldGlowDuringHollow(variant.value))
+            return;
+
+        if (kind.value == BoundaryHazardKind.Cube)
+        {
+            Color glowColor = CubeGlowColor(hollowGlowActive, darknessGlowActive);
+            float glowIntensity = CubeGlowIntensity(hollowGlowActive, darknessGlowActive);
+            SetEmission(
+                glowColor, glowIntensity);
+            SetTesseractEmission(glowColor, glowIntensity);
+        }
+        else if (kind.value == BoundaryHazardKind.ArenaBlackHole)
+        {
+            if (!hollowGlowActive && !darknessGlowActive)
+            {
+                SetArenaBlackHolePalette();
+                return;
+            }
+
+            SetMaterialColor(sphereMaterial, Color.black, Color.black);
+            for (int index = 0; index < blackHoleMaterials.Count; index++)
+            {
+                Color glow = darknessGlowActive
+                    ? index % 2 == 0 ? new Color(4f, 15f, 24f) : new Color(16f, 5f, 27f)
+                    : index % 2 == 0 ? new Color(13.5f, 2.7f, 22.5f) : new Color(3.75f, 10.5f, 24f);
+                SetMaterialColor(blackHoleMaterials[index], Color.black, glow);
+            }
+        }
+    }
+
+    private void SetArenaBlackHolePalette()
+    {
+        SetMaterialColor(sphereMaterial, Color.black, Color.black);
+        foreach (Material material in blackHoleMaterials)
+            SetMaterialColor(material, Color.black, Color.black);
+    }
+
+    private static void SetMaterialColor(Material material, Color baseColor, Color emission)
+    {
+        if (material == null)
+            return;
+        material.color = baseColor;
+        if (material.HasProperty("_BaseColor"))
+            material.SetColor("_BaseColor", baseColor);
+        if (material.HasProperty("_EmissionColor"))
+            material.SetColor("_EmissionColor", emission);
     }
 
     private void SetEmission(Color color, float intensity)
@@ -849,6 +1132,41 @@ public sealed class BoundaryHazard : NetworkBehaviour
             return;
         target.EnableKeyword("_EMISSION");
         target.SetColor("_EmissionColor", color * intensity);
+    }
+
+    private void SetTesseractEmission(Color color, float intensity)
+    {
+        tesseractGlowColor = color;
+        tesseractGlowIntensity = intensity;
+        ApplyTesseractEmission(1f);
+    }
+
+    private void ApplyTesseractEmission(float pulse)
+    {
+        if (tesseractMaterial != null)
+        {
+            tesseractMaterial.EnableKeyword("_EMISSION");
+            tesseractMaterial.SetColor("_EmissionColor",
+                tesseractGlowColor * tesseractGlowIntensity * pulse);
+        }
+        if (tesseractCoreMaterial != null)
+        {
+            tesseractCoreMaterial.EnableKeyword("_EMISSION");
+            tesseractCoreMaterial.SetColor("_EmissionColor",
+                tesseractGlowColor * tesseractGlowIntensity * pulse * 0.34f);
+        }
+    }
+
+    public static Color CubeGlowColor(bool hollowActive, bool darknessActive)
+    {
+        if (darknessActive)
+            return new Color(0.12f, 0.72f, 1f);
+        return hollowActive ? new Color(0.035f, 0.55f, 1f) : TesseractBlue;
+    }
+
+    public static float CubeGlowIntensity(bool hollowActive, bool darknessActive)
+    {
+        return darknessActive ? 32f : hollowActive ? 30f : 18f;
     }
 
     private static Material CreateMaterial(Color baseColor, Color emission, float intensity)

@@ -520,6 +520,15 @@ MonoBehaviour:
   repelExplosion: {fileID: 8300000, guid: 442236ed9689a411f93aa76b690d1e71, type: 3}
   attractExplosion: {fileID: 8300000, guid: b9eff218e132a4e76be78840eca96fb2, type: 3}
   jump: {fileID: 8300000, guid: 5950a8a948fac4595b8b1750744fb22f, type: 3}
+  outerRingClosing: {fileID: 8300000, guid: 111d2d25114de2d4c87e7801402803b3, type: 3}
+  teleportFail: {fileID: 8300000, guid: 67910a050ef05074bbddb1fc193635f7, type: 3}
+  blackHoleImplosion: {fileID: 8300000, guid: 92f809ca157e3784f8362679e1e6ab9a, type: 3}
+  teleportWindup: {fileID: 8300000, guid: f159aa2faac70ad498f3401c1215bed2, type: 3}
+  grappleActivation: {fileID: 8300000, guid: 4192ffea5b2f62c4ca9e05b6cc17b4a2, type: 3}
+  voidStart: {fileID: 8300000, guid: b2d4fb16078ece244a5081cf9e69dcb6, type: 3}
+  voidLoop: {fileID: 8300000, guid: 3dcd44873bfc8e7458fcdbbe5e1c1d5b, type: 3}
+  voidSlash: {fileID: 8300000, guid: 74a6f494eaf259243b4fbffba9cba9f6, type: 3}
+  voidEnd: {fileID: 8300000, guid: a1bbc999ff2d55d4eb374d8dd622a961, type: 3}
 --- !u!1 &960290029
 GameObject:
   m_ObjectHideFlags: 0

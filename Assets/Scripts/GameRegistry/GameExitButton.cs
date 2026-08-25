@@ -24,6 +24,21 @@ public sealed class GameExitButton : MonoBehaviour, IPointerDownHandler, IPointe
     private int holdingPointerId = int.MinValue;
     private float holdElapsed;
 
+    private void Awake()
+    {
+        // The Game HUD is scene-authored. These references used to be assigned
+        // only when the button was constructed at runtime, so they are null
+        // after loading the saved scene on device or in the Editor.
+        background = GetComponent<Image>();
+        label = GetComponentInChildren<Text>(true);
+        if (background != null)
+        {
+            background.raycastTarget = true;
+            background.color = state == ExitState.Armed ? ArmedColor : IdleColor;
+        }
+        ApplyTopLeftLayout();
+    }
+
     public static void Create(Transform safeArea)
     {
         if (safeArea == null || Application.isBatchMode ||
@@ -39,14 +54,9 @@ public sealed class GameExitButton : MonoBehaviour, IPointerDownHandler, IPointe
         buttonObject.layer = 5;
         buttonObject.transform.SetParent(safeArea, false);
 
-        RectTransform rect = (RectTransform)buttonObject.transform;
-        rect.anchorMin = Vector2.one;
-        rect.anchorMax = Vector2.one;
-        rect.pivot = Vector2.one;
-        rect.anchoredPosition = new Vector2(-24f, -24f);
-        rect.sizeDelta = new Vector2(64f, 64f);
-
         GameExitButton exitButton = buttonObject.GetComponent<GameExitButton>();
+        exitButton.ApplyTopLeftLayout();
+
         exitButton.background = buttonObject.GetComponent<Image>();
         exitButton.background.color = IdleColor;
 
@@ -143,6 +153,9 @@ public sealed class GameExitButton : MonoBehaviour, IPointerDownHandler, IPointe
 
     private void Arm()
     {
+        if (background == null || label == null)
+            return;
+
         state = ExitState.Armed;
         background.color = ArmedColor;
         label.text = "Hold to exit";
@@ -152,6 +165,9 @@ public sealed class GameExitButton : MonoBehaviour, IPointerDownHandler, IPointe
 
     private void BeginExit()
     {
+        if (background == null || label == null)
+            return;
+
         state = ExitState.Leaving;
         holding = false;
         background.raycastTarget = false;
@@ -166,6 +182,19 @@ public sealed class GameExitButton : MonoBehaviour, IPointerDownHandler, IPointe
         holding = false;
         holdingPointerId = int.MinValue;
         holdElapsed = 0f;
+    }
+
+    private void ApplyTopLeftLayout()
+    {
+        if (!(transform is RectTransform rect))
+            return;
+
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = new Vector2(24f, -24f);
+        if (rect.sizeDelta.sqrMagnitude < 0.01f)
+            rect.sizeDelta = new Vector2(64f, 64f);
     }
 
     public static bool ShouldArmAfterTap(bool releasedInsideButton)

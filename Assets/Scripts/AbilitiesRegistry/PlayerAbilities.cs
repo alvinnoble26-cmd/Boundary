@@ -5,9 +5,15 @@ using System.Collections;
 using PurrNet; 
 using PurrNet.Modules;
 using UnityEngine.SceneManagement;
+using UnityEngine.EventSystems;
 
 public class PlayerAbilities : NetworkBehaviour 
 {
+    private const float GrappleEyeHeight = 1.1f;
+    private const float MaximumSubmittedEyeOffset = 3.5f;
+    private const float MaximumSubmittedAbilityOriginOffset = 4f;
+    private const float GrappleHitValidationTolerance = 0.75f;
+
     [Header("Game UI Names")]
     [SerializeField] private string btn1Name = "AbilityButton1";
     [SerializeField] private string btn2Name = "AbilityButton2";
@@ -22,13 +28,26 @@ public class PlayerAbilities : NetworkBehaviour
 
     private AbilityId?[] slots = new AbilityId?[3];
     private readonly float[] slotCooldownEnds = new float[3];
+    private readonly Dictionary<AbilityId, float> serverAbilityCooldownEnds = new Dictionary<AbilityId, float>();
     private readonly AbilityCooldownButton[] cooldownVisuals = new AbilityCooldownButton[3];
     private bool hasStartedSkinLoad;
     private Cam localCameraController;
     private Coroutine serverTeleportWindup;
     private GrappleAbility grappleAbility;
+    private HollowAbility hollowAbility;
+    private VoidAbility voidAbility;
     private Coroutine serverGrappleRoutine;
+    private Coroutine serverHollowRoutine;
+    private Coroutine serverVoidRoutine;
     private float serverGrappleCooldownUntil;
+    private float serverHollowCooldownUntil;
+    private float serverVoidCooldownUntil;
+    private readonly Collider[] voidOverlapBuffer = new Collider[160];
+    private readonly HashSet<Rigidbody> voidPulledBodies = new HashSet<Rigidbody>();
+    private GameObject grappleTargetReticle;
+    private int hollowHeldSlot = -1;
+    private int grappleHeldSlot = -1;
+    private Coroutine localHollowChargeRoutine;
 
 
     protected override void OnSpawned()
@@ -54,6 +73,8 @@ protected override void OnOwnerChanged(PlayerID? oldOwner, PlayerID? newOwner, b
 private void SetupLocalPlayer()
 {
     EnsureGrappleAbility();
+    EnsureHollowAbility();
+    EnsureVoidAbility();
     localCameraController = GetComponentInChildren<Cam>(true);
 
     // Cam owns the Camera and AudioListener lifecycle. Enabling either one
@@ -95,6 +116,24 @@ private void EnsureGrappleAbility()
     if (grappleAbility == null)
         grappleAbility = gameObject.AddComponent<GrappleAbility>();
     registry?.Register(grappleAbility);
+}
+
+private void EnsureHollowAbility()
+{
+    if (hollowAbility == null)
+        hollowAbility = GetComponent<HollowAbility>();
+    if (hollowAbility == null)
+        hollowAbility = gameObject.AddComponent<HollowAbility>();
+    registry?.Register(hollowAbility);
+}
+
+private void EnsureVoidAbility()
+{
+    if (voidAbility == null)
+        voidAbility = GetComponent<VoidAbility>();
+    if (voidAbility == null)
+        voidAbility = gameObject.AddComponent<VoidAbility>();
+    registry?.Register(voidAbility);
 }
 
 private async void LoadAndSyncSelectedSkin()
@@ -286,7 +325,40 @@ private static void RemovePreviouslyEquippedSkins(Transform tilt)
     [ServerRpc]
     private void RequestSyncLoadout(AbilityId[] selectedIds)
     {
+        EnsureGrappleAbility();
+        EnsureHollowAbility();
+        EnsureVoidAbility();
+        if (!TryApplyAuthoritativeLoadout(selectedIds))
+        {
+            Debug.LogWarning("[PlayerAbilities] Rejected an invalid ability loadout.");
+            return;
+        }
+
         SyncLoadoutToObservers(selectedIds);
+    }
+
+    private bool TryApplyAuthoritativeLoadout(AbilityId[] selectedIds)
+    {
+        if (selectedIds == null || selectedIds.Length > slots.Length)
+            return false;
+
+        for (int index = 0; index < selectedIds.Length; index++)
+        {
+            AbilityId id = selectedIds[index];
+            if (!System.Enum.IsDefined(typeof(AbilityId), id) || registry == null ||
+                !registry.TryGet(id, out _))
+                return false;
+
+            for (int earlierIndex = 0; earlierIndex < index; earlierIndex++)
+            {
+                if (selectedIds[earlierIndex] == id)
+                    return false;
+            }
+        }
+
+        for (int index = 0; index < slots.Length; index++)
+            slots[index] = index < selectedIds.Length ? selectedIds[index] : null;
+        return true;
     }
 
 [ObserversRpc]
@@ -294,10 +366,8 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
 {
     if (isOwner) return;
 
-    for (int i = 0; i < slots.Length && i < selectedIds.Length; i++)
-    {
-        slots[i] = selectedIds[i];
-    }
+    for (int i = 0; i < slots.Length; i++)
+        slots[i] = selectedIds != null && i < selectedIds.Length ? selectedIds[i] : null;
     
     // Fixed line
     Debug.Log($"Synced {selectedIds.Length} abilities for player {owner?.id.ToString() ?? "Unknown"}");
@@ -306,6 +376,16 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     [ServerRpc]
     private void RequestActivateAbility(AbilityId id, Vector3 spawnPosition, Vector3 aimDirection)
     {
+        if (!IsFiniteVector(spawnPosition) || !IsFiniteVector(aimDirection) ||
+            aimDirection.sqrMagnitude < 0.0001f ||
+            Vector3.Distance(spawnPosition, transform.position) > MaximumSubmittedAbilityOriginOffset ||
+            !IsAbilityEquipped(id))
+            return;
+
+        if ((id == AbilityId.Dash || id == AbilityId.Slide || id == AbilityId.Teleport) &&
+            !TryConsumeServerAbilityCooldown(id))
+            return;
+
         if (id == AbilityId.BlackThrow || id == AbilityId.AttractThrow || id == AbilityId.RepelThrow)
         {
             // Physical projectiles are instantiated exactly once on the server.
@@ -317,63 +397,256 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
 
         if (id == AbilityId.Teleport)
         {
-            BeginServerTeleportWindup();
+            BeginServerTeleportWindup(spawnPosition, aimDirection);
             return;
         }
 
-        ObserversActivateAbility(id);
+        ObserversActivateAbility(id, aimDirection);
+    }
+
+    private bool IsAbilityEquipped(AbilityId id)
+    {
+        for (int slotIndex = 0; slotIndex < slots.Length; slotIndex++)
+        {
+            if (slots[slotIndex] == id)
+                return true;
+        }
+        return false;
+    }
+
+    private bool TryConsumeServerAbilityCooldown(AbilityId id)
+    {
+        if (serverAbilityCooldownEnds.TryGetValue(id, out float cooldownEnd) && Time.time < cooldownEnd)
+            return false;
+        if (registry == null || !registry.TryGet(id, out IAbility ability))
+            return false;
+
+        serverAbilityCooldownEnds[id] = Time.time + GetPhaseAdjustedCooldown(ability.CooldownDuration);
+        return true;
     }
 
     [ServerRpc]
-    private void RequestGrapple(Vector3 aimDirection, int slotIndex)
+    private void RequestHollow(Vector3 submittedEyePosition, Vector3 aimDirection, int slotIndex)
     {
-        EnsureGrappleAbility();
-        if (serverGrappleRoutine != null || Time.time < serverGrappleCooldownUntil ||
+        EnsureHollowAbility();
+        if (serverHollowRoutine != null || Time.time < serverHollowCooldownUntil ||
+            slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Hollow ||
+            !IsFiniteVector(submittedEyePosition) || !IsFiniteVector(aimDirection) ||
             aimDirection.sqrMagnitude < 0.0001f)
             return;
 
-        Camera serverCamera = GetComponentInChildren<Camera>(true);
-        Vector3 origin = serverCamera != null
-            ? serverCamera.transform.position
-            : transform.position + Vector3.up * 1.1f;
-        if (!Physics.Raycast(origin, aimDirection.normalized, out RaycastHit hit,
-                GrappleAbility.MaximumRange, ~0, QueryTriggerInteraction.Ignore) ||
-            hit.collider == null || hit.collider.isTrigger ||
-            hit.collider.transform.root == transform.root ||
-            hit.collider.GetComponentInParent<PlayerMovement>() != null)
+        Vector3 expectedEye = transform.position + Vector3.up * HollowAbility.EyeHeight;
+        if (Vector3.Distance(submittedEyePosition, expectedEye) > MaximumSubmittedEyeOffset)
             return;
 
-        BoundaryHazard hazard = hit.collider.GetComponentInParent<BoundaryHazard>();
-        NetworkProjectilePhysics projectile = hit.collider.GetComponentInParent<NetworkProjectilePhysics>();
-        bool movable = (hazard != null && hazard.IsArenaMass &&
-                        (hazard.Kind == BoundaryHazardKind.Cube || hazard.Kind == BoundaryHazardKind.ArenaBlackHole)) ||
-                       (projectile != null && projectile.GetComponentInChildren<BlackHoleKill>() != null);
-        if (hazard != null && !movable)
+        Vector3 direction = aimDirection.normalized;
+        serverHollowCooldownUntil = Time.time + HollowAbility.CooldownSeconds;
+        ObserversBeginHollow(direction);
+        serverHollowRoutine = StartCoroutine(ServerRunHollow(direction));
+    }
+
+    private IEnumerator ServerRunHollow(Vector3 direction)
+    {
+        yield return new WaitForSeconds(HollowAbility.ChargeDuration);
+
+        Vector3 origin = HollowAbility.GetBlastOrigin(transform.position, direction);
+        BoundaryPlayerState[] targets = FindObjectsByType<BoundaryPlayerState>(FindObjectsSortMode.None);
+        float startedAt = Time.time;
+        float lastTickAt = startedAt;
+        while (Time.time - startedAt < HollowAbility.BlastDuration)
+        {
+            yield return new WaitForFixedUpdate();
+            float cappedNow = Mathf.Min(Time.time, startedAt + HollowAbility.BlastDuration);
+            float elapsed = Mathf.Max(0f, cappedNow - lastTickAt);
+            lastTickAt = cappedNow;
+            if (elapsed <= 0f)
+                continue;
+
+            foreach (BoundaryPlayerState target in targets)
+            {
+                if (target == null || target.transform.root == transform.root)
+                    continue;
+                Vector3 targetCenter = target.transform.position + Vector3.up * HollowAbility.TargetCenterHeight;
+                if (HollowAbility.IsPointInsideBlast(targetCenter, origin, direction))
+                    target.ServerApplyAbilityDamage(HollowAbility.DamagePerSecond * elapsed);
+            }
+        }
+
+        serverHollowRoutine = null;
+    }
+
+    [ServerRpc]
+    private void RequestVoid(Vector3 submittedAimDirection, int slotIndex)
+    {
+        EnsureVoidAbility();
+        if (serverVoidRoutine != null || Time.time < serverVoidCooldownUntil ||
+            slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Void ||
+            !IsFiniteVector(submittedAimDirection) || submittedAimDirection.sqrMagnitude < 0.0001f)
             return;
 
-        if (projectile != null && !movable)
+        BoundaryPlayerState caster = GetComponent<BoundaryPlayerState>();
+        bool practiceMode = GameManager.I != null && GameManager.I.IsPracticeMode;
+        BoundaryPlayerState opponent = null;
+        bool hasOpponent = caster != null &&
+            BoundaryPlayerState.TryGetOpponent(caster, out opponent);
+        float opponentHealth = hasOpponent && opponent != null ? opponent.CurrentHealth : 0f;
+        if (caster == null || !VoidAbility.CanActivateForMode(
+                practiceMode, hasOpponent, caster.CurrentHealth, opponentHealth))
             return;
 
-        Rigidbody targetBody = movable ? hit.rigidbody : null;
-        if (movable && targetBody == null)
+        Vector3 groundPosition = VoidAbility.GetBlackHoleGroundPosition(transform.position,
+            submittedAimDirection);
+        int seed = unchecked(gameObject.GetInstanceID() * 397 ^ Mathf.RoundToInt(Time.time * 1000f));
+        serverVoidCooldownUntil = Time.time + VoidAbility.CooldownSeconds;
+        caster.ServerGrantInvulnerability(VoidAbility.ImmunitySeconds);
+        if (owner.HasValue)
+            ConfirmVoidCooldown(owner.Value, slotIndex);
+        ObserversBeginVoid(groundPosition, seed);
+        serverVoidRoutine = StartCoroutine(ServerRunVoid(groundPosition, opponent));
+    }
+
+    private IEnumerator ServerRunVoid(Vector3 groundPosition, BoundaryPlayerState opponent)
+    {
+        Vector3 blackHolePosition = groundPosition + Vector3.up * VoidAbility.BlackHoleHeight;
+        float endsAt = Time.time + VoidAbility.DurationSeconds;
+        float nextOpponentPullAt = Time.time;
+        while (Time.time < endsAt)
+        {
+            yield return new WaitForFixedUpdate();
+            if (Time.time >= nextOpponentPullAt)
+            {
+                PullVoidOpponent(blackHolePosition, opponent, 0.1f);
+                nextOpponentPullAt = Time.time + 0.1f;
+            }
+            PullVoidHazards(blackHolePosition);
+        }
+
+        serverVoidRoutine = null;
+    }
+
+    private static void PullVoidOpponent(Vector3 center, BoundaryPlayerState opponent, float elapsed)
+    {
+        if (opponent == null)
             return;
-        if (!movable && hit.rigidbody != null)
+        Vector3 delta = center - (opponent.transform.position + Vector3.up * 0.8f);
+        float distance = delta.magnitude;
+        if (distance <= 0.05f || distance >= VoidAbility.GravityRadius)
+            return;
+        opponent.ServerPushOwner(delta.normalized * VoidAbility.GravityAcceleration *
+            VoidAbility.GravityFalloff(distance) * elapsed);
+    }
+
+    private void PullVoidHazards(Vector3 center)
+    {
+        BoundaryHazard.ServerApplyArenaMassGravity(
+            center, VoidAbility.GravityRadius, VoidAbility.GravityAcceleration);
+        NetworkProjectilePhysics.ServerApplyBlackHoleGravity(
+            center, VoidAbility.GravityRadius, VoidAbility.GravityAcceleration);
+
+        int hitCount = Physics.OverlapSphereNonAlloc(center, VoidAbility.GravityRadius,
+            voidOverlapBuffer, ~0, QueryTriggerInteraction.Ignore);
+        voidPulledBodies.Clear();
+        for (int index = 0; index < hitCount; index++)
+        {
+            Collider hit = voidOverlapBuffer[index];
+            Rigidbody body = hit != null ? hit.attachedRigidbody : null;
+            if (body == null || body.isKinematic || !voidPulledBodies.Add(body) ||
+                body.GetComponentInParent<PlayerMovement>() != null)
+                continue;
+
+            BoundaryHazard hazard = body.GetComponentInParent<BoundaryHazard>();
+            NetworkArenaCubePhysics arenaCube = body.GetComponentInParent<NetworkArenaCubePhysics>();
+            if (hazard != null || arenaCube == null)
+                continue;
+
+            Vector3 delta = center - body.worldCenterOfMass;
+            float distance = delta.magnitude;
+            if (distance <= 0.05f || distance >= VoidAbility.GravityRadius)
+                continue;
+            body.AddForce(delta.normalized * VoidAbility.GravityAcceleration *
+                VoidAbility.GravityFalloff(distance), ForceMode.Acceleration);
+        }
+    }
+
+    [TargetRpc]
+    private void ConfirmVoidCooldown(PlayerID target, int slotIndex)
+    {
+        if (!isOwner || slotIndex < 0 || slotIndex >= slotCooldownEnds.Length)
+            return;
+        slotCooldownEnds[slotIndex] = Time.time + VoidAbility.CooldownSeconds;
+        cooldownVisuals[slotIndex]?.BeginCooldown(VoidAbility.CooldownSeconds);
+    }
+
+    [ObserversRpc]
+    private void ObserversBeginVoid(Vector3 groundPosition, int seed)
+    {
+        EnsureVoidAbility();
+        BoundaryPlayerState caster = GetComponent<BoundaryPlayerState>();
+        bool hasOpponent = caster != null && BoundaryPlayerState.TryGetOpponent(caster, out _);
+        voidAbility.BeginPresentation(groundPosition, seed,
+            VoidAbility.ShouldShowEnemyHighlight(isOwner, hasOpponent));
+    }
+
+    [ObserversRpc]
+    private void ObserversBeginHollow(Vector3 direction)
+    {
+        EnsureHollowAbility();
+        hollowAbility.BeginPresentation(direction, true);
+        if (isOwner)
+            GetLocalCameraController()?.RequestHollowShake();
+    }
+
+    [ServerRpc]
+    private void RequestGrapple(Vector3 aimOrigin, Vector3 requestedPoint,
+        NetworkIdentity requestedTarget, int slotIndex)
+    {
+        EnsureGrappleAbility();
+        if (serverGrappleRoutine != null || Time.time < serverGrappleCooldownUntil ||
+            slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Grapple ||
+            !IsFiniteVector(aimOrigin) || !IsFiniteVector(requestedPoint))
             return;
 
-        NetworkIdentity targetIdentity = hit.collider.GetComponentInParent<NetworkIdentity>();
+        Vector3 expectedEye = transform.position + Vector3.up * GrappleEyeHeight;
+        if (Vector3.Distance(aimOrigin, expectedEye) > MaximumSubmittedEyeOffset)
+            return;
+
+        Vector3 validatedPoint = requestedTarget != null
+            ? requestedTarget.transform.TransformPoint(requestedPoint)
+            : requestedPoint;
+        Vector3 rayDelta = validatedPoint - aimOrigin;
+        float requestedDistance = rayDelta.magnitude;
+        if (requestedDistance <= 0.001f || requestedDistance > GrappleAbility.MaximumRange ||
+            !Physics.Raycast(aimOrigin, rayDelta / requestedDistance, out RaycastHit hit,
+                requestedDistance + GrappleHitValidationTolerance, ~0, QueryTriggerInteraction.Ignore) ||
+            !TryResolveGrappleTarget(hit, out bool movable, out Rigidbody targetBody,
+                out NetworkIdentity targetIdentity))
+            return;
+
+        if (movable
+            ? requestedTarget == null || targetIdentity != requestedTarget
+            : requestedTarget != null || Vector3.Distance(hit.point, requestedPoint) > GrappleHitValidationTolerance)
+            return;
+
         serverGrappleCooldownUntil = Time.time + GrappleAbility.CooldownSeconds;
         ObserversBeginGrapple(hit.point, targetIdentity, movable);
         if (owner.HasValue)
             ConfirmGrappleCooldown(owner.Value, slotIndex);
-        serverGrappleRoutine = StartCoroutine(CompleteServerGrapple(targetBody, hit.point, movable));
+        serverGrappleRoutine = StartCoroutine(CompleteServerGrapple(
+            targetBody, hit.point, movable, Time.time));
     }
 
-    private IEnumerator CompleteServerGrapple(Rigidbody targetBody, Vector3 staticAnchor, bool movable)
+    private IEnumerator CompleteServerGrapple(Rigidbody targetBody, Vector3 staticAnchor, bool movable,
+        float activatedAt)
     {
-        float visibleUntil = Time.time + 0.2f;
-        while (movable
+        Rigidbody playerBody = GetComponentInChildren<Rigidbody>();
+        float cableTravelTime = GrappleAbility.GetCableTravelDuration(
+            Vector3.Distance(transform.position, staticAnchor));
+        yield return new WaitForSeconds(cableTravelTime);
+
+        float visibleUntil = Time.time + 0.14f;
+        while (!GrappleAbility.HasTimedOut(activatedAt, Time.time) && (movable
             ? targetBody != null && (Time.time < visibleUntil || Vector3.Distance(targetBody.position, transform.position) > 1.5f)
-            : Time.time < visibleUntil || Vector3.Distance(transform.position, staticAnchor) > 1.5f)
+            : playerBody != null && (Time.time < visibleUntil || Vector3.Distance(playerBody.worldCenterOfMass, staticAnchor) > GrappleAbility.ReleaseDistance)))
         {
             if (movable)
                 targetBody.AddForce((transform.position - targetBody.position).normalized * 36f, ForceMode.Acceleration);
@@ -427,14 +700,15 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
         ObserversEndGrapple();
     }
 
-    private void BeginServerTeleportWindup()
+    private void BeginServerTeleportWindup(Vector3 aimOrigin, Vector3 aimDirection)
     {
         if (serverTeleportWindup != null || registry == null ||
             !registry.TryGet(AbilityId.Teleport, out var ability) ||
             !(ability is TeleportAbility teleport))
             return;
 
-        if (!teleport.TryPrepareWindup(out Vector3 start, out Vector3 destination, out Vector3 direction))
+        if (!teleport.TryPrepareWindup(aimOrigin, aimDirection, out Vector3 start, out Vector3 destination,
+                out Vector3 direction))
         {
             ObserversTeleportFailed(start, direction);
             return;
@@ -447,9 +721,10 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     private IEnumerator CompleteServerTeleportWindup(TeleportAbility teleport, Vector3 destination, Vector3 direction)
     {
         yield return new WaitForSeconds(TeleportAbility.WindupDuration);
-        if (teleport != null)
-            teleport.CompleteServerTeleport(destination);
-        ObserversCompleteTeleportWindup(destination, direction);
+        if (teleport != null && teleport.TryCompleteServerTeleport(ref destination))
+            ObserversCompleteTeleportWindup(destination, direction);
+        else
+            ObserversTeleportFailed(transform.position, direction);
         serverTeleportWindup = null;
     }
 
@@ -494,11 +769,54 @@ private void ActivateNetworkThrow(AbilityId id, Vector3 spawnPosition, Vector3 a
 }
 
 [ObserversRpc]
-private void ObserversActivateAbility(AbilityId id)
+private void ObserversActivateAbility(AbilityId id, Vector3 aimDirection)
 {
-    Debug.Log($"[PlayerAbilities] ObserversActivateAbility id={id} isOwner={isOwner} registry={registry != null}");
-    
+    // Dash and Slide movement remains owner-simulated. The server relays a
+    // direction-only presentation to every observer so remote clients do not
+    // need to run movement/collision logic merely to see the effects.
+    if (id == AbilityId.Dash && registry != null && registry.TryGet(id, out var dashAbility) &&
+        dashAbility is DashAbility dash)
+    {
+        if (isOwner)
+            dash.Activate();
+        else
+            dash.PlayObserverPresentation(aimDirection);
+        return;
+    }
+
+    if (id == AbilityId.Slide && registry != null && registry.TryGet(id, out var slideAbility) &&
+        slideAbility is SlideAbility slide)
+    {
+        if (isOwner)
+            slide.Activate();
+        else
+            slide.PlayObserverPresentation(aimDirection);
+        return;
+    }
+
     ActivateAbility(id);
+}
+
+// Slide jumps are resolved by the owning player, so relay the short radial
+// burst separately once that move has actually happened.
+public void NotifySlideJumpPresentation(Vector3 position)
+{
+    if (isOwner)
+        RequestSlideJumpPresentation(position);
+}
+
+[ServerRpc]
+private void RequestSlideJumpPresentation(Vector3 position)
+{
+    ObserversPlaySlideJumpPresentation(position);
+}
+
+[ObserversRpc(excludeOwner: true)]
+private void ObserversPlaySlideJumpPresentation(Vector3 position)
+{
+    if (registry != null && registry.TryGet(AbilityId.Slide, out var ability) &&
+        ability is SlideAbility slide)
+        slide.PlayObserverJumpBurst(position);
 }
 
 private void ActivateAbility(AbilityId id)
@@ -536,6 +854,15 @@ private void ActivateAbility(AbilityId id)
         if (btn == null) return;
         btn.onClick.RemoveAllListeners();
 
+        AbilityReleaseButton releaseButton = btn.GetComponent<AbilityReleaseButton>();
+        if (releaseButton != null)
+            releaseButton.Configure(null);
+
+        AbilityTouchTransferTarget transferTarget = btn.GetComponent<AbilityTouchTransferTarget>();
+        if (transferTarget == null)
+            transferTarget = btn.gameObject.AddComponent<AbilityTouchTransferTarget>();
+        transferTarget.Configure(null);
+
         AbilityCooldownButton cooldownVisual = btn.GetComponent<AbilityCooldownButton>();
         if (cooldownVisual == null)
             cooldownVisual = btn.gameObject.AddComponent<AbilityCooldownButton>();
@@ -551,8 +878,75 @@ private void ActivateAbility(AbilityId id)
         }
 
         btn.interactable = true;
-        btn.onClick.AddListener(() => UseSlot(slotIndex));
+        System.Action pressAction =
+            id.Value == AbilityId.Hollow ? () => BeginHollowHold(slotIndex) :
+            id.Value == AbilityId.Grapple ? () => BeginGrappleHold(slotIndex) : null;
+        System.Action cancelAction =
+            id.Value == AbilityId.Hollow ? CancelHollowHold :
+            id.Value == AbilityId.Grapple ? CancelGrappleHold : null;
+        transferTarget.Configure(() => UseSlot(slotIndex), pressAction, cancelAction);
+        if (RequiresReleaseActivation(id.Value))
+        {
+            if (releaseButton == null)
+                releaseButton = btn.gameObject.AddComponent<AbilityReleaseButton>();
+
+            // The player can hold this touch while using a second touch to
+            // look around. Aim is sampled only when this touch is released.
+            releaseButton.Configure(
+                () => UseSlot(slotIndex),
+                pressAction,
+                cancelAction);
+        }
+        else
+        {
+            btn.onClick.AddListener(() => UseSlot(slotIndex));
+        }
     }
+
+    private static bool RequiresReleaseActivation(AbilityId id)
+    {
+        return id == AbilityId.BlackThrow ||
+               id == AbilityId.AttractThrow ||
+               id == AbilityId.RepelThrow ||
+               id == AbilityId.Dash ||
+               id == AbilityId.Slide ||
+               id == AbilityId.Grapple ||
+               id == AbilityId.Hollow ||
+               id == AbilityId.Void ||
+               id == AbilityId.Teleport;
+    }
+
+private void BeginHollowHold(int slotIndex)
+{
+    if (slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Hollow ||
+        Time.time < slotCooldownEnds[slotIndex])
+        return;
+
+    hollowHeldSlot = slotIndex;
+    UpdateHollowArms();
+}
+
+private void CancelHollowHold()
+{
+    hollowHeldSlot = -1;
+    if (localHollowChargeRoutine == null)
+        GetLocalCameraController()?.SetHollowArmsActive(false, transform.position);
+}
+
+private void BeginGrappleHold(int slotIndex)
+{
+    if (slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Grapple ||
+        Time.time < slotCooldownEnds[slotIndex])
+        return;
+
+    grappleHeldSlot = slotIndex;
+}
+
+private void CancelGrappleHold()
+{
+    grappleHeldSlot = -1;
+    SetGrappleTargetReticleVisible(false);
+}
 
 void UseSlot(int slotIndex)
 {
@@ -567,14 +961,21 @@ void UseSlot(int slotIndex)
     if (Time.time < slotCooldownEnds[slotIndex])
         return;
 
+    // Slide support is owner-local. Validate it before starting the UI cooldown
+    // or relaying presentation to observers.
+    if (id == AbilityId.Slide &&
+        (registry == null || !registry.TryGet(AbilityId.Slide, out var slideAbility) ||
+         !(slideAbility is SlideAbility slide) || !slide.CanActivate()))
+        return;
+
     Debug.Log($"[PlayerAbilities] UseSlot {slotIndex} id={id}");
 
     float cooldownDuration = 0f;
-    if (id != AbilityId.Grapple)
+    if (id != AbilityId.Grapple && id != AbilityId.Void)
     {
         cooldownDuration = GetCooldownDuration(id.Value);
         BoundaryMatchController match = BoundaryMatchController.Instance;
-        if (match != null)
+        if (match != null && id != AbilityId.Hollow)
         {
             if (match.Phase == BoundaryPhase.OuterRing)
                 cooldownDuration *= 0.94f;
@@ -592,15 +993,50 @@ void UseSlot(int slotIndex)
         : transform;
     Camera ownerCamera = GetComponentInChildren<Camera>(true);
     ThrowPoint point = transform.root.GetComponentInChildren<ThrowPoint>(true);
-    Vector3 spawnPosition = point != null ? point.transform.position : transform.position + aim.forward;
     Vector3 cameraDirection = ownerCamera != null ? ownerCamera.transform.forward : aim.forward;
+    Vector3 spawnPosition = id == AbilityId.Teleport && ownerCamera != null
+        ? ownerCamera.transform.position
+        : point != null ? point.transform.position : transform.position + aim.forward;
     Vector3 aimDirection = cameraDirection.sqrMagnitude > 0.0001f
         ? cameraDirection.normalized
         : transform.forward;
 
+    if (id == AbilityId.Dash && registry != null &&
+        registry.TryGet(AbilityId.Dash, out IAbility dashNetworkAbility) &&
+        dashNetworkAbility is DashAbility dashForDirection)
+    {
+        aimDirection = dashForDirection.GetActivationDirection();
+    }
+    else if (id == AbilityId.Slide && registry != null &&
+             registry.TryGet(AbilityId.Slide, out IAbility slideNetworkAbility) &&
+             slideNetworkAbility is SlideAbility slideForDirection &&
+             slideForDirection.TryGetActivationDirection(out Vector3 slideDirection))
+    {
+        aimDirection = slideDirection;
+    }
+
     if (id == AbilityId.Grapple)
     {
-        RequestGrapple(aimDirection, slotIndex);
+        grappleHeldSlot = -1;
+        SetGrappleTargetReticleVisible(false);
+        if (TryCaptureGrappleRequest(out Vector3 grappleOrigin, out Vector3 requestedPoint,
+                out NetworkIdentity requestedTarget))
+            RequestGrapple(grappleOrigin, requestedPoint, requestedTarget, slotIndex);
+        return;
+    }
+
+    if (id == AbilityId.Hollow)
+    {
+        hollowHeldSlot = -1;
+        BeginLocalHollowChargePresentation(aimDirection);
+        RequestHollow(ownerCamera != null ? ownerCamera.transform.position : transform.position,
+            aimDirection, slotIndex);
+        return;
+    }
+
+    if (id == AbilityId.Void)
+    {
+        RequestVoid(aimDirection, slotIndex);
         return;
     }
 
@@ -622,6 +1058,238 @@ private void Update()
         (registry.TryGet(AbilityId.Dash, out var dash) && dash is DashAbility dashAbility && dashAbility.IsActive);
 
     localCameraController?.SetMovementArmActive(movementAbilityActive);
+    UpdateHollowArms();
+    UpdateGrappleButtonAvailability();
+    UpdateVoidButtonAvailability();
+}
+
+private void UpdateVoidButtonAvailability()
+{
+    BoundaryPlayerState caster = GetComponent<BoundaryPlayerState>();
+    bool practiceMode = GameManager.I != null && GameManager.I.IsPracticeMode;
+    BoundaryPlayerState opponent = null;
+    bool hasOpponent = caster != null &&
+        BoundaryPlayerState.TryGetOpponent(caster, out opponent);
+    float opponentHealth = hasOpponent && opponent != null ? opponent.CurrentHealth : 0f;
+    bool eligible = caster != null && VoidAbility.CanActivateForMode(
+        practiceMode, hasOpponent, caster.CurrentHealth, opponentHealth);
+    for (int slotIndex = 0; slotIndex < slots.Length; slotIndex++)
+    {
+        if (slots[slotIndex] != AbilityId.Void)
+            continue;
+        Button button = GetAbilityButton(slotIndex);
+        if (button != null)
+            button.interactable = Time.time >= slotCooldownEnds[slotIndex] && eligible;
+    }
+}
+
+private void UpdateHollowArms()
+{
+    if (hollowHeldSlot < 0 || hollowHeldSlot >= slots.Length ||
+        slots[hollowHeldSlot] != AbilityId.Hollow)
+        return;
+
+    Camera ownerCamera = GetComponentInChildren<Camera>(true);
+    Vector3 direction = ownerCamera != null ? ownerCamera.transform.forward : transform.forward;
+    Vector3 target = HollowAbility.GetChargePresentationPosition(transform.position, direction);
+    GetLocalCameraController()?.SetHollowArmsActive(true, target);
+}
+
+private void BeginLocalHollowChargePresentation(Vector3 direction)
+{
+    if (localHollowChargeRoutine != null)
+        StopCoroutine(localHollowChargeRoutine);
+    localHollowChargeRoutine = StartCoroutine(ShowLocalHollowArmsDuringCharge(direction));
+}
+
+private IEnumerator ShowLocalHollowArmsDuringCharge(Vector3 direction)
+{
+    if (direction.sqrMagnitude < 0.0001f)
+        direction = transform.forward;
+    direction.Normalize();
+
+    float endsAt = Time.time + HollowAbility.ChargeDuration;
+    while (Time.time < endsAt)
+    {
+        Vector3 target = HollowAbility.GetChargePresentationPosition(transform.position, direction);
+        GetLocalCameraController()?.SetHollowArmsActive(true, target);
+        yield return null;
+    }
+
+    GetLocalCameraController()?.SetHollowArmsActive(false, transform.position);
+    localHollowChargeRoutine = null;
+}
+
+public static float GetPhaseAdjustedCooldown(float baseCooldown)
+{
+    BoundaryMatchController match = BoundaryMatchController.Instance;
+    if (match == null)
+        return baseCooldown;
+    if (match.Phase == BoundaryPhase.OuterRing)
+        return baseCooldown * 0.94f;
+    if (match.Phase == BoundaryPhase.MiddleRing)
+        return baseCooldown * 0.88f;
+    if (match.Phase == BoundaryPhase.InnerRing)
+        return baseCooldown * 0.76f;
+    return baseCooldown;
+}
+
+private void UpdateGrappleButtonAvailability()
+{
+    bool grappleEquipped = false;
+    for (int slotIndex = 0; slotIndex < slots.Length; slotIndex++)
+    {
+        if (slots[slotIndex] == AbilityId.Grapple)
+        {
+            grappleEquipped = true;
+            break;
+        }
+    }
+
+    if (!grappleEquipped)
+    {
+        grappleHeldSlot = -1;
+        SetGrappleTargetReticleVisible(false);
+        return;
+    }
+
+    bool hasValidTarget = TryCaptureGrappleRequest(out _, out _, out _);
+    bool grappleHeld = grappleHeldSlot >= 0 && grappleHeldSlot < slots.Length &&
+        slots[grappleHeldSlot] == AbilityId.Grapple;
+    SetGrappleTargetReticleVisible(grappleHeld && hasValidTarget);
+
+    for (int slotIndex = 0; slotIndex < slots.Length; slotIndex++)
+    {
+        if (slots[slotIndex] != AbilityId.Grapple)
+            continue;
+
+        Button button = GetAbilityButton(slotIndex);
+        if (button != null)
+            button.interactable = Time.time >= slotCooldownEnds[slotIndex];
+    }
+}
+
+private void SetGrappleTargetReticleVisible(bool visible)
+{
+    if (visible && grappleTargetReticle == null)
+        grappleTargetReticle = CreateGrappleTargetReticle();
+
+    if (grappleTargetReticle != null && grappleTargetReticle.activeSelf != visible)
+        grappleTargetReticle.SetActive(visible);
+}
+
+private static GameObject CreateGrappleTargetReticle()
+{
+    GameObject crosshair = GameObject.Find("Aim Crosshair");
+    if (crosshair == null)
+        return null;
+
+    GameObject reticle = new GameObject("Grapple Target Reticle", typeof(RectTransform), typeof(Image));
+    reticle.layer = crosshair.layer;
+    reticle.transform.SetParent(crosshair.transform, false);
+    RectTransform rect = reticle.GetComponent<RectTransform>();
+    rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+    rect.sizeDelta = new Vector2(56f, 56f);
+    Image image = reticle.GetComponent<Image>();
+    image.sprite = CreateGrappleReticleSprite();
+    image.color = Color.white;
+    image.raycastTarget = false;
+    reticle.transform.SetAsFirstSibling();
+    return reticle;
+}
+
+private static Sprite CreateGrappleReticleSprite()
+{
+    const int size = 64;
+    const float outerRadius = 29f;
+    const float innerRadius = 25f;
+    Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+    texture.filterMode = FilterMode.Bilinear;
+    texture.wrapMode = TextureWrapMode.Clamp;
+    Vector2 center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
+    for (int y = 0; y < size; y++)
+    {
+        for (int x = 0; x < size; x++)
+        {
+            float distance = Vector2.Distance(new Vector2(x, y), center);
+            float alpha = distance >= innerRadius && distance <= outerRadius ? 1f : 0f;
+            texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+        }
+    }
+    texture.Apply(false, true);
+    return Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f));
+}
+
+private Button GetAbilityButton(int slotIndex)
+{
+    switch (slotIndex)
+    {
+        case 0: return abilityButton1;
+        case 1: return abilityButton2;
+        case 2: return abilityButton3;
+        default: return null;
+    }
+}
+
+private bool TryCaptureGrappleRequest(out Vector3 aimOrigin, out Vector3 requestedPoint,
+    out NetworkIdentity requestedTarget)
+{
+    aimOrigin = Vector3.zero;
+    requestedPoint = Vector3.zero;
+    requestedTarget = null;
+
+    Camera ownerCamera = GetComponentInChildren<Camera>(true);
+    if (ownerCamera == null)
+        return false;
+
+    aimOrigin = ownerCamera.transform.position;
+    if (!Physics.Raycast(aimOrigin, ownerCamera.transform.forward, out RaycastHit hit,
+            GrappleAbility.MaximumRange, ~0, QueryTriggerInteraction.Ignore) ||
+        !TryResolveGrappleTarget(hit, out bool movable, out _, out NetworkIdentity targetIdentity))
+        return false;
+
+    requestedTarget = movable ? targetIdentity : null;
+    requestedPoint = movable && targetIdentity != null
+        ? targetIdentity.transform.InverseTransformPoint(hit.point)
+        : hit.point;
+    return true;
+}
+
+private static bool IsFiniteVector(Vector3 value)
+{
+    return !float.IsNaN(value.x) && !float.IsInfinity(value.x) &&
+           !float.IsNaN(value.y) && !float.IsInfinity(value.y) &&
+           !float.IsNaN(value.z) && !float.IsInfinity(value.z);
+}
+
+private bool TryResolveGrappleTarget(RaycastHit hit, out bool movable,
+    out Rigidbody targetBody, out NetworkIdentity targetIdentity)
+{
+    movable = false;
+    targetBody = null;
+    targetIdentity = null;
+
+    Collider hitCollider = hit.collider;
+    if (hitCollider == null || hitCollider.isTrigger ||
+        hitCollider.transform.root == transform.root ||
+        hitCollider.GetComponentInParent<PlayerMovement>() != null)
+        return false;
+
+    BoundaryHazard hazard = hitCollider.GetComponentInParent<BoundaryHazard>();
+    NetworkProjectilePhysics projectile = hitCollider.GetComponentInParent<NetworkProjectilePhysics>();
+    movable = (hazard != null && hazard.IsArenaMass &&
+               (hazard.Kind == BoundaryHazardKind.Cube || hazard.Kind == BoundaryHazardKind.ArenaBlackHole)) ||
+              (projectile != null && projectile.GetComponentInChildren<BlackHoleKill>() != null);
+
+    if ((hazard != null || projectile != null) && !movable)
+        return false;
+
+    targetBody = movable ? hit.rigidbody : null;
+    if ((movable && targetBody == null) || (!movable && hit.rigidbody != null))
+        return false;
+
+    targetIdentity = hitCollider.GetComponentInParent<NetworkIdentity>();
+    return !movable || targetIdentity != null;
 }
 
 private float GetCooldownDuration(AbilityId id)
@@ -687,4 +1355,217 @@ private void ServerRequestTeleport(Vector3 destination)
         rb.angularVelocity = Vector3.zero;
     }
 }
+}
+
+/// <summary>
+/// Invokes the assigned action only when the pointer that pressed the button
+/// is released. This keeps the button held without consuming a second touch
+/// used by the look area.
+/// </summary>
+[DisallowMultipleComponent]
+public sealed class AbilityReleaseButton : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler, ICancelHandler
+{
+    private System.Action onRelease;
+    private System.Action onPress;
+    private System.Action onCancel;
+    private int holdingPointerId = int.MinValue;
+    private TouchLookHandler touchLook;
+    public bool IsHolding => holdingPointerId != int.MinValue;
+
+    public void Configure(System.Action releaseAction, System.Action pressAction = null,
+        System.Action cancelAction = null)
+    {
+        if (holdingPointerId != int.MinValue)
+            onCancel?.Invoke();
+        onRelease = releaseAction;
+        onPress = pressAction;
+        onCancel = cancelAction;
+        holdingPointerId = int.MinValue;
+    }
+
+    public void OnPointerDown(PointerEventData eventData)
+    {
+        AbilityTouchTransferTarget transferTarget = GetComponent<AbilityTouchTransferTarget>();
+        if (onRelease == null || holdingPointerId != int.MinValue ||
+            (transferTarget != null && transferTarget.IsHolding))
+            return;
+
+        holdingPointerId = eventData.pointerId;
+        if (touchLook == null)
+            touchLook = FindFirstObjectByType<TouchLookHandler>();
+        onPress?.Invoke();
+    }
+
+    public void OnDrag(PointerEventData eventData)
+    {
+        if (eventData.pointerId == holdingPointerId)
+            touchLook?.SubmitLookDelta(eventData.delta);
+    }
+
+    public void OnPointerUp(PointerEventData eventData)
+    {
+        if (eventData.pointerId != holdingPointerId)
+            return;
+
+        holdingPointerId = int.MinValue;
+        onRelease?.Invoke();
+    }
+
+    public void OnCancel(BaseEventData eventData)
+    {
+        if (holdingPointerId != int.MinValue)
+            onCancel?.Invoke();
+        holdingPointerId = int.MinValue;
+    }
+}
+
+/// <summary>
+/// Receives a touch that began on an explicitly allowed source control. It is
+/// intentionally passive, so a touch beginning on one ability cannot transfer
+/// to another ability.
+/// </summary>
+[DisallowMultipleComponent]
+public sealed class AbilityTouchTransferTarget : MonoBehaviour
+{
+    private System.Action onRelease;
+    private System.Action onPress;
+    private System.Action onCancel;
+    private int holdingPointerId = int.MinValue;
+    private Button button;
+
+    public bool IsHolding => holdingPointerId != int.MinValue;
+
+    public void Configure(System.Action releaseAction, System.Action pressAction = null,
+        System.Action cancelAction = null)
+    {
+        CancelTransferredTouch();
+        onRelease = releaseAction;
+        onPress = pressAction;
+        onCancel = cancelAction;
+        if (button == null)
+            button = GetComponent<Button>();
+    }
+
+    public bool BeginTransferredTouch(int pointerId)
+    {
+        AbilityReleaseButton directRelease = GetComponent<AbilityReleaseButton>();
+        if (onRelease == null || holdingPointerId != int.MinValue ||
+            !isActiveAndEnabled || button == null || !button.interactable ||
+            (directRelease != null && directRelease.IsHolding))
+            return false;
+
+        holdingPointerId = pointerId;
+        onPress?.Invoke();
+        return true;
+    }
+
+    public void ReleaseTransferredTouch(int pointerId)
+    {
+        if (pointerId != holdingPointerId)
+            return;
+
+        holdingPointerId = int.MinValue;
+        onRelease?.Invoke();
+    }
+
+    public void CancelTransferredTouch(int pointerId = int.MinValue)
+    {
+        if (holdingPointerId == int.MinValue ||
+            (pointerId != int.MinValue && pointerId != holdingPointerId))
+            return;
+
+        holdingPointerId = int.MinValue;
+        onCancel?.Invoke();
+    }
+
+    private void OnDisable()
+    {
+        CancelTransferredTouch();
+    }
+}
+
+/// <summary>
+/// Tracks one touch that began on Move or Jump and transfers its release to the
+/// ability currently under that finger.
+/// </summary>
+[DisallowMultipleComponent]
+public sealed class AbilityTouchTransferSource : MonoBehaviour,
+    IPointerDownHandler, IDragHandler, IPointerUpHandler, ICancelHandler
+{
+    private readonly List<RaycastResult> raycastResults = new List<RaycastResult>();
+    private int pointerId = int.MinValue;
+    private AbilityTouchTransferTarget currentTarget;
+
+    public void OnPointerDown(PointerEventData eventData)
+    {
+        if (pointerId != int.MinValue)
+            return;
+        pointerId = eventData.pointerId;
+        UpdateTarget(eventData);
+    }
+
+    public void OnDrag(PointerEventData eventData)
+    {
+        if (eventData.pointerId == pointerId)
+            UpdateTarget(eventData);
+    }
+
+    public void OnPointerUp(PointerEventData eventData)
+    {
+        if (eventData.pointerId != pointerId)
+            return;
+
+        UpdateTarget(eventData);
+        AbilityTouchTransferTarget releasedTarget = currentTarget;
+        currentTarget = null;
+        pointerId = int.MinValue;
+        releasedTarget?.ReleaseTransferredTouch(eventData.pointerId);
+    }
+
+    public void OnCancel(BaseEventData eventData)
+    {
+        CancelTransfer();
+    }
+
+    private void OnDisable()
+    {
+        CancelTransfer();
+    }
+
+    private void UpdateTarget(PointerEventData eventData)
+    {
+        AbilityTouchTransferTarget nextTarget = FindTarget(eventData);
+        if (nextTarget == currentTarget)
+            return;
+
+        currentTarget?.CancelTransferredTouch(pointerId);
+        currentTarget = nextTarget != null && nextTarget.BeginTransferredTouch(pointerId)
+            ? nextTarget
+            : null;
+    }
+
+    private AbilityTouchTransferTarget FindTarget(PointerEventData eventData)
+    {
+        EventSystem eventSystem = EventSystem.current;
+        if (eventSystem == null)
+            return null;
+
+        raycastResults.Clear();
+        eventSystem.RaycastAll(eventData, raycastResults);
+        for (int i = 0; i < raycastResults.Count; i++)
+        {
+            AbilityTouchTransferTarget target =
+                raycastResults[i].gameObject.GetComponentInParent<AbilityTouchTransferTarget>();
+            if (target != null)
+                return target;
+        }
+        return null;
+    }
+
+    private void CancelTransfer()
+    {
+        currentTarget?.CancelTransferredTouch(pointerId);
+        currentTarget = null;
+        pointerId = int.MinValue;
+    }
 }

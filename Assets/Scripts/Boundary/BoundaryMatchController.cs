@@ -7,16 +7,19 @@ using UnityEngine;
 public sealed class BoundaryMatchController : NetworkBehaviour
 {
     public static BoundaryMatchController Instance { get; private set; }
-    public const int ArenaMassPopulation = 20;
+    public const int GroundArenaMassesPerKind = 22;
+    public const int FloatingArenaMassesPerKind = 18;
+    public const int ArenaMassPopulation = (GroundArenaMassesPerKind + FloatingArenaMassesPerKind) * 2;
     public const int ArenaMassInnerSurvivors = 5;
+    public const int PlatformHitsToCollapse = 5;
     public const float HazardSizeMultiplier = 1.6f;
     public const float EventHazardSizeMultiplier = 1.5f;
     public const float ArenaMassCubeScale = 2.8f * HazardSizeMultiplier;
     public const float ArenaMassBlackHoleScale = 1.75f * HazardSizeMultiplier;
 
     [Header("Phase timing")]
-    [SerializeField, Min(10f)] private float outerRingDuration = 60f;
-    [SerializeField, Min(15f)] private float middleRingDuration = 50f;
+    [SerializeField, Min(10f)] private float outerRingDuration = 90f;
+    [SerializeField, Min(15f)] private float middleRingDuration = 80f;
     [SerializeField, Range(3f, 12f)] private float transitionDuration = 7f;
 
     [Header("Arena")]
@@ -624,19 +627,26 @@ public sealed class BoundaryMatchController : NetworkBehaviour
             if (spawnedVariants.Contains(i))
                 continue;
 
-            bool sphere = i >= ArenaMassPopulation / 2;
-            bool survivesInner = i == 0 || i == 4 || i == 10 || i == 14 || i == 18;
+            bool sphere = IsArenaBlackHole(i);
+            bool floating = IsFloatingArenaMass(i);
+            bool survivesInner = i == 0 || i == 12 || i == 26 || i == 50 || i == 70;
             float angle = i * 2.399963f + 0.31f;
-            float radius = 24f + (i % 5) * 15.2f + (i / 5) * 1.7f;
+            float radius = 20f + (i % 6) * 13.5f + ((i / 6) % 3) * 2.1f;
             float scale = sphere ? ArenaMassBlackHoleScale : ArenaMassCubeScale;
             float groundClearance = sphere ? scale * 1.65f : scale * 0.5f;
+            float height = floating
+                ? PlatformSurfaceYAtRadius(radius) + 9f + (i % 7) * 4f
+                : PlatformSurfaceYAtRadius(radius) + groundClearance;
             Vector3 position = new Vector3(
                 ArenaCenter.x + Mathf.Cos(angle) * radius,
-                PlatformSurfaceYAtRadius(radius) + groundClearance,
+                height,
                 ArenaCenter.z + Mathf.Sin(angle) * radius);
 
             GameObject instance = Instantiate(hazardPrefab, position, Quaternion.identity);
-            instance.name = sphere ? $"Arena Black Hole {i - 9:00}" : $"Arena Mass Cube {i + 1:00}";
+            string altitudeLabel = floating ? "Floating" : "Floor";
+            instance.name = sphere
+                ? $"{altitudeLabel} Arena Black Hole {i + 1:00}"
+                : $"{altitudeLabel} Arena Mass Cube {i + 1:00}";
             instance.transform.localScale = Vector3.one * scale;
             BoundaryHazard hazard = instance.GetComponent<BoundaryHazard>();
             if (hazard == null)
@@ -676,7 +686,7 @@ public sealed class BoundaryMatchController : NetworkBehaviour
             return;
 
         platformContactCounts.TryGetValue(platformIndex, out int current);
-        int next = Mathf.Min(3, current + 1);
+        int next = Mathf.Min(PlatformHitsToCollapse, current + 1);
         if (next == current)
             return;
 
@@ -688,6 +698,18 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     private void ApplyPlatformContact(int platformIndex, int hitCount)
     {
         BoundaryArenaPresentation.Instance?.ApplyBlackHoleContact(platformIndex, hitCount);
+    }
+
+    public static bool IsFloatingArenaMass(int populationIndex)
+    {
+        return populationIndex >= GroundArenaMassesPerKind * 2;
+    }
+
+    public static bool IsArenaBlackHole(int populationIndex)
+    {
+        int groundPopulation = GroundArenaMassesPerKind * 2;
+        return (populationIndex >= GroundArenaMassesPerKind && populationIndex < groundPopulation) ||
+               populationIndex >= groundPopulation + FloatingArenaMassesPerKind;
     }
 
     private void PulseEveryMass()

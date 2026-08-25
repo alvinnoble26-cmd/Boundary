@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
 
@@ -9,11 +10,16 @@ using UnityEngine;
 /// </summary>
 public class NetworkProjectilePhysics : MonoBehaviour
 {
+    private static readonly List<NetworkProjectilePhysics> ActiveProjectiles =
+        new List<NetworkProjectilePhysics>();
     private Rigidbody body;
+    private bool blackHoleProjectile;
 
     private void Awake()
     {
         body = GetComponent<Rigidbody>();
+        blackHoleProjectile = GetComponentInChildren<BlackHoleKill>(true) != null ||
+                              GetComponentInChildren<BlackCubeKill>(true) != null;
         if (body != null)
         {
             // Network-spawned client copies must never get a speculative local
@@ -47,6 +53,50 @@ public class NetworkProjectilePhysics : MonoBehaviour
                 }
             }
         }
+    }
+
+    private void OnEnable()
+    {
+        if (!ActiveProjectiles.Contains(this))
+            ActiveProjectiles.Add(this);
+    }
+
+    private void OnDisable()
+    {
+        ActiveProjectiles.Remove(this);
+    }
+
+    public static int ServerApplyBlackHoleGravity(Vector3 center, float radius, float acceleration)
+    {
+        NetworkManager net = NetworkManager.main;
+        if (net == null || !net.isServer || radius <= 0f || acceleration <= 0f)
+            return 0;
+
+        int affected = 0;
+        for (int index = ActiveProjectiles.Count - 1; index >= 0; index--)
+        {
+            NetworkProjectilePhysics projectile = ActiveProjectiles[index];
+            if (projectile == null)
+            {
+                ActiveProjectiles.RemoveAt(index);
+                continue;
+            }
+            if (!projectile.blackHoleProjectile || projectile.body == null)
+                continue;
+
+            Vector3 delta = center - projectile.body.worldCenterOfMass;
+            float distance = delta.magnitude;
+            if (distance <= 0.05f || distance >= radius)
+                continue;
+
+            projectile.SetServerSimulation(true);
+            projectile.body.WakeUp();
+            projectile.body.AddForce(delta.normalized * acceleration *
+                Mathf.Clamp01(1f - distance / radius), ForceMode.Acceleration);
+            affected++;
+        }
+
+        return affected;
     }
 
     private IEnumerator Start()

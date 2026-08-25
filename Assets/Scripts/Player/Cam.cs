@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
 public class Cam : NetworkBehaviour
@@ -32,6 +33,9 @@ public class Cam : NetworkBehaviour
     [SerializeField, Range(0.01f, 0.2f)] private float firstPersonNearClip = DefaultFirstPersonNearClip;
     [SerializeField, Range(60f, 110f)] private float firstPersonFieldOfView = DefaultFirstPersonFieldOfView;
     [SerializeField, Range(0.05f, 0.5f)] private float lookDegreesPerPixelAtDefault = DefaultLookDegreesPerPixel;
+    [SerializeField, Range(0f, 60f)] private float wallRunCameraTiltAngle = 18f;
+    [SerializeField, Min(1f)] private float wallRunCameraTiltResponse = 16f;
+    [SerializeField, Range(0f, 1f)] private float wallRunCameraWallOffset = 0.4f;
 
     [Header("First Person Obstruction Protection")]
     [SerializeField, Range(0.02f, 0.2f)] private float obstructionRadius = 0.07f;
@@ -39,10 +43,11 @@ public class Cam : NetworkBehaviour
     [SerializeField] private LayerMask obstructionMask = ~0;
 
     private readonly RaycastHit[] obstructionHits = new RaycastHit[16];
-    private readonly Dictionary<Renderer, bool> localRendererStates = new Dictionary<Renderer, bool>();
+    private readonly List<Renderer> localBodyRenderers = new List<Renderer>();
     private Transform playerRoot;
     private float pitch;
     private float yaw;
+    private float wallRunCameraRoll;
     private bool isReady;
     private bool setupRoutineRunning;
     private bool ownerViewWasUnexpectedlyDisabled;
@@ -50,6 +55,10 @@ public class Cam : NetworkBehaviour
     private FirstPersonArmPresentation firstPersonArm;
     private string equippedSkinId = "beard";
     private bool lookInputSuppressed;
+    private float damageShakeEndsAt;
+    private float damageShakeStartedAt;
+    private float screenShakeStrength;
+    private LocalPlayerCameraBodyFilter localBodyFilter;
 
     protected override void OnSpawned()
     {
@@ -236,7 +245,12 @@ public class Cam : NetworkBehaviour
             firstPersonMaxPitch);
 
         Quaternion yawRotation = Quaternion.Euler(0f, yaw, 0f);
-        Quaternion viewRotation = CalculateFirstPersonViewRotation(pitch, yaw);
+        float targetWallRunRoll = playerMovement != null && playerMovement.IsWallRunning
+            ? Mathf.Sign(playerMovement.CurrentWallRunTilt) * wallRunCameraTiltAngle
+            : 0f;
+        float rollBlend = 1f - Mathf.Exp(-wallRunCameraTiltResponse * Time.deltaTime);
+        wallRunCameraRoll = Mathf.Lerp(wallRunCameraRoll, targetWallRunRoll, rollBlend);
+        Quaternion viewRotation = CalculateFirstPersonViewRotation(pitch, yaw, wallRunCameraRoll);
         if (orientation != null)
             orientation.rotation = yawRotation;
         if (playerMovement != null)
@@ -248,11 +262,69 @@ public class Cam : NetworkBehaviour
             playerRoot.position,
             yaw,
             effectiveEyeOffset);
+        if (playerMovement != null && playerMovement.IsWallRunning)
+            desiredEyePosition += playerMovement.WallRunNormal * wallRunCameraWallOffset;
         Vector3 safeEyePosition = ResolveObstructionSafeEyePosition(desiredEyePosition);
+        Vector3 shakeOffset = DamageShakeOffset();
+        safeEyePosition += viewRotation * shakeOffset;
+        if (shakeOffset.sqrMagnitude > 0f)
+            viewRotation *= Quaternion.Euler(shakeOffset.y * 14f, shakeOffset.x * 12f, shakeOffset.x * -18f);
 
         if (camPivot != null)
             camPivot.SetPositionAndRotation(safeEyePosition, viewRotation);
         cam.SetPositionAndRotation(safeEyePosition, viewRotation);
+    }
+
+    public void RequestDamageShake()
+    {
+        if (!isOwner || !SettingsMenu.ScreenShakeEnabled)
+            return;
+
+        StartScreenShake(0.18f, 0.055f);
+    }
+
+    public void RequestBoundaryCollapseShake()
+    {
+        if (!isOwner || !SettingsMenu.ScreenShakeEnabled)
+            return;
+
+        StartScreenShake(0.36f, 0.12f);
+    }
+
+    public void RequestHollowShake()
+    {
+        if (!isOwner || !SettingsMenu.ScreenShakeEnabled)
+            return;
+
+        StartScreenShake(HollowAbility.ChargeDuration + HollowAbility.BlastDuration, 0.132f);
+    }
+
+    public void RequestVoidShake()
+    {
+        if (!isOwner || !SettingsMenu.ScreenShakeEnabled)
+            return;
+
+        StartScreenShake(VoidAbility.DurationSeconds, 0.16f);
+    }
+
+    private void StartScreenShake(float duration, float strength)
+    {
+        damageShakeStartedAt = Time.unscaledTime;
+        damageShakeEndsAt = damageShakeStartedAt + duration;
+        screenShakeStrength = strength;
+    }
+
+    private Vector3 DamageShakeOffset()
+    {
+        float now = Time.unscaledTime;
+        if (now >= damageShakeEndsAt)
+            return Vector3.zero;
+
+        float duration = Mathf.Max(0.01f, damageShakeEndsAt - damageShakeStartedAt);
+        float strength = 1f - Mathf.Clamp01((now - damageShakeStartedAt) / duration);
+        float x = Mathf.PerlinNoise(now * 54f, 2.31f) * 2f - 1f;
+        float y = Mathf.PerlinNoise(7.17f, now * 61f) * 2f - 1f;
+        return new Vector3(x, y, 0f) * (screenShakeStrength * strength);
     }
 
     private Vector3 ResolveObstructionSafeEyePosition(Vector3 desiredEyePosition)
@@ -353,10 +425,22 @@ public class Cam : NetworkBehaviour
             GetFirstPersonArm()?.ShowTeleport();
     }
 
+    public void SetHollowArmsActive(bool active, Vector3 worldTarget)
+    {
+        if (isOwner && isReady)
+            GetFirstPersonArm()?.SetHollowActive(active, worldTarget);
+    }
+
     public void SetGrappleArmActive(bool active, Vector3 aimDirection)
     {
         if (isOwner && isReady)
             GetFirstPersonArm()?.SetGrappleActive(active, aimDirection);
+    }
+
+    public void PlayGrappleYank()
+    {
+        if (isOwner && isReady)
+            GetFirstPersonArm()?.PlayGrappleYank();
     }
 
     public Vector3 GetGrappleArmOrigin()
@@ -396,37 +480,39 @@ public class Cam : NetworkBehaviour
 
         if (!hiddenFromOwner)
         {
-            foreach (KeyValuePair<Renderer, bool> state in localRendererStates)
-            {
-                if (state.Key != null)
-                    state.Key.forceRenderingOff = state.Value;
-            }
-            localRendererStates.Clear();
+            localBodyRenderers.Clear();
+            localBodyFilter?.SetBodyRenderers(localBodyRenderers);
             return;
         }
 
-        HideRenderer(playerRoot.GetComponent<Renderer>());
-        HideRenderersUnder(playerRoot.Find("Visual"));
-        HideRenderersUnder(playerRoot.Find("eye"));
+        localBodyRenderers.Clear();
+        AddRenderer(playerRoot.GetComponent<Renderer>());
+        AddRenderersUnder(playerRoot.Find("Visual"));
+        AddRenderersUnder(playerRoot.Find("eye"));
+
+        if (cam != null)
+        {
+            localBodyFilter = cam.GetComponent<LocalPlayerCameraBodyFilter>() ??
+                cam.gameObject.AddComponent<LocalPlayerCameraBodyFilter>();
+            localBodyFilter.Initialize(cam.GetComponent<Camera>());
+            localBodyFilter.SetBodyRenderers(localBodyRenderers);
+        }
     }
 
-    private void HideRenderersUnder(Transform visualRoot)
+    private void AddRenderersUnder(Transform visualRoot)
     {
         if (visualRoot == null)
             return;
 
         foreach (Renderer renderer in visualRoot.GetComponentsInChildren<Renderer>(true))
-            HideRenderer(renderer);
+            AddRenderer(renderer);
     }
 
-    private void HideRenderer(Renderer renderer)
+    private void AddRenderer(Renderer renderer)
     {
-        if (renderer == null)
+        if (renderer == null || localBodyRenderers.Contains(renderer))
             return;
-
-        if (!localRendererStates.ContainsKey(renderer))
-            localRendererStates.Add(renderer, renderer.forceRenderingOff);
-        renderer.forceRenderingOff = true;
+        localBodyRenderers.Add(renderer);
     }
 
     public static Vector3 CalculateFirstPersonEyePosition(
@@ -439,7 +525,12 @@ public class Cam : NetworkBehaviour
 
     public static Quaternion CalculateFirstPersonViewRotation(float pitchDegrees, float yawDegrees)
     {
-        return Quaternion.Euler(pitchDegrees, yawDegrees, 0f);
+        return CalculateFirstPersonViewRotation(pitchDegrees, yawDegrees, 0f);
+    }
+
+    public static Quaternion CalculateFirstPersonViewRotation(float pitchDegrees, float yawDegrees, float rollDegrees)
+    {
+        return Quaternion.Euler(pitchDegrees, yawDegrees, rollDegrees);
     }
 
     public static void ConfigureFirstPersonCamera(Camera unityCamera, float nearClip, float fieldOfView)
@@ -450,5 +541,93 @@ public class Cam : NetworkBehaviour
         unityCamera.orthographic = false;
         unityCamera.nearClipPlane = Mathf.Clamp(nearClip, 0.01f, 0.2f);
         unityCamera.fieldOfView = Mathf.Clamp(fieldOfView, 60f, 110f);
+    }
+}
+
+/// <summary>
+/// Hides the owning player's body only for its gameplay camera. Scene view and
+/// observer cameras render the normal model, while physics layers stay intact.
+/// </summary>
+public sealed class LocalPlayerCameraBodyFilter : MonoBehaviour
+{
+    private readonly List<Renderer> bodyRenderers = new List<Renderer>();
+    private readonly Dictionary<Renderer, ShadowCastingMode> renderStates =
+        new Dictionary<Renderer, ShadowCastingMode>();
+    private Camera ownerCamera;
+    private bool filterApplied;
+
+    public void Initialize(Camera camera)
+    {
+        ownerCamera = camera;
+    }
+
+    public void SetBodyRenderers(IReadOnlyList<Renderer> renderers)
+    {
+        RestoreOwnerCameraFilter();
+        bodyRenderers.Clear();
+        if (renderers == null)
+            return;
+
+        for (int i = 0; i < renderers.Count; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer != null && !bodyRenderers.Contains(renderer))
+                bodyRenderers.Add(renderer);
+        }
+    }
+
+    private void OnEnable()
+    {
+        RenderPipelineManager.beginCameraRendering += OnBeginCameraRendering;
+        RenderPipelineManager.endCameraRendering += OnEndCameraRendering;
+    }
+
+    private void OnDisable()
+    {
+        RenderPipelineManager.beginCameraRendering -= OnBeginCameraRendering;
+        RenderPipelineManager.endCameraRendering -= OnEndCameraRendering;
+        RestoreOwnerCameraFilter();
+    }
+
+    private void OnBeginCameraRendering(ScriptableRenderContext context, Camera renderingCamera)
+    {
+        if (renderingCamera == ownerCamera)
+            ApplyOwnerCameraFilter();
+    }
+
+    private void OnEndCameraRendering(ScriptableRenderContext context, Camera renderingCamera)
+    {
+        if (renderingCamera == ownerCamera)
+            RestoreOwnerCameraFilter();
+    }
+
+    public void ApplyOwnerCameraFilter()
+    {
+        if (filterApplied)
+            return;
+
+        renderStates.Clear();
+        foreach (Renderer renderer in bodyRenderers)
+        {
+            if (renderer == null || renderer.forceRenderingOff)
+                continue;
+            renderStates[renderer] = renderer.shadowCastingMode;
+            renderer.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
+        }
+        filterApplied = true;
+    }
+
+    public void RestoreOwnerCameraFilter()
+    {
+        if (!filterApplied)
+            return;
+
+        foreach (KeyValuePair<Renderer, ShadowCastingMode> state in renderStates)
+        {
+            if (state.Key != null)
+                state.Key.shadowCastingMode = state.Value;
+        }
+        renderStates.Clear();
+        filterApplied = false;
     }
 }

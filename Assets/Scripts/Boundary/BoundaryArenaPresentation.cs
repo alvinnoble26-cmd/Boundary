@@ -10,9 +10,12 @@ using UnityEditor;
 [DisallowMultipleComponent]
 public sealed class BoundaryArenaPresentation : MonoBehaviour
 {
+    private const string RuntimeAuthoredArenaName = "Boundary Authored Stadium";
     public const float GeneratedWallSizeMultiplier = 1.12f;
     public const float GeneratedWallExtraHeightMultiplier = 1.35f;
     public const float GeneratedWallElevationExponent = 1.05f;
+    public const float ArenaAmbientLightMultiplier = 0.5f;
+    public const float VoidWallGlowIntensity = 6f;
 
     public static BoundaryArenaPresentation Instance { get; private set; }
 
@@ -39,6 +42,14 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         public Transform transform;
         public Vector3 axis;
         public float speed;
+    }
+
+    private sealed class VoidWallGlowSnapshot
+    {
+        public Renderer renderer;
+        public Material[] originalMaterials;
+        public Material[] glowMaterials;
+        public GameObject lightObject;
     }
 
     [Header("Breakaway platform arena")]
@@ -68,7 +79,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
     private readonly List<AccretionRing> accretionRings = new List<AccretionRing>();
     private readonly List<Material> generatedMaterials = new List<Material>();
     private readonly List<GameObject> disabledLegacyArena = new List<GameObject>();
-    private readonly HashSet<PlayerMovement> trailedPlayers = new HashSet<PlayerMovement>();
+    private readonly List<VoidWallGlowSnapshot> voidWallGlowSnapshots = new List<VoidWallGlowSnapshot>();
     private MaterialPropertyBlock platformProperties;
     private Transform singularityCore;
     private LineRenderer horizonRing;
@@ -79,6 +90,10 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
     private Color originalFogColor;
     private float originalFogDensity;
     private bool originalFogEnabled;
+    private Color originalAmbientLight;
+    private Color originalAmbientSkyColor;
+    private Color originalAmbientEquatorColor;
+    private Color originalAmbientGroundColor;
     private bool built;
     private bool buildVisuals;
     private bool renderSettingsCaptured;
@@ -105,6 +120,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
     }
 
     public int GeneratedPlatformCount => platforms.Count;
+    public float AuthoredPlayableRadius { get; private set; }
     public bool LegacyArenaHidden => disabledLegacyArena.Count > 0;
     public bool HasSideWalls => false;
     public int GeneratedTransitionRampCount => transitionRampCount;
@@ -233,6 +249,14 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             originalFogDensity = RenderSettings.fogDensity;
             renderSettingsCaptured = true;
             platformProperties = new MaterialPropertyBlock();
+            originalAmbientLight = RenderSettings.ambientLight;
+            originalAmbientSkyColor = RenderSettings.ambientSkyColor;
+            originalAmbientEquatorColor = RenderSettings.ambientEquatorColor;
+            originalAmbientGroundColor = RenderSettings.ambientGroundColor;
+            RenderSettings.ambientLight = originalAmbientLight * ArenaAmbientLightMultiplier;
+            RenderSettings.ambientSkyColor = originalAmbientSkyColor * ArenaAmbientLightMultiplier;
+            RenderSettings.ambientEquatorColor = originalAmbientEquatorColor * ArenaAmbientLightMultiplier;
+            RenderSettings.ambientGroundColor = originalAmbientGroundColor * ArenaAmbientLightMultiplier;
         }
 
         BuildArena(buildVisuals);
@@ -248,7 +272,13 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             RenderSettings.fog = originalFogEnabled;
             RenderSettings.fogColor = originalFogColor;
             RenderSettings.fogDensity = originalFogDensity;
+            RenderSettings.ambientLight = originalAmbientLight;
+            RenderSettings.ambientSkyColor = originalAmbientSkyColor;
+            RenderSettings.ambientEquatorColor = originalAmbientEquatorColor;
+            RenderSettings.ambientGroundColor = originalAmbientGroundColor;
         }
+
+        SetVoidWallGlow(false);
 
         foreach (GameObject legacyRoot in disabledLegacyArena)
         {
@@ -279,7 +309,6 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             UpdateSingularity();
             UpdateFractures();
             UpdateFog();
-            UpdatePlayerTrails();
         }
     }
 
@@ -287,6 +316,15 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
     {
         if (match == null || built)
             return;
+
+        if (TryAdoptAuthoredArena(includeVisuals))
+            return;
+
+        if (!editorPreview)
+        {
+            Debug.LogError("[BoundaryArenaPresentation] Boundary Authored Stadium is missing. Runtime generation is disabled so the saved scene cannot be replaced.");
+            return;
+        }
 
         generatedRoot = new GameObject("Boundary Generated Stadium").transform;
         generatedRoot.SetParent(transform, false);
@@ -307,17 +345,15 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
         // Only retire the fallback floor after its collision replacement is
         // complete. A rendering failure can therefore never remove physics.
+        DisableLegacyArena();
         if (!editorPreview)
-        {
-            DisableLegacyArena();
             AlignSpawnsAndExistingPlayers();
-        }
 
         if (includeVisuals)
         {
             platformMaterial = CreateMaterial(
-                new Color(0.36f, 0.38f, 0.42f),
-                new Color(0.055f, 0.065f, 0.09f), 0.55f);
+                new Color(0.09f, 0.095f, 0.105f),
+                new Color(0.01375f, 0.01625f, 0.0225f), 0.55f);
             fractureMaterial = CreateMaterial(
                 new Color(0.04f, 0.01f, 0.06f),
                 new Color(1f, 0.08f, 0.65f), 4.5f);
@@ -335,6 +371,176 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         ApplyPendingEditorPreviewOverrides();
         string buildKind = editorPreview ? "editor-preview" : "authoritative";
         Debug.Log($"[BoundaryArenaPresentation] Built {GeneratedPlatformColliderCount} {buildKind} arena colliders (visuals={includeVisuals}).");
+    }
+
+    private bool TryAdoptAuthoredArena(bool includeVisuals)
+    {
+        Transform authoredRoot = null;
+        foreach (Transform candidate in FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (candidate.name == RuntimeAuthoredArenaName && candidate.gameObject.scene == gameObject.scene)
+            {
+                authoredRoot = candidate;
+                break;
+            }
+        }
+        if (authoredRoot == null)
+            return false;
+
+        generatedRoot = authoredRoot;
+        RegisterAuthoredPlatforms(authoredRoot);
+        if (GeneratedPlatformColliderCount == 0)
+        {
+            Debug.LogError("[BoundaryArenaPresentation] The authored arena has no platform colliders.");
+            return false;
+        }
+
+        if (includeVisuals)
+        {
+            // The saved scene is authoritative. Do not replace authored wall
+            // or platform materials with the procedural arena's gray default.
+            singularityCore = FindDescendant(authoredRoot, "Boundary Singularity Core");
+            horizonRing = FindDescendant(authoredRoot, "Event Horizon")?.GetComponent<LineRenderer>();
+            RegisterAuthoredLines(authoredRoot, "Fracture Lines", fractureLines);
+            RegisterAuthoredLines(authoredRoot, "Vortex Currents", vortexLines);
+        }
+
+        DisableLegacyArena();
+        AlignSpawnsAndExistingPlayers();
+        built = true;
+        Debug.Log($"[BoundaryArenaPresentation] Adopted {GeneratedPlatformColliderCount} saved arena colliders without regenerating geometry.");
+        return true;
+    }
+
+    private void RegisterAuthoredPlatforms(Transform authoredRoot)
+    {
+        AuthoredPlayableRadius = 0f;
+        Collider[] colliders = authoredRoot.GetComponentsInChildren<Collider>(true);
+        int fallbackIndex = 10000;
+        foreach (Collider collider in colliders)
+        {
+            Transform tileTransform = collider.transform;
+            string groupName = FindArenaGroupName(tileTransform, authoredRoot);
+            if (groupName == null)
+                continue;
+
+            Vector3 boundsCenter = collider.bounds.center;
+            Vector3 boundsExtents = collider.bounds.extents;
+            float boundsRadius = Vector2.Distance(
+                new Vector2(boundsCenter.x, boundsCenter.z),
+                new Vector2(match.ArenaCenter.x, match.ArenaCenter.z)) +
+                new Vector2(boundsExtents.x, boundsExtents.z).magnitude;
+            AuthoredPlayableRadius = Mathf.Max(AuthoredPlayableRadius, boundsRadius);
+
+            BoundaryBreakawayPlatform contact = tileTransform.GetComponent<BoundaryBreakawayPlatform>();
+            bool isWall = groupName == "Wall Jump Structures";
+            int stableIndex = ResolveAuthoredStableIndex(groupName, tileTransform.name, fallbackIndex++);
+            if (contact != null)
+                contact.PlatformIndex = stableIndex;
+            int band = isWall ? ParseBand(tileTransform.name) : CollapseBandForGroup(groupName,
+                Vector2.Distance(
+                    new Vector2(tileTransform.position.x, tileTransform.position.z),
+                    new Vector2(match.ArenaCenter.x, match.ArenaCenter.z)));
+            int hash = BoundaryMath.StableHash(74191 + band * 193, stableIndex);
+            var platform = new PlatformTile
+            {
+                stableIndex = stableIndex,
+                transform = tileTransform,
+                renderer = tileTransform.GetComponent<Renderer>(),
+                collider = collider,
+                startPosition = tileTransform.position,
+                startRotation = tileTransform.rotation,
+                startScale = tileTransform.localScale,
+                collapseBand = band,
+                stagger = (hash % 1000) / 999f,
+                canCorrupt = !isWall,
+                authoredActive = tileTransform.gameObject.activeInHierarchy
+            };
+            platforms.Add(platform);
+            if (!platform.authoredActive)
+            {
+                tileTransform.gameObject.SetActive(false);
+                collider.enabled = false;
+            }
+            if (contact != null)
+                breakawayPlatforms[stableIndex] = platform;
+            if (groupName == "Tier Transition Ramps")
+                transitionRampCount++;
+        }
+    }
+
+    private static string FindArenaGroupName(Transform target, Transform root)
+    {
+        Transform current = target.parent;
+        string fallbackGroup = null;
+        while (current != null && current != root)
+        {
+            if (current.name == "Tier0" || current.name == "Tier1" || current.name == "Tier2")
+                return current.name;
+            if (fallbackGroup == null &&
+                (current.name == "Breakaway Platforms" || current.name == "Tier Transition Ramps" ||
+                 current.name == "Wall Jump Structures"))
+                fallbackGroup = current.name;
+            current = current.parent;
+        }
+        return fallbackGroup;
+    }
+
+    private int CollapseBandForGroup(string groupName, float radius)
+    {
+        if (groupName == "Tier0")
+            return 0;
+        if (groupName == "Tier1")
+            return 1;
+        if (groupName == "Tier2")
+            return 2;
+        return CollapseBand(radius);
+    }
+
+    private static int ParseBand(string objectName)
+    {
+        string[] parts = objectName.Split(' ');
+        if (parts.Length > 1 && parts[1].Length > 0 && int.TryParse(parts[1].Split('-')[0], out int band))
+            return band;
+        return 0;
+    }
+
+    private static int ResolveAuthoredStableIndex(string groupName, string objectName, int fallback)
+    {
+        string[] parts = objectName.Split(' ');
+        if (groupName == "Breakaway Platforms" && parts.Length > 0 &&
+            int.TryParse(parts[parts.Length - 1], out int floorIndex))
+            return floorIndex;
+
+        if ((groupName == "Tier Transition Ramps" || groupName == "Wall Jump Structures") &&
+            parts.Length > 1)
+        {
+            string[] bandAndIndex = parts[parts.Length - 1].Split('-');
+            if (bandAndIndex.Length == 2 && int.TryParse(bandAndIndex[0], out int band) &&
+                int.TryParse(bandAndIndex[1], out int index))
+            {
+                if (groupName == "Tier Transition Ramps")
+                    return (band == 2 ? 4000 : 5000) + index;
+                return (band == 2 ? 1000 : band == 1 ? 2000 : 3000) + index;
+            }
+        }
+        return fallback;
+    }
+
+    private static Transform FindDescendant(Transform root, string objectName)
+    {
+        foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
+            if (child.name == objectName)
+                return child;
+        return null;
+    }
+
+    private static void RegisterAuthoredLines<T>(Transform root, string groupName, List<T> results) where T : Component
+    {
+        Transform group = FindDescendant(root, groupName);
+        if (group == null)
+            return;
+        results.AddRange(group.GetComponentsInChildren<T>(true));
     }
 
     private void ApplyPendingEditorPreviewOverrides()
@@ -363,7 +569,17 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             platform.startPosition = platform.transform.position;
             platform.startRotation = platform.transform.rotation;
             platform.startScale = platform.transform.localScale;
-            platform.authoredActive = platform.transform.gameObject.activeSelf;
+            // A disabled authoring group (for example Wall Jump Structures)
+            // disables every platform beneath it even though each child may
+            // still have activeSelf=true. Preserve the effective hierarchy
+            // state so gameplay cannot resurrect those children later.
+            platform.authoredActive = platform.transform.gameObject.activeInHierarchy;
+            if (!platform.authoredActive)
+            {
+                platform.transform.gameObject.SetActive(false);
+                if (platform.collider != null)
+                    platform.collider.enabled = false;
+            }
         }
 
         pendingEditorPreviewSnapshot = null;
@@ -432,6 +648,68 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         }
     }
 
+    public void SetVoidWallGlow(bool enabled)
+    {
+        if (!buildVisuals)
+            return;
+
+        if (!enabled)
+        {
+            foreach (VoidWallGlowSnapshot snapshot in voidWallGlowSnapshots)
+            {
+                if (snapshot.renderer != null)
+                    snapshot.renderer.sharedMaterials = snapshot.originalMaterials;
+                foreach (Material material in snapshot.glowMaterials)
+                    if (material != null)
+                        Destroy(material);
+                if (snapshot.lightObject != null)
+                    Destroy(snapshot.lightObject);
+            }
+            voidWallGlowSnapshots.Clear();
+            return;
+        }
+
+        if (voidWallGlowSnapshots.Count > 0)
+            return;
+
+        foreach (PlatformTile platform in platforms)
+        {
+            if (platform.renderer == null || platform.transform == null || !platform.transform.CompareTag("Wall"))
+                continue;
+
+            Material[] originals = platform.renderer.sharedMaterials;
+            Material[] glowing = new Material[originals.Length];
+            for (int index = 0; index < originals.Length; index++)
+            {
+                Material source = originals[index];
+                if (source == null)
+                    continue;
+                Material copy = new Material(source) { name = source.name + " (Void Wall Glow)" };
+                copy.EnableKeyword("_EMISSION");
+                if (copy.HasProperty("_EmissionColor"))
+                    copy.SetColor("_EmissionColor", new Color(0.12f, 0.72f, 1f) * VoidWallGlowIntensity);
+                glowing[index] = copy;
+            }
+            platform.renderer.sharedMaterials = glowing;
+
+            GameObject lightObject = new GameObject("Void Wall Light", typeof(Light));
+            lightObject.transform.SetParent(platform.transform, false);
+            Light light = lightObject.GetComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(0.12f, 0.72f, 1f);
+            light.range = 14f;
+            light.intensity = VoidWallGlowIntensity;
+            light.shadows = LightShadows.None;
+            voidWallGlowSnapshots.Add(new VoidWallGlowSnapshot
+            {
+                renderer = platform.renderer,
+                originalMaterials = originals,
+                glowMaterials = glowing,
+                lightObject = lightObject
+            });
+        }
+    }
+
     private static bool ShouldBuildVisuals()
     {
         return !Application.isBatchMode && SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null;
@@ -442,10 +720,12 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         DisableLegacyObject("Wall");
         DisableLegacyObject("Plane");
 
-        BlackKill[] legacySingularities = FindObjectsByType<BlackKill>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        BlackKill[] legacySingularities = FindObjectsByType<BlackKill>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         foreach (BlackKill singularity in legacySingularities)
         {
             if (singularity == null || singularity.gameObject.scene != gameObject.scene)
+                continue;
+            if (singularity.transform.IsChildOf(transform))
                 continue;
             disabledLegacyArena.Add(singularity.gameObject);
             singularity.gameObject.SetActive(false);
@@ -925,9 +1205,9 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             return;
         }
 
-        tile.corruptionHits = Mathf.Clamp(hitCount, 0, 3);
+        tile.corruptionHits = Mathf.Clamp(hitCount, 0, BoundaryMatchController.PlatformHitsToCollapse);
         SetPlatformColor(tile.renderer, StablePlatformColor(tile));
-        if (tile.corruptionHits >= 3)
+        if (tile.corruptionHits >= BoundaryMatchController.PlatformHitsToCollapse)
             tile.forcedCollapseAt = Time.time;
     }
 
@@ -937,7 +1217,9 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         {
             case 1: return new Color(0.245f, 0.255f, 0.275f);
             case 2: return new Color(0.115f, 0.122f, 0.138f);
-            case 3: return new Color(0.042f, 0.045f, 0.055f);
+            case 3: return new Color(0.075f, 0.080f, 0.092f);
+            case 4: return new Color(0.052f, 0.056f, 0.066f);
+            case 5: return new Color(0.042f, 0.045f, 0.055f);
             default: return new Color(0.36f, 0.38f, 0.42f);
         }
     }
@@ -1013,7 +1295,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         if (platformProperties.GetColor("_BaseColor").r < firstDarkness)
             score++;
 
-        ApplyBlackHoleContact(tile.stableIndex, 3);
+        ApplyBlackHoleContact(tile.stableIndex, BoundaryMatchController.PlatformHitsToCollapse);
         tile.forcedCollapseAt = Time.time - 1.1f;
         UpdateForcedCollapse(tile, 0);
         if (!tile.collider.enabled && Vector3.Distance(tile.transform.position, tile.startPosition) > 1f)
@@ -1309,30 +1591,6 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             fog);
     }
 
-    private void UpdatePlayerTrails()
-    {
-        if (match.Phase != BoundaryPhase.InnerRing)
-            return;
-
-        PlayerMovement[] players = FindObjectsByType<PlayerMovement>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        foreach (PlayerMovement player in players)
-        {
-            if (player == null || !trailedPlayers.Add(player))
-                continue;
-
-            TrailRenderer trail = player.GetComponent<TrailRenderer>();
-            if (trail == null)
-                trail = player.gameObject.AddComponent<TrailRenderer>();
-            trail.time = 0.34f;
-            trail.startWidth = 0.20f;
-            trail.endWidth = 0f;
-            trail.minVertexDistance = 0.12f;
-            trail.sharedMaterial = vortexMaterial;
-            trail.startColor = new Color(0.75f, 0.24f, 1f, 0.72f);
-            trail.endColor = new Color(0.18f, 0.55f, 1f, 0f);
-        }
-    }
-
     private LineRenderer CreateCircleLine(string name, int points, Material material, float width)
     {
         LineRenderer line = new GameObject(name, typeof(LineRenderer)).GetComponent<LineRenderer>();
@@ -1381,6 +1639,9 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
     public void BuildPhysicsOnlyArenaForValidation(BoundaryMatchController controller)
     {
         match = controller;
+        // The validation root intentionally has no saved scene arena. Permit
+        // the procedural path so this continues to verify collider-only builds.
+        editorPreview = true;
         buildVisuals = false;
         BuildArena(false);
     }

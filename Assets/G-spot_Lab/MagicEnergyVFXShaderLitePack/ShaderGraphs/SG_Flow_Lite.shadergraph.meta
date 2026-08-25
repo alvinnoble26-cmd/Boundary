@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 72a5b25c8f3eb7a4da297df33ed43d94
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 625f186215c104763be7675aa2d941aa, type: 3}
+AssetOrigin:
+  serializedVersion: 1
+  productId: 382224
+  packageName: "Magic Energy VFX Shader Lite Pack \u2013 Flow, Wave & Distortion
+    (URP)"
+  packageVersion: 1.0
+  assetPath: Assets/G-spot_Lab/MagicEnergyVFXShaderLitePack/ShaderGraphs/SG_Flow_Lite.shadergraph
+  uploadId: 931450

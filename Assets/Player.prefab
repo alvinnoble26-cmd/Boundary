@@ -73,7 +73,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a134088fe7b454ba2bd2132f7f584442, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: '::'
 --- !u!1 &2972853464118667405
 GameObject:
@@ -278,6 +278,9 @@ MonoBehaviour:
   firstPersonNearClip: 0.05
   firstPersonFieldOfView: 80
   lookDegreesPerPixelAtDefault: 0.32
+  wallRunCameraTiltAngle: 18
+  wallRunCameraTiltResponse: 16
+  wallRunCameraWallOffset: 0.4
   obstructionRadius: 0.07
   obstructionPadding: 0.025
   obstructionMask:
@@ -589,6 +592,7 @@ GameObject:
   - component: {fileID: 5788030852719069354}
   - component: {fileID: 3796896326780223965}
   - component: {fileID: 8005546882974709800}
+  - component: {fileID: 1173946358291047260}
   - component: {fileID: 3329957552550230194}
   - component: {fileID: 7533495187417849076}
   - component: {fileID: 7969841038093484667}
@@ -748,10 +752,10 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   maxSlopeAngle: 75
-  acceleration: 135
-  maxSpeed: 18
+  acceleration: 120
+  maxSpeed: 15
   deceleration: 50
-  jumpForce: 18
+  jumpForce: 14
   fallGravityMultiplier: 13
   deadzone: 0.1
   inputSmoothing: 12
@@ -769,8 +773,9 @@ MonoBehaviour:
   wallStickTime: 0.3
   wallSlideSpeed: 10
   wallAttachForce: 40
+  wallRunSpeedMultiplier: 1.5
   uprightStrength: 10
-  wallTiltAngle: 25
+  wallTiltAngle: 42
   backTiltAngle: 0
   orientation: {fileID: 7070120784998569782}
   input: {fileID: 309532525056957705}
@@ -819,12 +824,13 @@ MonoBehaviour:
   teleportStartVFX: {fileID: 198000010585806678, guid: 96730f8640590934eacb6f860058e7f9, type: 3}
   teleportEndVFX: {fileID: 198000010585806678, guid: 96730f8640590934eacb6f860058e7f9, type: 3}
   teleportFailVFX: {fileID: 4594305064576874191, guid: d0467414c35f2b349a4bb1219e454466, type: 3}
+  teleportMagicCirclePrefab: {fileID: 3744133877081091469, guid: a2a060732547fe64581bb0cb3c2bdf1d, type: 3}
   vfxLifetime: 2
   vfxYOffset: 0
   maxDistance: 50
   skin: 0.05
   backoffSteps: 8
-  snapToGround: 1
+  snapToGround: 0
   groundRayUp: 1
   groundRayDown: 3
 --- !u!114 &3796896326780223965
@@ -864,6 +870,23 @@ MonoBehaviour:
   btn2Name: A2
   btn3Name: A3
   registry: {fileID: 3796896326780223965}
+--- !u!114 &1173946358291047260
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8887482223705562195}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b4ec19e5449442d99c4f814dc4215fa, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::HollowAbility
+  magicCircleTwoPrefab: {fileID: 3377181292992421420, guid: 48c5715f9603c3842a353516a8baefbb, type: 3}
+  magicEnergyMaterial: {fileID: 2100000, guid: dc243ab5a9ef9b24d9ff74c720b71aab, type: 2}
+  localBlastTexture: {fileID: 2800000, guid: e6ad06386eb684bef9d79076996fd3e4, type: 3}
+  chargeClip: {fileID: 8300000, guid: 8ccebb20114b74444b72b5cbb51abec4, type: 3}
+  blastClip: {fileID: 8300000, guid: c5377a5bda395ec4294b5fa8819ca9c6, type: 3}
 --- !u!114 &3329957552550230194
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -888,6 +911,7 @@ MonoBehaviour:
   backLeanAngle: 12
   leanLerp: 18
   trailPrefab: {fileID: 6930510193063315079, guid: ac1eb58333177014ca6f8c95cc1a7273, type: 3}
+  holyHitPrefab: {fileID: 2944396702758532163, guid: e190bf97c041e58448af6b043116cba0, type: 3}
   trailSpawnPoint: {fileID: 8838511142765693811}
   trailLifetime: 0.6
 --- !u!114 &7533495187417849076
@@ -917,6 +941,7 @@ MonoBehaviour:
   leanForwardAngle: 10
   leanLerp: 20
   trailPrefab: {fileID: 6930510193063315079, guid: ac1eb58333177014ca6f8c95cc1a7273, type: 3}
+  greenHitPrefab: {fileID: 6823302871133167919, guid: 3138a83bedbd6ad4481ba0b061da2eb6, type: 3}
   trailLifetime: 0.3
 --- !u!114 &7969841038093484667
 MonoBehaviour:
@@ -935,7 +960,7 @@ MonoBehaviour:
   objectToThrow: {fileID: 1573405947621632370, guid: 5c0a8df551a6b43dfa5991b87b5bb1f5, type: 3}
   totalThrows: 100
   throwCooldown: 3.5
-  throwForce: 30
+  throwForce: 40
   throwUpwardForce: 10
 --- !u!114 &4444250755395784126
 MonoBehaviour:

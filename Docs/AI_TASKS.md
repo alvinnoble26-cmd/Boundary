@@ -172,6 +172,131 @@ Remaining risks:
 
 ### Re-test result
 
+### Fixer follow-up — Multiplayer Grapple crosshair accuracy
+
+Internal AI Task ID: `1.1.07.00`
+TaskBoard ID: `1.1.07.00`
+Owner approval: Explicit multiplayer diagnosis and implementation request in chat
+on 2026-08-22, including the scoped Grapple RPC payload correction.
+Files changed:
+- `Assets/Scripts/AbilitiesRegistry/PlayerAbilities.cs`
+- `Docs/AI_TASKS.md`
+Problem fixed:
+- Multiplayer previously rebuilt the crosshair ray from an interpolated,
+  owner-authoritative player transform and a different server eye position.
+  Close-range parallax and network delay could therefore select a different
+  floor/wall point, while an additional server-facing angle gate could reject a
+  legitimate fast camera turn. Practice did not expose the discrepancy because
+  its local and server poses were effectively the same.
+Fix applied:
+- Grapple activation now captures the current owner camera origin and the exact
+  locally validated crosshair hit. Static targets submit the world hit point;
+  movable targets submit their `NetworkIdentity` plus a target-local hit point.
+- The server bounds the submitted eye near the replicated player, reconstructs
+  movable points from the authoritative target transform, enforces the 50-unit
+  range, raycasts first-hit line of sight, reruns the target allowlist, verifies
+  movable identity or static hit proximity, verifies the requested slot contains
+  Grapple, and only then starts cooldown and presentation.
+- Removed the replication-sensitive facing-angle rejection and reused the exact
+  same client capture routine for button availability and activation.
+Validation run:
+- `git diff --check` for the changed Grapple source and task report.
+- Focused static review of close-range geometry, target movement, spoofed origin,
+  slot/loadout, range, line-of-sight, cooldown, and allowlist validation paths.
+Manual two-client test steps:
+1. As host and joining client in turn, shoot floor and wall points at 1, 3, 10,
+   and 49 units while standing, moving, jumping, and turning quickly. Confirm the
+   rope lands at the crosshair and the player always pulls toward that point.
+2. Hold the Grapple button, turn, and release. Confirm the release-time crosshair
+   point is used and legitimate quick turns are not silently rejected.
+3. Grapple moving arena cubes, arena black holes, and thrown Black Holes. Confirm
+   the server accepts the same target and keeps the rope at the captured surface
+   location.
+4. Confirm requests beyond 50 units, through an obstruction, from a forged remote
+   origin, for a mismatched identity, for a non-Grapple slot, and for rejected
+   target types do not consume cooldown or start presentation.
+Remaining risks:
+- Real latency and fast-moving target behavior require the documented two-client
+  runtime pass; the 3.5-unit eye reconciliation bound and 0.75-unit hit tolerance
+  are security/latency tradeoffs that should be observed under Edgegap latency.
+Server and Edgegap assessment:
+- Linux dedicated server rebuild required: Yes.
+- New container image/tag required: Yes for release.
+- Edgegap application/version update required: Yes, only after matched build and
+  two-client validation with explicit deployment approval.
+- Firebase deployment required: No.
+- Compatibility: The `RequestGrapple` RPC payload changed. Older Grapple-aware
+  clients and the updated server are not protocol-compatible, so client and
+  dedicated server must be released as a matched pair. The already released
+  pre-Grapple App Store client remains unable to use Grapple and needs the broader
+  planned version migration before this server can replace production.
+- Deployment performed: No.
+
+### Fixer follow-up — Grapple targeting and authority review
+
+Internal AI Task ID: `1.1.07.00`
+TaskBoard ID: `1.1.07.00`
+Owner approval: Explicit implementation request in chat on 2026-08-22.
+Files changed:
+- `Assets/Scripts/Abilities/GrappleAbility.cs`
+- `Assets/Scripts/AbilitiesRegistry/PlayerAbilities.cs`
+- `Docs/AI_TASKS.md`
+Fix applied:
+- Restored the owner-approved 50-unit Grapple range for both local availability
+  checks and server validation.
+- Added continuous valid-target availability for an equipped Grapple button,
+  while retaining cooldown gating and skipping the targeting raycast when
+  Grapple is not equipped.
+- Removed the duplicate server force applied to owner-simulated player bodies.
+  Static player pull remains owner-authoritative; the server only monitors its
+  replicated arrival and controls the shared Grapple lifecycle. Movable targets
+  remain server-simulated.
+- Replaced the dedicated server's stale camera transform as the ray origin with
+  a fixed player-relative eye origin. Server requests now reject non-finite,
+  zero-length, and rearward client aim before independently raycasting and
+  revalidating the target.
+- Stored movable-target hit points in target-local space so the visible cable
+  stays attached to the selected surface point as the object moves.
+Validation run:
+- `git diff --check` for the changed Grapple source and task report.
+- Focused static review of local/server target filtering, cooldown/button state,
+  owner/server physics authority, and movable attachment updates.
+Results:
+- Static checks passed. Unity compilation and two-client runtime validation are
+  recorded below if available from this environment.
+Manual test steps:
+1. Equip Grapple in each slot in turn. Confirm its button is disabled with no
+   valid target, becomes enabled over a valid target within 50 units, remains
+   disabled beyond 50 units, and stays disabled through its accepted cooldown.
+2. In a host/joining-client session, grapple a static wall as each player and
+   confirm one consistent pull without doubled host acceleration or correction
+   jitter.
+3. Grapple an arena black cube, arena black hole, and thrown Black Hole. Confirm
+   the target is server-pulled and the cable remains on the initially selected
+   surface point while it moves.
+4. Confirm players, triggers, arbitrary Rigidbodies, the central singularity,
+   non-allowlisted hazards/projectiles, rearward forged aim, and invalid aim
+   vectors are rejected without cooldown or successful presentation.
+5. Confirm Jump cancellation, arrival retraction, cooldown, remote visuals,
+   disconnect, rematch, and scene transitions still clean up once.
+Remaining risks:
+- Server-facing validation deliberately allows a 60-degree horizontal tolerance
+  for replication latency. Runtime two-client testing is still required to tune
+  that tolerance without rejecting fast legitimate camera turns.
+Server and Edgegap assessment:
+- Linux dedicated server rebuild required: Yes.
+- New image or image tag required: Yes for a production rollout.
+- Edgegap update required: Yes, after matched client/server multiplayer testing
+  and explicit owner deployment approval.
+- Exact Edgegap action: Build and publish the new Linux server image, then use
+  `tools/update-edgegap-image.mjs` with the approved application, version, and
+  image tag; no deployment action was run here.
+- Firebase/backend deployment required: No.
+- Client/server compatibility notes: No RPC signature or `AbilityId` change was
+  introduced by this follow-up, but it must ship with the broader Grapple-aware
+  client/server version.
+- Deployment approval needed from owner: Yes.
+
 Test log entry:
 Result:
 Notes:
@@ -917,6 +1042,19 @@ Manual test steps:
    Teleport, and Grapple cancellation still clean up without stale force.
 Remaining risks: Runtime feel, exact impulse tuning, and host/joining-client
 replication remain unverified.
+
+### Tuning follow-up — Grapple pull strength
+
+TaskBoard ID: `1.1.07.00`
+Files changed:
+- `Assets/Scripts/Abilities/GrappleAbility.cs`
+- `Docs/AI_TASKS.md`
+Change: Reduced the shared static-target Grapple pull acceleration from `240f`
+to `180f`. The Jump handoff impulse uses the same constant, so its transferred
+momentum remains consistent with the tuned pull strength.
+Validation: `git diff --check` and source review of both active pull and Jump
+handoff paths.
+Result: Passed. Unity runtime validation remains outstanding.
 
 ### Re-test result
 
@@ -2115,6 +2253,42 @@ Known limitations:
 Remaining risks:
 - The existing broader ability activation path and deployed PurrNet configuration must be exercised on a dedicated server to confirm expected observer-RPC ordering and host/client presentation timing.
 - Interactions with untested simultaneous movement abilities and match-specific death handling require manual regression coverage.
+
+### Implementer follow-up — Flash teleport VFX
+
+AI Task ID / TaskBoard ID: `2.1.13.00` / `2.1.13.00`
+
+Files changed:
+- `Assets/Scripts/Abilities/TeleportAbility.cs`
+- `Docs/AI_TASKS.md`
+
+What changed:
+- Added a client-local presentation layer to the existing observer-driven teleport wind-up: a two-ring cyan/magenta ground rune with glyphs and three rising, spinning energy ribbons.
+- On completion, the start point receives a 0.55-second mesh afterimage and the destination emits a 72-particle cyan/magenta burst. These effects run on every peer that already receives the teleport presentation; no network object, RPC, ability identifier, serialized field, or teleport authority behavior changed.
+- Every new renderer uses a runtime-created `Universal Render Pipeline/Particles/Unlit` material. Imported legacy VFX prefab materials are deliberately not referenced, preventing Built-In-pipeline material fallback from producing magenta effects.
+
+Validation run:
+- `git diff --check -- Assets/Scripts/Abilities/TeleportAbility.cs`
+- Unity Editor process/log inspection after the script update.
+
+Results:
+- Whitespace validation passed.
+- Unity 6000.3.6f1 is open on this project. Its `Assembly-CSharp.dll` timestamp has not advanced after the source edit, so Unity compilation and runtime validation remain unverified.
+
+Manual test steps:
+1. In the Game scene, activate Teleport and confirm the rune/ribbons run for the full 0.5-second wind-up, then disappear at the original position as the afterimage fades and the destination burst plays.
+2. Run a host and joining client; activate once from each owner and confirm both peers see exactly one rune, ribbon set, afterimage, and burst.
+3. Make a development mobile build and activate Teleport at every enabled Quality level. Confirm no cyan loading or magenta error material occurs, including the particle burst and afterimage.
+4. Interrupt the wind-up with despawn, disconnect, rematch, and Game-to-Menu; confirm the temporary rune/ribbons and material are removed.
+
+Known limitations / remaining risks:
+- Visual intensity, afterimage mesh coverage for each selectable skin, and mobile overdraw need Editor/device review; no Unity PlayMode or two-client runtime test was run from this shell.
+- The URP particle shader is explicitly selected at runtime, but a development build is still required to confirm it is retained by the project's shader-stripping configuration.
+
+Server and deployment assessment:
+- Linux dedicated-server rebuild: No for this presentation-only follow-up; the shared assembly still requires a matched client/server rebuild if the already-pending teleport wind-up networking changes are released.
+- New container image / Edgegap update / Firebase deployment: No action taken or required for this VFX follow-up.
+- Client compatibility: No network or data contract changed; client-only visual validation is sufficient for the new flash layer.
 
 Server and Edgegap assessment:
 - Linux dedicated server rebuild required: Yes.

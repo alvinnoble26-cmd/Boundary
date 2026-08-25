@@ -13,7 +13,9 @@ service cloud.firestore {
     }
 
     match /lobbies/{lobbyCode} {
-      allow read: if signedIn();
+      // Lobby documents include the Edgegap endpoint once a deployment is
+      // ready. A code is an invitation, not authorization to inspect a lobby.
+      allow read: if isLobbyParticipant();
 
       allow create: if signedIn()
         && lobbyCode.matches('^[0-9]{4}$')
