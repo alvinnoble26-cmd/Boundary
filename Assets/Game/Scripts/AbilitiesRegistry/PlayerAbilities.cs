@@ -85,8 +85,6 @@ public class PlayerAbilities : NetworkBehaviour
     private float serverGrappleCooldownUntil;
     private float serverHollowCooldownUntil;
     private float serverVoidCooldownUntil;
-    private readonly Collider[] voidOverlapBuffer = new Collider[160];
-    private readonly HashSet<Rigidbody> voidPulledBodies = new HashSet<Rigidbody>();
     private GameObject grappleTargetReticle;
     private int hollowHeldSlot = -1;
     private int grappleHeldSlot = -1;
@@ -1182,7 +1180,6 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
                 PullVoidOpponent(blackHolePosition, opponent, 0.1f);
                 nextOpponentPullAt = Time.time + 0.1f;
             }
-            PullVoidHazards(blackHolePosition);
         }
 
         serverVoidRoutine = null;
@@ -1193,43 +1190,9 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
         if (opponent == null)
             return;
         Vector3 delta = center - (opponent.transform.position + Vector3.up * 0.8f);
-        float distance = delta.magnitude;
-        if (distance <= 0.05f || distance >= VoidAbility.GravityRadius)
-            return;
-        opponent.ServerPushOwner(delta.normalized * VoidAbility.GravityAcceleration *
-            VoidAbility.GravityFalloff(distance) * elapsed);
-    }
-
-    private void PullVoidHazards(Vector3 center)
-    {
-        BoundaryHazard.ServerApplyArenaMassGravity(
-            center, VoidAbility.GravityRadius, VoidAbility.GravityAcceleration);
-        NetworkProjectilePhysics.ServerApplyBlackHoleGravity(
-            center, VoidAbility.GravityRadius, VoidAbility.GravityAcceleration);
-
-        int hitCount = Physics.OverlapSphereNonAlloc(center, VoidAbility.GravityRadius,
-            voidOverlapBuffer, ~0, QueryTriggerInteraction.Ignore);
-        voidPulledBodies.Clear();
-        for (int index = 0; index < hitCount; index++)
-        {
-            Collider hit = voidOverlapBuffer[index];
-            Rigidbody body = hit != null ? hit.attachedRigidbody : null;
-            if (body == null || body.isKinematic || !voidPulledBodies.Add(body) ||
-                body.GetComponentInParent<PlayerMovement>() != null)
-                continue;
-
-            BoundaryHazard hazard = body.GetComponentInParent<BoundaryHazard>();
-            NetworkArenaCubePhysics arenaCube = body.GetComponentInParent<NetworkArenaCubePhysics>();
-            if (hazard != null || arenaCube == null)
-                continue;
-
-            Vector3 delta = center - body.worldCenterOfMass;
-            float distance = delta.magnitude;
-            if (distance <= 0.05f || distance >= VoidAbility.GravityRadius)
-                continue;
-            body.AddForce(delta.normalized * VoidAbility.GravityAcceleration *
-                VoidAbility.GravityFalloff(distance), ForceMode.Acceleration);
-        }
+        Vector3 velocityChange = VoidAbility.GravityVelocityChange(delta, elapsed);
+        if (velocityChange.sqrMagnitude > 0f)
+            opponent.ServerPushOwner(velocityChange);
     }
 
     [TargetRpc]

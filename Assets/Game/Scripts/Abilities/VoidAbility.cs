@@ -13,7 +13,7 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
     public const float DarkTransitionSeconds = 3f;
     public const float ImmunitySeconds = DurationSeconds;
     public const float GravityRadius = 70f;
-    public const float GravityAcceleration = 1080f;
+    public const float GravityAcceleration = 18f;
     public const float BlackHoleHeight = 12f;
     public const float BlackHoleSpawnDistance = 10f;
     public const float CasterSpeedMultiplier = 1.3f;
@@ -37,9 +37,9 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
     private LineRenderer[] tendrils;
     private PlayerMovement modifiedLocalMovement;
     private Transform enemyHighlight;
-    private RectTransform enemyThroughWallTracker;
     private BoundaryPlayerState highlightedOpponent;
-    private readonly List<EnemyRendererSnapshot> enemyRendererSnapshots = new List<EnemyRendererSnapshot>();
+    private readonly List<GameObject> enemyOutlineObjects = new List<GameObject>();
+    private Material enemyOutlineMaterial;
     private int speedModifierId;
     private AmbientMode previousAmbientMode;
     private Color previousAmbientLight;
@@ -65,13 +65,6 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         public float startedAt;
     }
 
-    private sealed class EnemyRendererSnapshot
-    {
-        public Renderer renderer;
-        public Material[] originalMaterials;
-        public Material[] glowMaterials;
-    }
-
     public AbilityId Id => AbilityId.Void;
     public float CooldownDuration => CooldownSeconds;
     public void Activate() { }
@@ -95,6 +88,14 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
     public static float GravityFalloff(float distance)
     {
         return Mathf.Clamp01(1f - Mathf.Max(0f, distance) / GravityRadius);
+    }
+
+    public static Vector3 GravityVelocityChange(Vector3 delta, float elapsed)
+    {
+        float distance = delta.magnitude;
+        if (distance <= 0.05f || distance >= GravityRadius || elapsed <= 0f)
+            return Vector3.zero;
+        return delta.normalized * GravityAcceleration * GravityFalloff(distance) * elapsed;
     }
 
     public static Vector3 GetBlackHoleGroundPosition(Vector3 casterPosition, Vector3 aimDirection)
@@ -286,41 +287,20 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
 
         enemyHighlight = new GameObject("Void Enemy Highlight").transform;
         enemyHighlight.SetParent(parent, false);
-        Light light = enemyHighlight.gameObject.AddComponent<Light>();
-        light.type = LightType.Point;
-        light.color = new Color(0.18f, 0.75f, 1f);
-        light.range = 12f;
-        light.intensity = 24f;
-        light.shadows = LightShadows.None;
-        ApplyEnemyRendererGlow(highlightedOpponent.transform);
-        CreateEnemyThroughWallTracker(parent);
+        ApplyEnemyOutline(highlightedOpponent.transform);
         UpdateEnemyHighlight();
     }
 
-    private void CreateEnemyThroughWallTracker(Transform parent)
+    private void ApplyEnemyOutline(Transform opponentRoot)
     {
-        GameObject canvasObject = new GameObject("Void Enemy Through-Wall Tracker", typeof(Canvas),
-            typeof(CanvasScaler));
-        canvasObject.transform.SetParent(parent, false);
-        Canvas canvas = canvasObject.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 1200;
-        CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        RestoreEnemyOutline();
+        Shader shader = Shader.Find("Boundary/Void Enemy Outline");
+        if (shader == null)
+            return;
+        enemyOutlineMaterial = new Material(shader) { name = "Void Enemy White Outline" };
+        enemyOutlineMaterial.SetColor("_OutlineColor", Color.white);
+        enemyOutlineMaterial.SetFloat("_OutlineWidth", 0.045f);
 
-        GameObject markerObject = new GameObject("Enemy Marker", typeof(RectTransform), typeof(Image));
-        markerObject.transform.SetParent(canvasObject.transform, false);
-        enemyThroughWallTracker = markerObject.GetComponent<RectTransform>();
-        enemyThroughWallTracker.sizeDelta = new Vector2(28f, 28f);
-        Image marker = markerObject.GetComponent<Image>();
-        marker.color = new Color(0.2f, 0.9f, 1f, 0.95f);
-        marker.raycastTarget = false;
-    }
-
-    private void ApplyEnemyRendererGlow(Transform opponentRoot)
-    {
-        RestoreEnemyRendererGlow();
         Renderer[] renderers = opponentRoot.GetComponentsInChildren<Renderer>(true);
         foreach (Renderer targetRenderer in renderers)
         {
@@ -328,45 +308,59 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
                 targetRenderer.GetComponentInParent<Canvas>() != null)
                 continue;
 
-            Material[] originals = targetRenderer.sharedMaterials;
-            Material[] glowing = new Material[originals.Length];
-            bool hasGlowMaterial = false;
-            for (int index = 0; index < originals.Length; index++)
-            {
-                Material source = originals[index];
-                if (source == null)
-                    continue;
-                Material copy = new Material(source) { name = source.name + " (Void Enemy Glow)" };
-                copy.EnableKeyword("_EMISSION");
-                if (copy.HasProperty("_EmissionColor"))
-                    copy.SetColor("_EmissionColor", new Color(0.18f, 0.82f, 1f, 1f) * 7f);
-                glowing[index] = copy;
-                hasGlowMaterial = true;
-            }
-            if (!hasGlowMaterial)
-                continue;
+            GameObject outlineObject = new GameObject(targetRenderer.name + " Void White Outline");
+            Transform sourceTransform = targetRenderer.transform;
+            outlineObject.transform.SetParent(sourceTransform.parent, false);
+            outlineObject.transform.localPosition = sourceTransform.localPosition;
+            outlineObject.transform.localRotation = sourceTransform.localRotation;
+            outlineObject.transform.localScale = sourceTransform.localScale;
 
-            targetRenderer.sharedMaterials = glowing;
-            enemyRendererSnapshots.Add(new EnemyRendererSnapshot
+            Renderer outlineRenderer = null;
+            if (targetRenderer is SkinnedMeshRenderer sourceSkin)
             {
-                renderer = targetRenderer,
-                originalMaterials = originals,
-                glowMaterials = glowing
-            });
+                SkinnedMeshRenderer skin = outlineObject.AddComponent<SkinnedMeshRenderer>();
+                skin.sharedMesh = sourceSkin.sharedMesh;
+                skin.bones = sourceSkin.bones;
+                skin.rootBone = sourceSkin.rootBone;
+                skin.localBounds = sourceSkin.localBounds;
+                skin.updateWhenOffscreen = true;
+                outlineRenderer = skin;
+            }
+            else if (targetRenderer is MeshRenderer &&
+                     targetRenderer.GetComponent<MeshFilter>() is MeshFilter sourceFilter)
+            {
+                outlineObject.AddComponent<MeshFilter>().sharedMesh = sourceFilter.sharedMesh;
+                outlineRenderer = outlineObject.AddComponent<MeshRenderer>();
+            }
+
+            if (outlineRenderer == null)
+            {
+                Destroy(outlineObject);
+                continue;
+            }
+
+            int materialCount = Mathf.Max(1, targetRenderer.sharedMaterials.Length);
+            Material[] outlineMaterials = new Material[materialCount];
+            for (int index = 0; index < outlineMaterials.Length; index++)
+                outlineMaterials[index] = enemyOutlineMaterial;
+            outlineRenderer.sharedMaterials = outlineMaterials;
+            outlineRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            outlineRenderer.receiveShadows = false;
+            outlineRenderer.lightProbeUsage = LightProbeUsage.Off;
+            outlineRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            enemyOutlineObjects.Add(outlineObject);
         }
     }
 
-    private void RestoreEnemyRendererGlow()
+    private void RestoreEnemyOutline()
     {
-        foreach (EnemyRendererSnapshot snapshot in enemyRendererSnapshots)
-        {
-            if (snapshot.renderer != null)
-                snapshot.renderer.sharedMaterials = snapshot.originalMaterials;
-            foreach (Material material in snapshot.glowMaterials)
-                if (material != null)
-                    Destroy(material);
-        }
-        enemyRendererSnapshots.Clear();
+        foreach (GameObject outlineObject in enemyOutlineObjects)
+            if (outlineObject != null)
+                Destroy(outlineObject);
+        enemyOutlineObjects.Clear();
+        if (enemyOutlineMaterial != null)
+            Destroy(enemyOutlineMaterial);
+        enemyOutlineMaterial = null;
     }
 
     private void UpdateEnemyHighlight()
@@ -375,34 +369,6 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
             return;
 
         enemyHighlight.position = highlightedOpponent.transform.position + Vector3.up * 1.15f;
-        float pulse = 1f + Mathf.Sin(Time.unscaledTime * 5f) * 0.16f;
-        enemyHighlight.localScale = Vector3.one * pulse;
-        UpdateEnemyThroughWallTracker(pulse);
-    }
-
-    private void UpdateEnemyThroughWallTracker(float pulse)
-    {
-        if (enemyThroughWallTracker == null)
-            return;
-
-        Camera targetCamera = Camera.main;
-        if (targetCamera == null)
-        {
-            enemyThroughWallTracker.gameObject.SetActive(false);
-            return;
-        }
-
-        Vector3 screenPosition = targetCamera.WorldToScreenPoint(
-            highlightedOpponent.transform.position + Vector3.up * 1.15f);
-        if (screenPosition.z < 0f)
-            screenPosition = new Vector3(Screen.width - screenPosition.x, Screen.height - screenPosition.y, 0f);
-
-        const float edgePadding = 32f;
-        screenPosition.x = Mathf.Clamp(screenPosition.x, edgePadding, Screen.width - edgePadding);
-        screenPosition.y = Mathf.Clamp(screenPosition.y, edgePadding, Screen.height - edgePadding);
-        enemyThroughWallTracker.gameObject.SetActive(true);
-        enemyThroughWallTracker.position = screenPosition;
-        enemyThroughWallTracker.localScale = Vector3.one * pulse;
     }
 
     private static void CreateBlackParticles(Transform parent, Material material)
@@ -737,9 +703,8 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         if (modifiedLocalMovement != null)
             modifiedLocalMovement.RemoveExternalSpeedMultiplier(speedModifierId);
         modifiedLocalMovement = null;
-        RestoreEnemyRendererGlow();
+        RestoreEnemyOutline();
         enemyHighlight = null;
-        enemyThroughWallTracker = null;
         highlightedOpponent = null;
 
         for (int index = 0; index < lights.Count; index++)

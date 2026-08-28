@@ -8,10 +8,10 @@ public sealed class BullseyeAbilityTests
     {
         Assert.That(BullseyeAbility.CooldownSeconds, Is.EqualTo(2f));
         Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(0f), Is.EqualTo(12f));
-        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(0.3f), Is.EqualTo(12f));
-        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(0.4f), Is.EqualTo(7f));
-        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(1f), Is.EqualTo(7f));
-        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(1.01f), Is.Zero);
+        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(0.6f), Is.EqualTo(12f));
+        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(0.61f), Is.EqualTo(7f));
+        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(3f), Is.EqualTo(7f));
+        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(3.01f), Is.Zero);
     }
 
     [Test]

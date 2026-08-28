@@ -34,8 +34,8 @@ public sealed class BullseyeAbility : MonoBehaviour, IAbility
     public const float ProjectileSpeed = 95f;
     public const float ProjectileRadius = 0.08f;
     public const float MaximumLifetime = 30f;
-    public const float CenterRadius = 0.30f;
-    public const float RingRadius = 1f;
+    public const float CenterRadius = 0.60f;
+    public const float RingRadius = 3f;
     public const float CenterDamage = 12f;
     public const float RingDamage = 7f;
     public const float TargetCenterHeight = 0.8f;

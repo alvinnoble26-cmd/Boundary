@@ -8,7 +8,7 @@ public sealed class VoidAbilityTests
     {
         Assert.AreEqual(45f, VoidAbility.CooldownSeconds, 0.001f);
         Assert.AreEqual(15f, VoidAbility.DurationSeconds, 0.001f);
-        Assert.AreEqual(1080f, VoidAbility.GravityAcceleration, 0.001f);
+        Assert.AreEqual(18f, VoidAbility.GravityAcceleration, 0.001f);
         Assert.AreEqual(3f, VoidAbility.DarkTransitionSeconds, 0.001f);
         Assert.AreEqual(15f, VoidAbility.ImmunitySeconds, 0.001f);
         Assert.AreEqual(70f, VoidAbility.GravityRadius, 0.001f);
@@ -61,6 +61,16 @@ public sealed class VoidAbilityTests
         Assert.AreEqual(0.5f, VoidAbility.GravityFalloff(35f), 0.001f);
         Assert.AreEqual(0f, VoidAbility.GravityFalloff(70f), 0.001f);
         Assert.AreEqual(0f, VoidAbility.GravityFalloff(90f), 0.001f);
+    }
+
+    [Test]
+    public void GravityPullIsNoticeableButAllowsCounterMovement()
+    {
+        Vector3 velocityChange = VoidAbility.GravityVelocityChange(Vector3.forward * 35f, 0.1f);
+
+        Assert.AreEqual(0.9f, velocityChange.magnitude, 0.001f);
+        Assert.AreEqual(Vector3.zero,
+            VoidAbility.GravityVelocityChange(Vector3.forward * 70f, 0.1f));
     }
 
     [Test]

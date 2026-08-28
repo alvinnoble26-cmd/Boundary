@@ -233,8 +233,9 @@ public sealed class BullseyeTargetPresentation : MonoBehaviour
     public void Initialize(Camera camera)
     {
         viewer = camera;
-        outerRing = CreateRing("Bullseye Outer Ring", 0.58f, 0.035f);
-        centerCircle = CreateRing("Bullseye Center Circle", 0.23f, 0.03f);
+        outerRing = CreateRing("Bullseye Outer Ring", 1.74f, 0.055f, Color.white);
+        centerCircle = CreateRing("Bullseye Center Circle", 0.46f, 0.045f,
+            new Color(1f, 0.12f, 0.08f, 0.95f));
     }
 
     private void LateUpdate()
@@ -244,7 +245,7 @@ public sealed class BullseyeTargetPresentation : MonoBehaviour
         transform.rotation = Quaternion.LookRotation(viewer.transform.forward, viewer.transform.up);
     }
 
-    private LineRenderer CreateRing(string ringName, float radius, float width)
+    private LineRenderer CreateRing(string ringName, float radius, float width, Color color)
     {
         GameObject ring = new GameObject(ringName, typeof(LineRenderer));
         ring.transform.SetParent(transform, false);
@@ -254,7 +255,7 @@ public sealed class BullseyeTargetPresentation : MonoBehaviour
         line.positionCount = 65;
         line.startWidth = line.endWidth = width;
         line.material = new Material(Shader.Find("Sprites/Default"));
-        line.startColor = line.endColor = new Color(1f, 0.12f, 0.08f, 0.95f);
+        line.startColor = line.endColor = color;
         line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         line.receiveShadows = false;
         for (int index = 0; index < line.positionCount; index++)
