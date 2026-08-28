@@ -24,6 +24,7 @@ const EDGEGAP_VERSION = "v21";
 const GAME_PORT_NAME = "gameport";
 const DEPLOYMENT_START_TIMEOUT_MS = 150000;
 const DEPLOYMENT_POLL_INTERVAL_MS = 3000;
+const DEPLOYMENT_ERROR_GRACE_MS = 30000;
 const REMATCH_CLEANUP_GRACE_MS = 90000;
 const ABANDONED_DEPLOYMENT_MS = 10 * 60 * 1000;
 const MAX_DEPLOYMENT_LIFETIME_MS = 10 * 60 * 1000;
@@ -160,6 +161,7 @@ async function markDeploymentReady(lobbyRef, requestId, data) {
 
 async function pollDeploymentUntilReady(lobbyRef, requestId) {
   const deadline = Date.now() + DEPLOYMENT_START_TIMEOUT_MS;
+  let errorStartedAt = 0;
 
   while (Date.now() < deadline) {
     const payload = await edgegapFetch(`/v1/status/${encodeURIComponent(requestId)}`);
@@ -173,7 +175,15 @@ async function pollDeploymentUntilReady(lobbyRef, requestId) {
     if (status === "ready" && await markDeploymentReady(lobbyRef, requestId, data))
       return data;
 
-    if (status === "error" || status === "terminated" || status === "stopped") {
+    if (status === "error") {
+      if (!errorStartedAt) errorStartedAt = Date.now();
+      if (Date.now() - errorStartedAt >= DEPLOYMENT_ERROR_GRACE_MS)
+        throw new Error(`Edgegap deployment entered ${status}`);
+    } else {
+      errorStartedAt = 0;
+    }
+
+    if (status === "terminated" || status === "stopped") {
       throw new Error(`Edgegap deployment entered ${status}`);
     }
 
@@ -606,7 +616,7 @@ exports.cleanupEdgegapDeployments = onSchedule({
     const lobby = doc.data();
     if (!lobby.deploymentRequestId) continue;
 
-    if (lobby.serverStatus === "deploying") {
+    if (lobby.serverStatus === "deploying" || lobby.serverStatus === "error") {
       try {
         const payload = await edgegapFetch(
             `/v1/status/${encodeURIComponent(lobby.deploymentRequestId)}`);
@@ -616,7 +626,7 @@ exports.cleanupEdgegapDeployments = onSchedule({
             await markDeploymentReady(doc.ref, lobby.deploymentRequestId, data))
           continue;
       } catch (error) {
-        logger.warn("Could not reconcile deploying Edgegap server", {
+        logger.warn("Could not reconcile Edgegap server", {
           lobbyCode: doc.id,
           requestId: lobby.deploymentRequestId,
           error: error.message,
