@@ -1,0 +1,72 @@
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_analytics.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_analytics_dark.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_auth.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_auth_dark.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_cloud_messaging.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_cloud_messaging_dark.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_config.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_config_dark.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_crashlytics.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_crashlytics_dark.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_database.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_database_dark.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_functions.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_functions_dark.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_storage.png
+Assets/Game/Backend/Editor Default Resources/Firebase/fb_storage_dark.png
+Assets/Game/Backend/Editor Default Resources/Firebase/firebase_lockup.png
+Assets/Game/Backend/Editor Default Resources/Firebase/firebase_lockup_dark.png
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.IOSResolver.dll
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.IOSResolver.pdb
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.JarResolver.dll
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.JarResolver.pdb
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.PackageManagerResolver.dll
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.PackageManagerResolver.pdb
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.VersionHandlerImpl.dll
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.VersionHandlerImpl.pdb
+Assets/Game/Backend/ExternalDependencyManager/Editor/CHANGELOG.md
+Assets/Game/Backend/ExternalDependencyManager/Editor/Google.VersionHandler.dll
+Assets/Game/Backend/ExternalDependencyManager/Editor/Google.VersionHandler.pdb
+Assets/Game/Backend/ExternalDependencyManager/Editor/LICENSE
+Assets/Game/Backend/ExternalDependencyManager/Editor/README.md
+Assets/Game/Backend/ExternalDependencyManager/Editor/external-dependency-manager_version-1.2.187_manifest.txt
+Assets/Game/Backend/Firebase/Editor/AppDependencies.xml
+Assets/Game/Backend/Firebase/Editor/Firebase.Editor.dll
+Assets/Game/Backend/Firebase/Editor/Firebase.Editor.pdb
+Assets/Game/Backend/Firebase/Editor/FirestoreDependencies.xml
+Assets/Game/Backend/Firebase/Editor/generate_xml_from_google_services_json.exe
+Assets/Game/Backend/Firebase/Editor/generate_xml_from_google_services_json.py
+Assets/Game/Backend/Firebase/FirebaseApp/Internal/AssemblyInfo.cs
+Assets/Game/Backend/Firebase/FirebaseApp/Internal/Firebase.App.Internal.asmdef
+Assets/Game/Backend/Firebase/FirebaseApp/Internal/FirebaseInterops.cs
+Assets/Game/Backend/Firebase/FirebaseApp/Internal/HttpHelpers.cs
+Assets/Game/Backend/Firebase/FirebaseApp/Internal/link.xml
+Assets/Game/Backend/Firebase/Plugins/Firebase.App.dll
+Assets/Game/Backend/Firebase/Plugins/Firebase.App.pdb
+Assets/Game/Backend/Firebase/Plugins/Firebase.Firestore.dll
+Assets/Game/Backend/Firebase/Plugins/Firebase.Firestore.pdb
+Assets/Game/Backend/Firebase/Plugins/Firebase.Platform.dll
+Assets/Game/Backend/Firebase/Plugins/Firebase.Platform.pdb
+Assets/Game/Backend/Firebase/Plugins/Firebase.TaskExtension.dll
+Assets/Game/Backend/Firebase/Plugins/Firebase.TaskExtension.pdb
+Assets/Game/Backend/Firebase/Plugins/Google.MiniJson.dll
+Assets/Game/Backend/Firebase/Plugins/iOS/Firebase.App.dll
+Assets/Game/Backend/Firebase/Plugins/iOS/Firebase.App.pdb
+Assets/Game/Backend/Firebase/Plugins/iOS/Firebase.Firestore.dll
+Assets/Game/Backend/Firebase/Plugins/iOS/Firebase.Firestore.pdb
+Assets/Game/Backend/Firebase/Plugins/x86_64/FirebaseCppApp-13_12_0.bundle
+Assets/Game/Backend/Firebase/Plugins/x86_64/FirebaseCppApp-13_12_0.dll
+Assets/Game/Backend/Firebase/Plugins/x86_64/FirebaseCppApp-13_12_0.so
+Assets/Game/Backend/Firebase/Plugins/x86_64/FirebaseCppFirestore.bundle
+Assets/Game/Backend/Firebase/Plugins/x86_64/FirebaseCppFirestore.dll
+Assets/Game/Backend/Firebase/Plugins/x86_64/FirebaseCppFirestore.so
+Assets/Game/Backend/Firebase/m2repository/com/google/firebase/firebase-app-unity/13.12.0/firebase-app-unity-13.12.0.pom
+Assets/Game/Backend/Firebase/m2repository/com/google/firebase/firebase-app-unity/13.12.0/firebase-app-unity-13.12.0.srcaar
+Assets/Game/Backend/Firebase/m2repository/com/google/firebase/firebase-app-unity/maven-metadata.xml
+Assets/Game/Backend/Firebase/m2repository/com/google/firebase/firebase-firestore-unity/13.12.0/firebase-firestore-unity-13.12.0.pom
+Assets/Game/Backend/Firebase/m2repository/com/google/firebase/firebase-firestore-unity/13.12.0/firebase-firestore-unity-13.12.0.srcaar
+Assets/Game/Backend/Firebase/m2repository/com/google/firebase/firebase-firestore-unity/maven-metadata.xml
+Assets/Game/Backend/Plugins/iOS/Firebase/libFirebaseCppApp.a
+Assets/Game/Backend/Plugins/iOS/Firebase/libFirebaseCppFirestore.a
+Assets/Game/Backend/Plugins/tvOS/Firebase/libFirebaseCppApp.a
+Assets/Game/Backend/Plugins/tvOS/Firebase/libFirebaseCppFirestore.a

@@ -1,0 +1,14 @@
+Assets/Game/Backend/Firebase/Editor/AuthDependencies.xml
+Assets/Game/Backend/Firebase/Plugins/Firebase.Auth.dll
+Assets/Game/Backend/Firebase/Plugins/Firebase.Auth.pdb
+Assets/Game/Backend/Firebase/Plugins/iOS/Firebase.Auth.dll
+Assets/Game/Backend/Firebase/Plugins/iOS/Firebase.Auth.pdb
+Assets/Game/Backend/Firebase/Plugins/x86_64/FirebaseCppAuth.bundle
+Assets/Game/Backend/Firebase/Plugins/x86_64/FirebaseCppAuth.dll
+Assets/Game/Backend/Firebase/Plugins/x86_64/FirebaseCppAuth.so
+Assets/Game/Backend/Firebase/m2repository/com/google/firebase/firebase-auth-unity/13.12.0/firebase-auth-unity-13.12.0.pom
+Assets/Game/Backend/Firebase/m2repository/com/google/firebase/firebase-auth-unity/13.12.0/firebase-auth-unity-13.12.0.srcaar
+Assets/Game/Backend/Firebase/m2repository/com/google/firebase/firebase-auth-unity/maven-metadata.xml
+Assets/Game/Backend/Plugins/iOS/Firebase/libFirebaseCppAuth.a
+Assets/Game/Backend/Plugins/tvOS/Firebase/libFirebaseCppAuth.a
+Assets/package.json

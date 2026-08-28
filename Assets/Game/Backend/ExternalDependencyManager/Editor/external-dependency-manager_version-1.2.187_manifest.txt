@@ -1,0 +1,13 @@
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.IOSResolver.dll
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.IOSResolver.pdb
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.JarResolver.dll
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.JarResolver.pdb
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.PackageManagerResolver.dll
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.PackageManagerResolver.pdb
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.VersionHandlerImpl.dll
+Assets/Game/Backend/ExternalDependencyManager/Editor/1.2.187/Google.VersionHandlerImpl.pdb
+Assets/Game/Backend/ExternalDependencyManager/Editor/CHANGELOG.md
+Assets/Game/Backend/ExternalDependencyManager/Editor/Google.VersionHandler.dll
+Assets/Game/Backend/ExternalDependencyManager/Editor/Google.VersionHandler.pdb
+Assets/Game/Backend/ExternalDependencyManager/Editor/LICENSE
+Assets/Game/Backend/ExternalDependencyManager/Editor/README.md
