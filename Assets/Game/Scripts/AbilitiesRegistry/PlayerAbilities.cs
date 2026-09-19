@@ -1762,8 +1762,11 @@ void UseSlot(int slotIndex)
     {
         bullseyeHeldSlot = -1;
         SetBullseyeTargetVisible(false);
-        GetLocalCameraController()?.ThrowBullseyeKnife(aimDirection, bullseyeKnifePrefab);
-        RequestBullseye(spawnPosition, aimDirection, slotIndex);
+        Vector3 cameraPosition = ownerCamera != null ? ownerCamera.transform.position : spawnPosition;
+        BullseyeAbility.ResolveCrosshairShot(cameraPosition, cameraDirection,
+            spawnPosition, aimDirection, out Vector3 bullseyeOrigin, out Vector3 bullseyeDirection);
+        GetLocalCameraController()?.ThrowBullseyeKnife(bullseyeDirection, bullseyeKnifePrefab);
+        RequestBullseye(bullseyeOrigin, bullseyeDirection, slotIndex);
         return;
     }
 

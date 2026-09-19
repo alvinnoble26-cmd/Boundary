@@ -7,7 +7,7 @@ public sealed class SliceAbility : MonoBehaviour, IAbility
 {
     public const float CooldownSeconds = 1f;
     public const float Damage = 7f;
-    public const float Radius = 4f;
+    public const float Radius = 7f;
     public const float ArcDegrees = 120f;
     public const float SwingDuration = 0.14f;
     public const float ScreenSliceDuration = 0.75f;

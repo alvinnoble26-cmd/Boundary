@@ -9,6 +9,8 @@ public sealed class BoundaryHUD : MonoBehaviour
     public const int EventTitleFontSize = 29;
     public const int EventCountdownFontSize = 23;
     public const int EventHintFontSize = 15;
+    public const float DamageGradientWidth = 26f;
+    public const float LowHealthPulseThreshold = 20f;
     private const float HealthBarWidth = 540f;
     private const float HealthBarHeight = 18f;
     private const float HealthBarInset = 2f;
@@ -33,7 +35,7 @@ public sealed class BoundaryHUD : MonoBehaviour
     private Image healthTrail;
     private Text healthText;
     private GameObject healthOutline;
-    private readonly Image[] damageBorder = new Image[4];
+    private DamageGradientGraphic damageGradient;
     private readonly RectTransform[] healthParticles = new RectTransform[12];
     private readonly Vector2[] healthParticleVelocity = new Vector2[12];
     private readonly float[] healthParticleLife = new float[12];
@@ -233,16 +235,14 @@ public sealed class BoundaryHUD : MonoBehaviour
             healthParticles[index] = particleRect;
         }
 
-        RectTransform borderRoot = CreateRect(safeAreaRoot, "Damage Border");
-        Stretch(borderRoot);
-        damageBorder[0] = CreateBorder(borderRoot, "Top", new Vector2(0f, 1f), new Vector2(1f, 1f),
-            new Vector2(0f, -26f), Vector2.zero);
-        damageBorder[1] = CreateBorder(borderRoot, "Bottom", new Vector2(0f, 0f), new Vector2(1f, 0f),
-            Vector2.zero, new Vector2(0f, 26f));
-        damageBorder[2] = CreateBorder(borderRoot, "Left", new Vector2(0f, 0f), new Vector2(0f, 1f),
-            Vector2.zero, new Vector2(26f, 0f));
-        damageBorder[3] = CreateBorder(borderRoot, "Right", new Vector2(1f, 0f), new Vector2(1f, 1f),
-            new Vector2(-26f, 0f), Vector2.zero);
+        GameObject gradientObject = new GameObject("Damage Gradient", typeof(RectTransform),
+            typeof(CanvasRenderer), typeof(DamageGradientGraphic));
+        gradientObject.layer = 5;
+        gradientObject.transform.SetParent(safeAreaRoot, false);
+        damageGradient = gradientObject.GetComponent<DamageGradientGraphic>();
+        damageGradient.raycastTarget = false;
+        damageGradient.GradientWidth = DamageGradientWidth;
+        Stretch(damageGradient.rectTransform);
     }
 
     private void UpdateHealthPresentation()
@@ -286,16 +286,18 @@ public sealed class BoundaryHUD : MonoBehaviour
         healthText.text = $"{current:0.0} / 100";
 
         damageTintRemaining = Mathf.Max(0f, damageTintRemaining - Time.unscaledDeltaTime);
-        float lowHealthTint = current < 20f
-            ? 0.14f + Mathf.Sin(Time.unscaledTime * 4.5f) * 0.035f
-            : 0f;
         float hitTint = damageTintRemaining > 0f ? 0.18f * (damageTintRemaining / 0.28f) : 0f;
-        Color borderColor = new Color(1f, 0.04f, 0.04f, Mathf.Max(lowHealthTint, hitTint));
-        foreach (Image border in damageBorder)
-            if (border != null)
-                border.color = borderColor;
+        damageGradient.SetIntensity(CalculateDamageGradientIntensity(current, hitTint, Time.unscaledTime));
 
         UpdateHealthParticles();
+    }
+
+    public static float CalculateDamageGradientIntensity(float health, float hitIntensity, float time)
+    {
+        float lowHealthIntensity = health <= LowHealthPulseThreshold
+            ? 0.14f + Mathf.Sin(time * 4.5f) * 0.035f
+            : 0f;
+        return Mathf.Max(lowHealthIntensity, Mathf.Max(0f, hitIntensity));
     }
 
     private void SpawnHealthParticles(float health01)
@@ -384,19 +386,6 @@ public sealed class BoundaryHUD : MonoBehaviour
         rect.anchorMax = anchorMax;
         rect.offsetMin = offsetMin;
         rect.offsetMax = offsetMax;
-    }
-
-    private static Image CreateBorder(Transform parent, string name, Vector2 anchorMin,
-        Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
-    {
-        Image border = CreateImage(parent, name, new Color(1f, 0f, 0f, 0f));
-        border.raycastTarget = false;
-        RectTransform rect = border.rectTransform;
-        rect.anchorMin = anchorMin;
-        rect.anchorMax = anchorMax;
-        rect.offsetMin = offsetMin;
-        rect.offsetMax = offsetMax;
-        return border;
     }
 
     private static Text FindText(Transform parent, string authoredName, int fallbackIndex)
@@ -657,5 +646,80 @@ public sealed class BoundaryHUD : MonoBehaviour
         rect.pivot = new Vector2(0.5f, 0.5f);
         rect.offsetMin = Vector2.one * inset;
         rect.offsetMax = Vector2.one * -inset;
+    }
+}
+
+internal sealed class DamageGradientGraphic : MaskableGraphic
+{
+    private const float InnerAlphaRatio = 0.12f;
+    private static readonly Color OuterRed = new Color(0.72f, 0.015f, 0.015f, 1f);
+    private static readonly Color InnerRed = new Color(1f, 0.16f, 0.16f, 1f);
+
+    private float gradientWidth = 26f;
+    private float intensity;
+
+    public float GradientWidth
+    {
+        get => gradientWidth;
+        set
+        {
+            gradientWidth = Mathf.Max(0f, value);
+            SetVerticesDirty();
+        }
+    }
+
+    public void SetIntensity(float value)
+    {
+        value = Mathf.Clamp01(value);
+        if (Mathf.Approximately(intensity, value))
+            return;
+
+        intensity = value;
+        SetVerticesDirty();
+    }
+
+    protected override void OnPopulateMesh(VertexHelper vertexHelper)
+    {
+        vertexHelper.Clear();
+        if (intensity <= 0f)
+            return;
+
+        Rect outer = rectTransform.rect;
+        float inset = Mathf.Min(gradientWidth, Mathf.Min(outer.width, outer.height) * 0.5f);
+        Rect inner = new Rect(outer.xMin + inset, outer.yMin + inset,
+            Mathf.Max(0f, outer.width - inset * 2f), Mathf.Max(0f, outer.height - inset * 2f));
+
+        Color outerColor = OuterRed;
+        outerColor.a = intensity;
+        Color innerColor = InnerRed;
+        innerColor.a = intensity * InnerAlphaRatio;
+
+        AddVertex(vertexHelper, new Vector2(outer.xMin, outer.yMax), outerColor);
+        AddVertex(vertexHelper, new Vector2(outer.xMax, outer.yMax), outerColor);
+        AddVertex(vertexHelper, new Vector2(outer.xMax, outer.yMin), outerColor);
+        AddVertex(vertexHelper, new Vector2(outer.xMin, outer.yMin), outerColor);
+        AddVertex(vertexHelper, new Vector2(inner.xMin, inner.yMax), innerColor);
+        AddVertex(vertexHelper, new Vector2(inner.xMax, inner.yMax), innerColor);
+        AddVertex(vertexHelper, new Vector2(inner.xMax, inner.yMin), innerColor);
+        AddVertex(vertexHelper, new Vector2(inner.xMin, inner.yMin), innerColor);
+
+        AddQuad(vertexHelper, 0, 1, 5, 4);
+        AddQuad(vertexHelper, 1, 2, 6, 5);
+        AddQuad(vertexHelper, 2, 3, 7, 6);
+        AddQuad(vertexHelper, 3, 0, 4, 7);
+    }
+
+    private static void AddVertex(VertexHelper vertexHelper, Vector2 position, Color color)
+    {
+        UIVertex vertex = UIVertex.simpleVert;
+        vertex.position = position;
+        vertex.color = color;
+        vertexHelper.AddVert(vertex);
+    }
+
+    private static void AddQuad(VertexHelper vertexHelper, int outerA, int outerB, int innerB, int innerA)
+    {
+        vertexHelper.AddTriangle(outerA, outerB, innerB);
+        vertexHelper.AddTriangle(outerA, innerB, innerA);
     }
 }

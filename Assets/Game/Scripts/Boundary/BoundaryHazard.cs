@@ -8,6 +8,8 @@ using UnityEngine.Rendering;
 [RequireComponent(typeof(Rigidbody))]
 public sealed class BoundaryHazard : NetworkBehaviour
 {
+    public const float PlatformContactCooldownSeconds = 5f;
+
     private static readonly List<BoundaryHazard> ActiveHazards = new List<BoundaryHazard>();
     private static bool hollowGlowActive;
     private static bool darknessGlowActive;
@@ -44,8 +46,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
     private float absorptionStartedAt;
     private float absorptionDuration;
     private float abilityInfluenceUntil;
-    private int lastPlatformIndex = -1;
-    private float lastPlatformContactAt = -10f;
+    private readonly Dictionary<int, float> lastPlatformContactTimes = new Dictionary<int, float>();
     private bool visualApplied;
     private bool buildVisuals;
     private float desiredOrbitRadius;
@@ -875,11 +876,8 @@ public sealed class BoundaryHazard : NetworkBehaviour
             (kind.value == BoundaryHazardKind.ArenaBlackHole || kind.value == BoundaryHazardKind.Cube))
         {
             BoundaryBreakawayPlatform platform = collision.collider.GetComponentInParent<BoundaryBreakawayPlatform>();
-            if (platform != null &&
-                (platform.PlatformIndex != lastPlatformIndex || Time.time - lastPlatformContactAt >= 0.45f))
+            if (platform != null && TryBeginPlatformContactCooldown(platform.PlatformIndex, Time.time))
             {
-                lastPlatformIndex = platform.PlatformIndex;
-                lastPlatformContactAt = Time.time;
                 BoundaryMatchController.Instance?.ServerRegisterPlatformContact(platform.PlatformIndex);
             }
         }
@@ -921,6 +919,19 @@ public sealed class BoundaryHazard : NetworkBehaviour
                 ? BoundaryMath.DisasterPower(BoundaryDisaster.OrbitalStrike)
                 : 1f);
         movement.ApplyBoundaryImpulse(direction.normalized * impact);
+    }
+
+    public bool TryBeginPlatformContactCooldown(int platformIndex, float currentTime)
+    {
+        if (platformIndex < 0 ||
+            (lastPlatformContactTimes.TryGetValue(platformIndex, out float lastContactTime) &&
+             currentTime - lastContactTime < PlatformContactCooldownSeconds))
+        {
+            return false;
+        }
+
+        lastPlatformContactTimes[platformIndex] = currentTime;
+        return true;
     }
 
     private void OnCollisionStay(Collision collision)

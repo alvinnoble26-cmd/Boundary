@@ -48,6 +48,29 @@ public sealed class VoidAbilityTests
     }
 
     [Test]
+    public void EnemyOutlineBrightensForOneSecondThenFadesOutForHalfASecond()
+    {
+        Assert.AreEqual(1f, VoidAbility.EnemyOutlineBrightenSeconds, 0.001f);
+        Assert.AreEqual(0.5f, VoidAbility.EnemyOutlineFadeSeconds, 0.001f);
+
+        Color start = VoidAbility.EnemyOutlineColor(0f);
+        Color middleRise = VoidAbility.EnemyOutlineColor(0.5f);
+        Color peak = VoidAbility.EnemyOutlineColor(1f);
+        Color middleFade = VoidAbility.EnemyOutlineColor(1.25f);
+        Color nearlyGone = VoidAbility.EnemyOutlineColor(1.4999f);
+        Color repeatedRise = VoidAbility.EnemyOutlineColor(2f);
+
+        Assert.Greater(middleRise.r, start.r);
+        Assert.Greater(peak.r, middleRise.r);
+        Assert.AreEqual(1f, peak.a, 0.001f);
+        Assert.Less(middleFade.r, peak.r);
+        Assert.Less(middleFade.a, peak.a);
+        Assert.Less(nearlyGone.a, 0.001f);
+        Assert.AreEqual(middleRise.r, repeatedRise.r, 0.001f);
+        Assert.AreEqual(middleRise.a, repeatedRise.a, 0.001f);
+    }
+
+    [Test]
     public void AppliesRequestedSpeedModifiers()
     {
         Assert.AreEqual(1.3f, VoidAbility.CasterSpeedMultiplier, 0.001f);

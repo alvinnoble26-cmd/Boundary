@@ -18,6 +18,10 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
     public const float BlackHoleSpawnDistance = 10f;
     public const float CasterSpeedMultiplier = 1.3f;
     public const float OpponentSpeedMultiplier = 0.7f;
+    public const float EnemyOutlineBrightenSeconds = 1f;
+    public const float EnemyOutlineFadeSeconds = 0.5f;
+    public const float EnemyOutlineMinimumBrightness = 0.8f;
+    public const float EnemyOutlineMaximumBrightness = 5f;
     public const float SlashIntervalSeconds = 0.55f;
     public const float SlashLifetimeSeconds = 2.2f;
 
@@ -85,6 +89,25 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         return presentationOwnedByCaster && hasOpponent;
     }
 
+    public static Color EnemyOutlineColor(float elapsed)
+    {
+        float cycleDuration = EnemyOutlineBrightenSeconds + EnemyOutlineFadeSeconds;
+        float phase = Mathf.Repeat(Mathf.Max(0f, elapsed), cycleDuration);
+        if (phase < EnemyOutlineBrightenSeconds)
+        {
+            float rise = Mathf.SmoothStep(0f, 1f, phase / EnemyOutlineBrightenSeconds);
+            float brightness = Mathf.Lerp(EnemyOutlineMinimumBrightness,
+                EnemyOutlineMaximumBrightness, rise);
+            return new Color(brightness, brightness, brightness, 1f);
+        }
+
+        float fade = Mathf.SmoothStep(0f, 1f,
+            (phase - EnemyOutlineBrightenSeconds) / EnemyOutlineFadeSeconds);
+        float fadingBrightness = Mathf.Lerp(EnemyOutlineMaximumBrightness,
+            EnemyOutlineMinimumBrightness, fade);
+        return new Color(fadingBrightness, fadingBrightness, fadingBrightness, 1f - fade);
+    }
+
     public static float GravityFalloff(float distance)
     {
         return Mathf.Clamp01(1f - Mathf.Max(0f, distance) / GravityRadius);
@@ -143,7 +166,7 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
             float elapsed = Time.unscaledTime - startedAt;
             UpdateLighting(elapsed);
             UpdateBlackHole(elapsed);
-            UpdateEnemyHighlight();
+            UpdateEnemyHighlight(elapsed);
             if (Time.unscaledTime >= nextSlashAt)
             {
                 SpawnSlashBurst(ResolveArenaCenter(groundPosition), random);
@@ -288,7 +311,7 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         enemyHighlight = new GameObject("Void Enemy Highlight").transform;
         enemyHighlight.SetParent(parent, false);
         ApplyEnemyOutline(highlightedOpponent.transform);
-        UpdateEnemyHighlight();
+        UpdateEnemyHighlight(0f);
     }
 
     private void ApplyEnemyOutline(Transform opponentRoot)
@@ -298,7 +321,7 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         if (shader == null)
             return;
         enemyOutlineMaterial = new Material(shader) { name = "Void Enemy White Outline" };
-        enemyOutlineMaterial.SetColor("_OutlineColor", Color.white);
+        enemyOutlineMaterial.SetColor("_OutlineColor", EnemyOutlineColor(0f));
         enemyOutlineMaterial.SetFloat("_OutlineWidth", 0.045f);
 
         Renderer[] renderers = opponentRoot.GetComponentsInChildren<Renderer>(true);
@@ -363,12 +386,14 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         enemyOutlineMaterial = null;
     }
 
-    private void UpdateEnemyHighlight()
+    private void UpdateEnemyHighlight(float elapsed)
     {
         if (enemyHighlight == null || highlightedOpponent == null)
             return;
 
         enemyHighlight.position = highlightedOpponent.transform.position + Vector3.up * 1.15f;
+        if (enemyOutlineMaterial != null)
+            enemyOutlineMaterial.SetColor("_OutlineColor", EnemyOutlineColor(elapsed));
     }
 
     private static void CreateBlackParticles(Transform parent, Material material)

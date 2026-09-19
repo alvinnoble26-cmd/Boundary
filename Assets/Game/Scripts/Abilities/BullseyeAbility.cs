@@ -45,6 +45,27 @@ public sealed class BullseyeAbility : MonoBehaviour, IAbility
 
     public void Activate() { }
 
+    public static void ResolveCrosshairShot(Vector3 cameraPosition, Vector3 cameraForward,
+        Vector3 fallbackOrigin, Vector3 fallbackDirection, out Vector3 origin, out Vector3 direction)
+    {
+        origin = cameraPosition;
+        direction = cameraForward.sqrMagnitude > 0.0001f
+            ? cameraForward.normalized
+            : fallbackDirection.sqrMagnitude > 0.0001f
+                ? fallbackDirection.normalized
+                : Vector3.forward;
+
+        if (!IsFinite(origin))
+            origin = fallbackOrigin;
+    }
+
+    private static bool IsFinite(Vector3 value)
+    {
+        return !float.IsNaN(value.x) && !float.IsInfinity(value.x) &&
+               !float.IsNaN(value.y) && !float.IsInfinity(value.y) &&
+               !float.IsNaN(value.z) && !float.IsInfinity(value.z);
+    }
+
     public static Quaternion KnifeRotationForDirection(Vector3 direction)
     {
         Vector3 normalizedDirection = direction.sqrMagnitude > 0.0001f

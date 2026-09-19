@@ -11,7 +11,7 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     public const int FloatingArenaMassesPerKind = 18;
     public const int ArenaMassPopulation = (GroundArenaMassesPerKind + FloatingArenaMassesPerKind) * 2;
     public const int ArenaMassInnerSurvivors = 5;
-    public const int PlatformHitsToCollapse = 5;
+    public const int PlatformHitsToCollapse = 6;
     public const float HazardSizeMultiplier = 1.6f;
     public const float EventHazardSizeMultiplier = 1.5f;
     public const float ArenaMassCubeScale = 2.8f * HazardSizeMultiplier;

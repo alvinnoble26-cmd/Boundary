@@ -8,7 +8,7 @@ public sealed class SliceAbilityTests
     {
         Assert.That(SliceAbility.CooldownSeconds, Is.EqualTo(1f));
         Assert.That(SliceAbility.Damage, Is.EqualTo(7f));
-        Assert.That(SliceAbility.Radius, Is.EqualTo(4f));
+        Assert.That(SliceAbility.Radius, Is.EqualTo(7f));
         Assert.That(SliceAbility.ArcDegrees, Is.EqualTo(120f));
         Assert.That(SliceAbility.SwingDuration, Is.EqualTo(0.14f));
         Assert.That(SliceAbility.ScreenSliceDuration, Is.EqualTo(0.75f));
@@ -19,10 +19,10 @@ public sealed class SliceAbilityTests
     [Test]
     public void ForwardArcIncludesEdgeAndRejectsBehindTarget()
     {
-        Vector3 edge = Quaternion.Euler(0f, 60f, 0f) * Vector3.forward * 4f;
+        Vector3 edge = Quaternion.Euler(0f, 60f, 0f) * Vector3.forward * 7f;
         Assert.That(SliceAbility.IsInSlash(Vector3.zero, Vector3.forward, edge), Is.True);
         Assert.That(SliceAbility.IsInSlash(Vector3.zero, Vector3.forward, Vector3.back), Is.False);
-        Assert.That(SliceAbility.IsInSlash(Vector3.zero, Vector3.forward, Vector3.forward * 4.01f), Is.False);
+        Assert.That(SliceAbility.IsInSlash(Vector3.zero, Vector3.forward, Vector3.forward * 7.01f), Is.False);
     }
 
     [Test]

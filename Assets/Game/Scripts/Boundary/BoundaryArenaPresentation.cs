@@ -1093,7 +1093,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         tile.transform.rotation = tile.startRotation;
         tile.transform.localScale = tile.startScale;
         tile.collider.enabled = true;
-        SetPlatformColor(tile.renderer, StablePlatformColor(tile));
+        SetPlatformColor(tile.renderer, PlatformColorForHitCount(tile.corruptionHits));
         tile.animated = false;
     }
 
@@ -1206,22 +1206,18 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         }
 
         tile.corruptionHits = Mathf.Clamp(hitCount, 0, BoundaryMatchController.PlatformHitsToCollapse);
-        SetPlatformColor(tile.renderer, StablePlatformColor(tile));
+        SetPlatformColor(tile.renderer, PlatformColorForHitCount(tile.corruptionHits));
         if (tile.corruptionHits >= BoundaryMatchController.PlatformHitsToCollapse)
             tile.forcedCollapseAt = Time.time;
     }
 
-    private static Color StablePlatformColor(PlatformTile tile)
+    public static Color PlatformColorForHitCount(int hitCount)
     {
-        switch (tile.corruptionHits)
-        {
-            case 1: return new Color(0.245f, 0.255f, 0.275f);
-            case 2: return new Color(0.115f, 0.122f, 0.138f);
-            case 3: return new Color(0.075f, 0.080f, 0.092f);
-            case 4: return new Color(0.052f, 0.056f, 0.066f);
-            case 5: return new Color(0.042f, 0.045f, 0.055f);
-            default: return new Color(0.36f, 0.38f, 0.42f);
-        }
+        Color lightGray = new Color(0.36f, 0.38f, 0.42f);
+        Color darkGray = new Color(0.042f, 0.045f, 0.055f);
+        float progress = Mathf.Clamp(hitCount, 0, BoundaryMatchController.PlatformHitsToCollapse) /
+                         (float)BoundaryMatchController.PlatformHitsToCollapse;
+        return Color.Lerp(lightGray, darkGray, progress);
     }
 
     private void SetPlatformColor(Renderer renderer, Color color)

@@ -310,7 +310,45 @@ public sealed class BoundaryMathTests
         Assert.That(BoundaryMatchController.IsFloatingArenaMass(43), Is.False);
         Assert.That(BoundaryMatchController.IsFloatingArenaMass(44), Is.True);
         Assert.That(BoundaryMatchController.IsArenaBlackHole(62), Is.True);
-        Assert.That(BoundaryMatchController.PlatformHitsToCollapse, Is.EqualTo(5));
+        Assert.That(BoundaryMatchController.PlatformHitsToCollapse, Is.EqualTo(6));
+    }
+
+    [Test]
+    public void ArenaMassPlatformContacts_RequireFiveSecondsPerFloor()
+    {
+        GameObject hazardObject = new GameObject("Platform Contact Test", typeof(Rigidbody));
+        try
+        {
+            BoundaryHazard hazard = hazardObject.AddComponent<BoundaryHazard>();
+            Assert.That(BoundaryHazard.PlatformContactCooldownSeconds, Is.EqualTo(5f));
+            Assert.That(hazard.TryBeginPlatformContactCooldown(12, 10f), Is.True);
+            Assert.That(hazard.TryBeginPlatformContactCooldown(12, 14.99f), Is.False);
+            Assert.That(hazard.TryBeginPlatformContactCooldown(12, 15f), Is.True);
+            Assert.That(hazard.TryBeginPlatformContactCooldown(13, 10.1f), Is.True,
+                "A different floor must have an independent cooldown.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(hazardObject);
+        }
+    }
+
+    [Test]
+    public void PlatformDamageGradient_DarkensOnEveryAcceptedHit()
+    {
+        Color previous = BoundaryArenaPresentation.PlatformColorForHitCount(0);
+        for (int hit = 1; hit <= BoundaryMatchController.PlatformHitsToCollapse; hit++)
+        {
+            Color current = BoundaryArenaPresentation.PlatformColorForHitCount(hit);
+            Assert.That(current.r, Is.LessThan(previous.r), $"Hit {hit} did not darken the floor.");
+            Assert.That(current.g, Is.LessThan(previous.g), $"Hit {hit} did not darken the floor.");
+            Assert.That(current.b, Is.LessThan(previous.b), $"Hit {hit} did not darken the floor.");
+            previous = current;
+        }
+
+        Assert.That(previous.r, Is.EqualTo(0.042f).Within(0.001f));
+        Assert.That(previous.g, Is.EqualTo(0.045f).Within(0.001f));
+        Assert.That(previous.b, Is.EqualTo(0.055f).Within(0.001f));
     }
 
     [Test]
@@ -685,6 +723,20 @@ public sealed class BoundaryMathTests
         Assert.That(BoundaryHUD.EventHintFontSize, Is.EqualTo(15));
         Assert.That(BoundaryHUD.EventBannerWidth, Is.LessThan(850f));
         Assert.That(BoundaryHUD.EventBannerHeight, Is.LessThan(190f));
+    }
+
+    [Test]
+    public void DamageGradient_UsesOriginalBorderWidthAndPulsesAtTwentyHealth()
+    {
+        Assert.That(BoundaryHUD.DamageGradientWidth, Is.EqualTo(26f));
+        Assert.That(BoundaryHUD.CalculateDamageGradientIntensity(20f, 0f, 0f), Is.GreaterThan(0f));
+        Assert.That(BoundaryHUD.CalculateDamageGradientIntensity(20.01f, 0f, 0f), Is.EqualTo(0f));
+    }
+
+    [Test]
+    public void DamageGradient_HitIntensityStillDisplaysAboveLowHealthThreshold()
+    {
+        Assert.That(BoundaryHUD.CalculateDamageGradientIntensity(100f, 0.18f, 0f), Is.EqualTo(0.18f));
     }
 
     [Test]
