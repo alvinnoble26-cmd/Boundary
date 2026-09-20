@@ -179,8 +179,8 @@ public static class MenuUIStyler
             float dx = Mathf.Max(Mathf.Abs(x + 0.5f - size * 0.5f) - (size * 0.5f - radius), 0f);
             float dy = Mathf.Max(Mathf.Abs(y + 0.5f - size * 0.5f) - (size * 0.5f - radius), 0f);
             float distance = Mathf.Sqrt(dx * dx + dy * dy);
-            float inside = 1f - Mathf.SmoothStep(radius - 1.5f, radius + 0.5f, distance);
-            float inner = 1f - Mathf.SmoothStep(radius - 3.5f, radius - 1.5f, distance);
+            float inside = 1f - Smooth01(radius - 1.5f, radius + 0.5f, distance);
+            float inner = 1f - Smooth01(radius - 3.5f, radius - 1.5f, distance);
             float alpha = kind switch
             {
                 SpriteKind.Fill => inside,
@@ -206,6 +206,12 @@ public static class MenuUIStyler
         importer.spriteBorder = new Vector4(20f, 20f, 20f, 20f);
         importer.SaveAndReimport();
         return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+    }
+
+    private static float Smooth01(float edge0, float edge1, float value)
+    {
+        float t = Mathf.InverseLerp(edge0, edge1, value);
+        return t * t * (3f - 2f * t);
     }
 
     private static void CreatePrefabs(UITheme theme)
