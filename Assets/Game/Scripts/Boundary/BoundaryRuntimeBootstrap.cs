@@ -94,7 +94,7 @@ public sealed class BoundaryRuntimeBootstrap : MonoBehaviour
             if (nearestDistance < float.PositiveInfinity)
             {
                 Vector3 position = spawnPoint.transform.position;
-                position.y = groundHit.point.y + 1.15f;
+                position.y = groundHit.point.y + PlayerMovement.StandingCenterHeight;
                 spawnPoint.transform.position = position;
             }
         }

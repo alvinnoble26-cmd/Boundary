@@ -169,19 +169,19 @@ public class TeleportAbility : MonoBehaviour, IAbility
         windupPresentationActive = true;
         windupStartedAt = Time.time;
 
-        if (playerMovement != null && playerMovement.isOwner)
+        if (playerMovement != null && playerMovement.HasSimulationAuthority)
         {
             playerMovement.SetMovementSuppressed(true, -1f, false);
             if (rb != null)
                 rb.linearVelocity = Vector3.zero;
 
-            Cam cameraController = playerAbilities != null
+            Cam cameraController = playerMovement.isOwner && playerAbilities != null
                 ? playerAbilities.GetComponentInChildren<Cam>(true)
                 : null;
             cameraController?.SetLookInputSuppressed(true);
             cameraController?.ShowTeleportArm();
         }
-        SfxManager.PlayTeleportWindup();
+        SfxManager.PlayTeleportWindup(start);
         windupStartVFX = SpawnVFX(teleportStartVFX, start, dir);
         SpawnTeleportMagicCircle(start);
         BeginFlashPresentation(start);
@@ -190,6 +190,12 @@ public class TeleportAbility : MonoBehaviour, IAbility
     public bool TryCompleteServerTeleport(ref Vector3 destination)
     {
         if (rb == null)
+            return false;
+
+        // Re-run clearance after the wind-up because a platform can start
+        // collapsing while the teleport is charging.
+        destination = ClampAboveFloor(rb.position, destination);
+        if (!CanStandAt(destination))
             return false;
 
         // Retain compatibility with older prefabs that enabled this serialized
@@ -213,7 +219,7 @@ public class TeleportAbility : MonoBehaviour, IAbility
         // Apply the server-approved observer destination locally as well, so
         // that simulation cannot overwrite the NetworkTransform correction
         // before its next replication tick arrives.
-        if (playerMovement != null && playerMovement.isOwner && rb != null)
+        if (playerMovement != null && playerMovement.HasSimulationAuthority && rb != null)
         {
             rb.position = destination;
             rb.linearVelocity = Vector3.zero;
@@ -224,14 +230,14 @@ public class TeleportAbility : MonoBehaviour, IAbility
         ClearWindupPresentation();
         SpawnVFX(teleportEndVFX, destination, dir);
         SpawnDestinationBurst(destination);
-        SfxManager.PlayTeleport();
+        SfxManager.PlayTeleport(destination);
     }
 
     public void PlayFailurePresentation(Vector3 start, Vector3 dir)
     {
         ClearWindupPresentation();
         SpawnVFX(teleportFailVFX, start, dir);
-        SfxManager.PlayTeleportFail();
+        SfxManager.PlayTeleportFail(start);
     }
 
     private void Update()
@@ -260,7 +266,7 @@ public class TeleportAbility : MonoBehaviour, IAbility
         DestroyFlashMaterial();
         if (tiltVisual != null)
             tiltVisual.localRotation = windupBaseRotation;
-        if (playerMovement != null && playerMovement.isOwner)
+        if (playerMovement != null && playerMovement.HasSimulationAuthority)
             playerMovement.SetMovementSuppressed(false);
         if (playerMovement != null && playerMovement.isOwner && playerAbilities != null)
             playerAbilities.GetComponentInChildren<Cam>(true)?.SetLookInputSuppressed(false);
@@ -382,8 +388,10 @@ public class TeleportAbility : MonoBehaviour, IAbility
             return;
 
         GameObject burstObject = new GameObject("Teleport Destination Burst", typeof(ParticleSystem));
-        burstObject.transform.position = destination + Vector3.up * 0.8f;
+        burstObject.transform.position = destination + Vector3.up *
+            PlayerMovement.ScaleDistance(0.8f);
         ParticleSystem particles = burstObject.GetComponent<ParticleSystem>();
+        particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         ParticleSystem.MainModule main = particles.main;
         main.loop = false;
         main.duration = 0.5f;
@@ -526,12 +534,15 @@ public class TeleportAbility : MonoBehaviour, IAbility
 
     private bool CanStandAt(Vector3 pos)
     {
-        float radius = Mathf.Max(0.01f, capsule.radius - skin);
-        float height = Mathf.Max(capsule.height, radius * 2f);
-        Vector3 center = pos + capsule.center;
+        float worldRadius = WorldCapsuleRadius();
+        float radius = Mathf.Max(0.01f, worldRadius - skin);
+        Vector3 scale = capsule.transform.lossyScale;
+        float height = Mathf.Max(capsule.height * Mathf.Abs(scale.y), radius * 2f);
+        Vector3 center = pos + capsule.transform.TransformVector(capsule.center);
         float half = (height * 0.5f) - radius;
-        Vector3 p1 = center + Vector3.up * half;
-        Vector3 p2 = center - Vector3.up * half;
+        Vector3 axis = capsule.transform.up;
+        Vector3 p1 = center + axis * half;
+        Vector3 p2 = center - axis * half;
 
         Collider[] hits = Physics.OverlapCapsule(p1, p2, radius, ~0, QueryTriggerInteraction.Ignore);
         for (int i = 0; i < hits.Length; i++)
@@ -541,8 +552,10 @@ public class TeleportAbility : MonoBehaviour, IAbility
             if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
             TeleportArenaBoundary boundary = FindBoundary(c);
             // A floor at the capsule's feet is valid. Other marked boundary
-            // surfaces remain invalid landing locations.
-            if (boundary != null && boundary.Surface != TeleportArenaBoundary.SurfaceType.Floor)
+            // surfaces and ordinary solid geometry are invalid destinations.
+            if (IsTeleportFloor(c))
+                continue;
+            if (boundary == null || boundary.Surface != TeleportArenaBoundary.SurfaceType.Floor)
                 return false;
         }
         return true;

@@ -13,6 +13,7 @@ public class PlayerInputReader : NetworkBehaviour
     public bool IsJumpHeld => isOwner && jump != null && jump.action.IsPressed();
     bool jumpQueued;
     bool bound;
+    bool enabledActions;
 
     protected override void OnSpawned()
     {
@@ -21,12 +22,15 @@ public class PlayerInputReader : NetworkBehaviour
 
     IEnumerator SetupLocalInput()
     {
+        PlayerMovement player = GetComponent<PlayerMovement>();
+        if (player != null && player.IsCpuControlled) yield break;
         // Wait until ownership is actually assigned
         yield return new WaitUntil(() => isOwner);
 
         // Enable + bind once
         move?.action.Enable();
         jump?.action.Enable();
+        enabledActions = true;
 
         if (jump != null && !bound)
         {
@@ -47,8 +51,13 @@ public class PlayerInputReader : NetworkBehaviour
             bound = false;
         }
 
-        move?.action.Disable();
-        jump?.action.Disable();
+        // Remote/CPU copies share the InputAction assets but never enabled them.
+        if (enabledActions)
+        {
+            enabledActions = false;
+            move?.action.Disable();
+            jump?.action.Disable();
+        }
     }
 
     void Update()

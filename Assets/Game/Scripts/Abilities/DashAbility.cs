@@ -94,7 +94,7 @@ public class DashAbility : MonoBehaviour, IAbility
         SpawnTrail();
         SpawnGreenHit();
         BeginFlashPresentation();
-        SfxManager.PlayDash();
+        SfxManager.PlayDash(transform.position);
         pm?.GetComponent<PlayerWindPresentation>()?.TriggerAbilityWind(0.92f, duration + 0.18f);
 
         Vector3 v = rb.linearVelocity;
@@ -168,7 +168,7 @@ public class DashAbility : MonoBehaviour, IAbility
         SpawnTrail();
         SpawnGreenHit();
         BeginFlashPresentation();
-        SfxManager.PlayDash();
+        SfxManager.PlayDash(transform.position);
     }
 
     public Vector3 GetActivationDirection()
@@ -232,7 +232,8 @@ public class DashAbility : MonoBehaviour, IAbility
             return;
 
         GameObject effect = Instantiate(greenHitPrefab,
-            trailSpawnPoint.position + Vector3.up * 0.8f, Quaternion.identity, trailSpawnPoint);
+            trailSpawnPoint.position + Vector3.up * PlayerMovement.ScaleDistance(0.8f),
+            Quaternion.identity, trailSpawnPoint);
         effect.name = "Dash Green Hit";
         effect.transform.localScale = Vector3.one * 0.65f;
         Destroy(effect, Mathf.Max(duration, trailLifetime));
@@ -353,6 +354,7 @@ public class DashAbility : MonoBehaviour, IAbility
         GameObject burstObject = new GameObject("Dash End Burst", typeof(ParticleSystem));
         burstObject.transform.position = rb != null ? rb.position + Vector3.up * 0.75f : transform.position;
         ParticleSystem particles = burstObject.GetComponent<ParticleSystem>();
+        particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         ParticleSystem.MainModule main = particles.main;
         main.loop = false;
         main.duration = 0.32f;

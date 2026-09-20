@@ -5,6 +5,9 @@ using UnityEngine.UI;
 
 public class SfxManager : MonoBehaviour
 {
+    public const float AbilitySoundMaxDistance = 36f;
+    public const float JumpVolume = 0.32f;
+
     public static SfxManager I { get; private set; }
 
     [SerializeField] private AudioClip teleport;
@@ -49,10 +52,12 @@ public class SfxManager : MonoBehaviour
         source.playOnAwake = false;
         source.spatialBlend = 0f;
 
-        voidLoopSource = gameObject.AddComponent<AudioSource>();
+        GameObject voidEmitter = new GameObject("Void Loop SFX", typeof(AudioSource));
+        voidEmitter.transform.SetParent(transform, false);
+        voidLoopSource = voidEmitter.GetComponent<AudioSource>();
         voidLoopSource.playOnAwake = false;
         voidLoopSource.loop = true;
-        voidLoopSource.spatialBlend = 0f;
+        ConfigureWorldSource(voidLoopSource, 1f, AbilitySoundMaxDistance);
     }
 
     private void OnEnable()
@@ -109,31 +114,82 @@ public class SfxManager : MonoBehaviour
         Destroy(emitter, Mathf.Min(clip.length, maximumDuration));
     }
 
-    public static void PlayTeleport() => I?.Play(I.teleport);
+    private static void ConfigureWorldSource(AudioSource audioSource, float volume,
+        float maximumDistance)
+    {
+        audioSource.playOnAwake = false;
+        audioSource.spatialBlend = 1f;
+        audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
+        audioSource.minDistance = 2.5f;
+        audioSource.maxDistance = Mathf.Max(audioSource.minDistance + 0.1f, maximumDistance);
+        audioSource.dopplerLevel = 0f;
+        audioSource.volume = Mathf.Clamp01(volume);
+    }
+
+    private void PlayWorld(AudioClip clip, Vector3 position, float volume,
+        float maximumDuration, float maximumDistance)
+    {
+        if (clip == null)
+            return;
+        GameObject emitter = new GameObject("World Ability SFX", typeof(AudioSource));
+        emitter.transform.position = position;
+        AudioSource worldSource = emitter.GetComponent<AudioSource>();
+        ConfigureWorldSource(worldSource, volume, maximumDistance);
+        worldSource.clip = clip;
+        worldSource.Play();
+        float lifetime = maximumDuration > 0f
+            ? Mathf.Min(clip.length, maximumDuration)
+            : clip.length;
+        Destroy(emitter, Mathf.Max(0.05f, lifetime));
+    }
+
+    public static void PlayWorldClip(AudioClip clip, Vector3 position, float volume = 1f,
+        float maximumDuration = -1f, float maximumDistance = AbilitySoundMaxDistance)
+    {
+        I?.PlayWorld(clip, position, volume, maximumDuration, maximumDistance);
+    }
+
+    public static void PlayTeleport(Vector3 position) =>
+        I?.PlayWorld(I.teleport, position, 1f, -1f, AbilitySoundMaxDistance);
     public static void PlayLethalHit() => I?.Play(I.lethalHit);
-    public static void PlayBlackHoleThrow() => I?.Play(I.blackHoleThrow);
-    public static void PlayAttractThrow() => I?.PlayCapped(I.attractThrow, 0.85f);
-    public static void PlaySlide() => I?.PlayCapped(I.slide, 0.5f);
-    public static void PlayRepelThrow() => I?.Play(I.repelThrow);
+    public static void PlayBlackHoleThrow(Vector3 position) =>
+        I?.PlayWorld(I.blackHoleThrow, position, 1f, -1f, AbilitySoundMaxDistance);
+    public static void PlayAttractThrow(Vector3 position) =>
+        I?.PlayWorld(I.attractThrow, position, 1f, 0.85f, AbilitySoundMaxDistance);
+    public static void PlaySlide(Vector3 position) =>
+        I?.PlayWorld(I.slide, position, 0.72f, 0.5f, AbilitySoundMaxDistance);
+    public static void PlayRepelThrow(Vector3 position) =>
+        I?.PlayWorld(I.repelThrow, position, 1f, -1f, AbilitySoundMaxDistance);
     public static void PlayWin() => I?.Play(I.dash18);
     public static void PlaySkinPurchase() => I?.Play(I.skinPurchase);
-    public static void PlayRepelExplosion() => I?.Play(I.repelExplosion);
-    public static void PlayAttractExplosion() => I?.Play(I.attractExplosion);
-    public static void PlayJump() => I?.Play(I.jump);
+    public static void PlayRepelExplosion(Vector3 position) =>
+        I?.PlayWorld(I.repelExplosion, position, 1f, -1f, AbilitySoundMaxDistance);
+    public static void PlayAttractExplosion(Vector3 position) =>
+        I?.PlayWorld(I.attractExplosion, position, 1f, -1f, AbilitySoundMaxDistance);
+    public static void PlayLocalJump(Vector3 position) =>
+        I?.PlayWorld(I.jump, position, JumpVolume, -1f, 18f);
     public static void PlayOuterRingClosing() => I?.PlayCapped(I.outerRingClosing, 7f);
-    public static void PlayTeleportFail() => I?.Play(I.teleportFail);
-    public static void PlayBlackHoleImplosion() => I?.PlayCapped(I.blackHoleImplosion, 0.7f);
-    public static void PlayTeleportWindup() => I?.PlayCapped(I.teleportWindup, 0.5f);
-    public static void PlayGrappleActivation() => I?.PlayCapped(I.grappleActivation, 0.35f);
-    public static void PlayVoidStart() => I?.Play(I.voidStart);
-    public static void PlayVoidSlash() => I?.Play(I.voidSlash);
-    public static void PlayVoidEnd() => I?.Play(I.voidEnd);
+    public static void PlayTeleportFail(Vector3 position) =>
+        I?.PlayWorld(I.teleportFail, position, 0.8f, -1f, AbilitySoundMaxDistance);
+    public static void PlayBlackHoleImplosion(Vector3 position) =>
+        I?.PlayWorld(I.blackHoleImplosion, position, 1f, 0.7f, AbilitySoundMaxDistance);
+    public static void PlayTeleportWindup(Vector3 position) =>
+        I?.PlayWorld(I.teleportWindup, position, 0.9f, 0.5f, AbilitySoundMaxDistance);
+    public static void PlayGrappleActivation(Vector3 position) =>
+        I?.PlayWorld(I.grappleActivation, position, 0.85f, 0.35f, AbilitySoundMaxDistance);
+    public static void PlayVoidStart(Vector3 position) =>
+        I?.PlayWorld(I.voidStart, position, 1f, -1f, AbilitySoundMaxDistance);
+    public static void PlayVoidSlash(Vector3 position) =>
+        I?.PlayWorld(I.voidSlash, position, 0.9f, -1f, AbilitySoundMaxDistance);
+    public static void PlayVoidEnd(Vector3 position) =>
+        I?.PlayWorld(I.voidEnd, position, 1f, -1f, AbilitySoundMaxDistance);
 
-    public static void StartVoidLoop()
+    public static void StartVoidLoop(Vector3 position)
     {
         if (I == null || I.voidLoopSource == null || I.voidLoop == null)
             return;
         I.voidLoopSource.Stop();
+        I.voidLoopSource.transform.position = position;
         I.voidLoopSource.clip = I.voidLoop;
         I.voidLoopSource.Play();
     }
@@ -144,10 +200,10 @@ public class SfxManager : MonoBehaviour
             I.voidLoopSource.Stop();
     }
 
-    public static void PlayDash()
+    public static void PlayDash(Vector3 position)
     {
         if (I == null) return;
-        I.PlayCapped(I.dash38, 0.18f);
+        I.PlayWorld(I.dash38, position, 0.8f, 0.18f, AbilitySoundMaxDistance);
     }
 
     private void PlayMenuButton() => Play(menuButton);

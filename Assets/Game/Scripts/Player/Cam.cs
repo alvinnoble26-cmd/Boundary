@@ -91,6 +91,8 @@ public class Cam : NetworkBehaviour
 
     private void BeginOwnerSetup()
     {
+        PlayerMovement player = GetComponentInParent<PlayerMovement>();
+        if (player != null && player.IsCpuControlled) return;
         if (!isActiveAndEnabled || isReady || setupRoutineRunning)
             return;
 
@@ -265,12 +267,14 @@ public class Cam : NetworkBehaviour
 
         Vector3 effectiveEyeOffset = firstPersonEyeOffset;
         effectiveEyeOffset.y = Mathf.Max(effectiveEyeOffset.y, minimumFirstPersonEyeHeight);
+        effectiveEyeOffset *= PlayerMovement.CharacterScale;
         Vector3 desiredEyePosition = CalculateFirstPersonEyePosition(
             playerRoot.position,
             yaw,
             effectiveEyeOffset);
         if (playerMovement != null && playerMovement.IsWallRunning)
-            desiredEyePosition += playerMovement.WallRunNormal * wallRunCameraWallOffset;
+            desiredEyePosition += playerMovement.WallRunNormal *
+                PlayerMovement.ScaleDistance(wallRunCameraWallOffset);
         Vector3 safeEyePosition = ResolveObstructionSafeEyePosition(desiredEyePosition);
         Vector3 shakeOffset = DamageShakeOffset();
         safeEyePosition += viewRotation * shakeOffset;
@@ -370,7 +374,7 @@ public class Cam : NetworkBehaviour
         float nearestDistance = castDistance;
         int hitCount = Physics.SphereCastNonAlloc(
             castOrigin,
-            obstructionRadius,
+            PlayerMovement.ScaleDistance(obstructionRadius),
             castDirection,
             obstructionHits,
             castDistance,
@@ -391,7 +395,8 @@ public class Cam : NetworkBehaviour
         if (nearestDistance >= castDistance)
             return desiredEyePosition;
 
-        float safeDistance = Mathf.Max(0f, nearestDistance - obstructionPadding);
+        float safeDistance = Mathf.Max(0f,
+            nearestDistance - PlayerMovement.ScaleDistance(obstructionPadding));
         return castOrigin + castDirection * safeDistance;
     }
 

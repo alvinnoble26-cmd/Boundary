@@ -16,6 +16,15 @@ public sealed class HollowAbilityTests
     }
 
     [Test]
+    public void BlastUsesTheLatestValidAimAfterCharging()
+    {
+        Assert.AreEqual(Vector3.right,
+            HollowAbility.ResolveAimDirection(Vector3.right, Vector3.forward));
+        Assert.AreEqual(Vector3.forward,
+            HollowAbility.ResolveAimDirection(Vector3.zero, Vector3.forward));
+    }
+
+    [Test]
     public void ChargePresentationIsLowerThanBlastOrigin()
     {
         Vector3 playerPosition = new Vector3(2f, 3f, 4f);
@@ -25,7 +34,8 @@ public sealed class HollowAbilityTests
 
         Assert.AreEqual(blastOrigin.x, chargePosition.x, 0.001f);
         Assert.AreEqual(blastOrigin.z, chargePosition.z, 0.001f);
-        Assert.AreEqual(blastOrigin.y + HollowAbility.ChargePresentationVerticalOffset,
+        Assert.AreEqual(blastOrigin.y +
+            PlayerMovement.ScaleDistance(HollowAbility.ChargePresentationVerticalOffset),
             chargePosition.y, 0.001f);
     }
 

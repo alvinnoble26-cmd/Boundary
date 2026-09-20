@@ -97,12 +97,12 @@ public class  ForceField : MonoBehaviour
         // RPC to PlayerAbilities (which would require a matching server build).
         if (mode == Mode.Repel)
         {
-            SfxManager.PlayRepelThrow();
+            SfxManager.PlayRepelThrow(transform.position);
             CreateRepelProjectileVisual();
         }
         else
         {
-            SfxManager.PlayAttractThrow();
+            SfxManager.PlayAttractThrow(transform.position);
             CreateAttractProjectileVisual();
         }
     }
@@ -133,9 +133,9 @@ public class  ForceField : MonoBehaviour
             // The networked projectile exists on every client, so playing the pulse
             // here makes the explosion audible to both players at the correct time.
             if (mode == Mode.Repel)
-                SfxManager.PlayRepelExplosion();
+                SfxManager.PlayRepelExplosion(transform.position);
             else
-                SfxManager.PlayAttractExplosion();
+                SfxManager.PlayAttractExplosion(transform.position);
 
             if (pulseVFXPrefab != null)
             {

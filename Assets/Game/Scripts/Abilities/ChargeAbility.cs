@@ -7,13 +7,13 @@ using UnityEngine.VFX;
 public sealed class ChargeAbility : MonoBehaviour, IAbility
 {
     public const float CooldownSeconds = 7f;
-    public const float ChargeSeconds = 0.5f;
+    public const float ChargeSeconds = 0.35f;
     public const float FirstTickDelay = 2f;
     public const float SecondTickDelay = 2f;
     public const float ExplosionRadius = 10f;
     public const float FirstTickDamage = 5f;
     public const float SecondTickDamage = 7f;
-    public const float ProjectileSpeed = 36f;
+    public const float ProjectileSpeed = 54f;
     public const float ProjectileRadius = 0.38f;
     public const float TargetCenterHeight = 0.8f;
     public const float HitEffectDuration = 2f;
@@ -362,7 +362,7 @@ public sealed class ChargeBallPresentation : MonoBehaviour
     private static void PlayClip(AudioClip clip, Vector3 position, float volume)
     {
         if (clip != null)
-            AudioSource.PlayClipAtPoint(clip, position, volume);
+            SfxManager.PlayWorldClip(clip, position, volume);
     }
 }
 

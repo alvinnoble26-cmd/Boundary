@@ -105,3 +105,34 @@ in production.
 These changes intentionally are not part of the known-good baseline because
 they can affect working multiplayer and must be introduced and tested
 separately.
+
+## Owner release workflow — next client 1.13 (21)
+
+Owner-confirmed public release: **1.12, build 20**. Planned next release:
+**1.13, build 21**. Before the next iOS export, update both Unity Player Settings
+and `Assets/Game/Editor/IosBuildPostprocessor.cs`. At the CPU implementation
+checkpoint, the postprocessor still forces **1.12 (18)**; do not rely on manually
+changing only the Xcode UI because the next Unity export overwrites it. The
+version/build changes remain pending release preparation.
+
+The owner's message **`deploymen`** requests a concrete, complete release plan:
+review all changes since the actual public release, identify client/server/backend
+requirements, specify Unity iOS and (if needed) Linux server builds, Docker
+build/publish steps, Edgegap image selection, Xcode signing/archive/upload,
+App Store Connect submission, compatibility checks, and rollback records.
+Do not infer the live image or Functions revision from source constants alone.
+
+The subsequent message **`deploy now`** authorizes the agreed deployment and Git
+commit/push work. Complete the applicable release checks above first. For an
+Edgegap replacement, use `tools/update-edgegap-image.mjs` only after the immutable
+image is built and published, and record the actual application/version/tag and
+result. Never publish an untested replacement merely because a build compiled.
+
+The local CPU practice feature's implementation, validation limitations and
+release impact are recorded in [Docs/CPU_PRACTICE.md](Docs/CPU_PRACTICE.md).
+The CPU-only path does not run on Edgegap, but its current playtest follow-up
+also changes shared player physics, Teleport validation, Charge speed and
+BlackThrow force. The complete 1.13 candidate therefore requires a matching
+Linux dedicated-server rebuild, immutable container publish and Edgegap image
+update. No Firebase target is changed by this feature set. Reassess the complete
+release diff when the owner requests deployment preparation.

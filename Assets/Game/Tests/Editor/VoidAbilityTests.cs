@@ -8,7 +8,7 @@ public sealed class VoidAbilityTests
     {
         Assert.AreEqual(45f, VoidAbility.CooldownSeconds, 0.001f);
         Assert.AreEqual(15f, VoidAbility.DurationSeconds, 0.001f);
-        Assert.AreEqual(18f, VoidAbility.GravityAcceleration, 0.001f);
+        Assert.AreEqual(27f, VoidAbility.GravityAcceleration, 0.001f);
         Assert.AreEqual(3f, VoidAbility.DarkTransitionSeconds, 0.001f);
         Assert.AreEqual(15f, VoidAbility.ImmunitySeconds, 0.001f);
         Assert.AreEqual(70f, VoidAbility.GravityRadius, 0.001f);
@@ -48,6 +48,15 @@ public sealed class VoidAbilityTests
     }
 
     [Test]
+    public void ReadinessHighlightAppearsOnlyWhenBothRequirementsAreMet()
+    {
+        Assert.IsFalse(VoidAbility.ShouldHighlightReadiness(true, false));
+        Assert.IsFalse(VoidAbility.ShouldHighlightReadiness(false, true));
+        Assert.IsTrue(VoidAbility.ShouldHighlightReadiness(true, true));
+        Assert.IsFalse(VoidAbility.ShouldHighlightReadiness(false, false));
+    }
+
+    [Test]
     public void EnemyOutlineBrightensForOneSecondThenFadesOutForHalfASecond()
     {
         Assert.AreEqual(1f, VoidAbility.EnemyOutlineBrightenSeconds, 0.001f);
@@ -74,7 +83,7 @@ public sealed class VoidAbilityTests
     public void AppliesRequestedSpeedModifiers()
     {
         Assert.AreEqual(1.3f, VoidAbility.CasterSpeedMultiplier, 0.001f);
-        Assert.AreEqual(0.7f, VoidAbility.OpponentSpeedMultiplier, 0.001f);
+        Assert.AreEqual(0.75f, VoidAbility.OpponentSpeedMultiplier, 0.001f);
     }
 
     [Test]
@@ -91,7 +100,7 @@ public sealed class VoidAbilityTests
     {
         Vector3 velocityChange = VoidAbility.GravityVelocityChange(Vector3.forward * 35f, 0.1f);
 
-        Assert.AreEqual(0.9f, velocityChange.magnitude, 0.001f);
+        Assert.AreEqual(1.35f, velocityChange.magnitude, 0.001f);
         Assert.AreEqual(Vector3.zero,
             VoidAbility.GravityVelocityChange(Vector3.forward * 70f, 0.1f));
     }

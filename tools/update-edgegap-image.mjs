@@ -10,12 +10,13 @@ let token = (await new Promise((resolve, reject) => {
 
 let args = process.argv.slice(2);
 if (args[0] === "--firebase-secret") {
-  const firebase = "/Users/alvinnoble/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback/pnpm";
+  const codexRuntimeBin = `${process.env.HOME}/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin`;
+  const firebase = `${codexRuntimeBin}/fallback/pnpm`;
   token = execFileSync(firebase, ["dlx", "firebase-tools", "functions:secrets:access",
     "EDGEGAP_API_TOKEN", "--project", "entropy-7c113"], {
     encoding: "utf8",
-    env: {...process.env, PATH: "/Users/alvinnoble/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:" +
-      "/Users/alvinnoble/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:" +
+    env: {...process.env, PATH: `${codexRuntimeBin}/node:` +
+      `${codexRuntimeBin}/fallback:` +
       "/usr/local/bin:/usr/bin:/bin"},
   }).trim();
   args = args.slice(1);

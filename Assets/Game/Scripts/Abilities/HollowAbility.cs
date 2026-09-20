@@ -6,6 +6,7 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
 {
     public const float CooldownSeconds = 5f;
     public const float ChargeDuration = 0.75f;
+    public const float AimLockGraceSeconds = 0.2f;
     public const float BlastDuration = 2f;
     public const float DamagePerSecond = 20f;
     public const float MaximumRange = 70f;
@@ -55,12 +56,14 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
     public static Vector3 GetBlastOrigin(Vector3 playerPosition, Vector3 direction)
     {
         Vector3 normalized = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.forward;
-        return playerPosition + Vector3.up * EyeHeight + normalized * 1.15f;
+        return playerPosition + Vector3.up * PlayerMovement.ScaleDistance(EyeHeight) +
+            normalized * PlayerMovement.ScaleDistance(1.15f);
     }
 
     public static Vector3 GetChargePresentationPosition(Vector3 playerPosition, Vector3 direction)
     {
-        return GetBlastOrigin(playerPosition, direction) + Vector3.up * ChargePresentationVerticalOffset;
+        return GetBlastOrigin(playerPosition, direction) +
+            Vector3.up * PlayerMovement.ScaleDistance(ChargePresentationVerticalOffset);
     }
 
     public static bool IsPointInsideBlast(Vector3 point, Vector3 origin, Vector3 direction)
@@ -84,9 +87,24 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
     {
         if (Application.isBatchMode)
             return;
+        presentationDirection = ResolveAimDirection(direction, transform.forward);
         StopPresentation();
-        presentation = StartCoroutine(PlayPresentation(direction.normalized,
+        presentation = StartCoroutine(PlayPresentation(presentationDirection,
             showCrispBlastEffect, Mathf.Max(0f, elapsed)));
+    }
+
+    private Vector3 presentationDirection;
+
+    public void SetPresentationDirection(Vector3 direction)
+    {
+        presentationDirection = ResolveAimDirection(direction, presentationDirection);
+    }
+
+    public static Vector3 ResolveAimDirection(Vector3 candidate, Vector3 fallback)
+    {
+        if (candidate.sqrMagnitude > 0.0001f)
+            return candidate.normalized;
+        return fallback.sqrMagnitude > 0.0001f ? fallback.normalized : Vector3.forward;
     }
 
     private void OnDisable()
@@ -135,6 +153,7 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
         float chargeStartedAt = Time.time - Mathf.Min(elapsedAtStart, ChargeDuration);
         while (Time.time - chargeStartedAt < ChargeDuration)
         {
+            direction = ResolveAimDirection(presentationDirection, direction);
             float t = Mathf.Clamp01((Time.time - chargeStartedAt) / ChargeDuration);
             charge.position = GetChargePresentationPosition(transform.position, direction);
             float releaseRamp = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.62f, 1f, t));
@@ -152,6 +171,9 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
             UpdateChargeLightning(chargeLightning, t);
             yield return null;
         }
+
+        yield return new WaitForSeconds(AimLockGraceSeconds);
+        direction = ResolveAimDirection(presentationDirection, direction);
 
         Vector3 origin = GetBlastOrigin(transform.position, direction);
         PlayClip(blastClip, origin, 0.85f);
@@ -398,7 +420,7 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
     private static void PlayClip(AudioClip clip, Vector3 position, float volume)
     {
         if (clip != null)
-            AudioSource.PlayClipAtPoint(clip, position, volume);
+            SfxManager.PlayWorldClip(clip, position, volume);
     }
 
     private static Transform[] CreateShockwaves(Transform parent, Vector3 origin, Vector3 direction,

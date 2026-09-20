@@ -3,6 +3,9 @@ using PurrNet;
 
 public class BlackThrow : MonoBehaviour, IAbility
 {
+    public const float ThrowForceMultiplier = 1.5f;
+    public const float DefaultThrowForce = 20f;
+
     public AbilityId Id => AbilityId.BlackThrow;
     public float CooldownDuration => throwCooldown;
 
@@ -16,7 +19,7 @@ public class BlackThrow : MonoBehaviour, IAbility
     [SerializeField] private float throwCooldown = 3.5f;
 
     [Header("Throwing Force")]
-    [SerializeField] private float throwForce = 20f;
+    [SerializeField] private float throwForce = DefaultThrowForce;
     [SerializeField] private float throwUpwardForce = 5f; 
 
     private bool readyToThrow = true;
@@ -86,7 +89,8 @@ public class BlackThrow : MonoBehaviour, IAbility
             return;
         }
 
-        Vector3 forceToAdd = direction * throwForce + Vector3.up * throwUpwardForce;
+        Vector3 forceToAdd = direction * EffectiveThrowForce(throwForce) +
+            Vector3.up * throwUpwardForce;
 
         // Optional: inherit player velocity so throws feel consistent while moving
         // projectileRb.linearVelocity = GetComponentInParent<Rigidbody>()?.linearVelocity ?? Vector3.zero;
@@ -101,5 +105,10 @@ public class BlackThrow : MonoBehaviour, IAbility
     private void ResetThrow()
     {
         readyToThrow = true;
+    }
+
+    public static float EffectiveThrowForce(float configuredForce)
+    {
+        return Mathf.Max(0f, configuredForce) * ThrowForceMultiplier;
     }
 }

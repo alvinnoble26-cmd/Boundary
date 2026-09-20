@@ -4077,7 +4077,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &399411085
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4176,7 +4176,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 423764590}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 1346601388}
+  m_Script: {fileID: 11500000, guid: c32b90af895543399427d583c30fc016, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ControlResizeHandle
 --- !u!114 &423764593
@@ -4188,7 +4188,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 423764590}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 754029491}
+  m_Script: {fileID: 11500000, guid: 12554a5b0183493499f20e1153ee5f39, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CircleGraphic
   m_Material: {fileID: 0}
@@ -5306,7 +5306,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 490517576}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 1346601388}
+  m_Script: {fileID: 11500000, guid: c32b90af895543399427d583c30fc016, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ControlResizeHandle
 --- !u!114 &490517579
@@ -5318,7 +5318,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 490517576}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 754029491}
+  m_Script: {fileID: 11500000, guid: 12554a5b0183493499f20e1153ee5f39, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CircleGraphic
   m_Material: {fileID: 0}
@@ -5589,7 +5589,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &526184672
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6328,7 +6328,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &661773199
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7189,7 +7189,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &713466845
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7393,21 +7393,6 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: -4.6824}
   m_SizeDelta: {x: 67.4, y: 337}
   m_Pivot: {x: 0.5, y: 0.5}
---- !u!115 &754029491
-MonoScript:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_Name: 
-  serializedVersion: 7
-  m_DefaultReferences: {}
-  m_Icon: {fileID: 0}
-  m_Type: 0
-  m_ExecutionOrder: 0
-  m_ClassName: CircleGraphic
-  m_Namespace: 
-  m_AssemblyName: Assembly-CSharp
 --- !u!1 &756244938
 GameObject:
   m_ObjectHideFlags: 0
@@ -7954,7 +7939,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 799938864}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 1346601388}
+  m_Script: {fileID: 11500000, guid: c32b90af895543399427d583c30fc016, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ControlResizeHandle
 --- !u!114 &799938867
@@ -7966,7 +7951,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 799938864}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 754029491}
+  m_Script: {fileID: 11500000, guid: 12554a5b0183493499f20e1153ee5f39, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CircleGraphic
   m_Material: {fileID: 0}
@@ -8455,7 +8440,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &840250739
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -10103,7 +10088,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1122681806
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11465,7 +11450,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1192119890}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 1346601388}
+  m_Script: {fileID: 11500000, guid: c32b90af895543399427d583c30fc016, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ControlResizeHandle
 --- !u!114 &1192119893
@@ -12371,7 +12356,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1280897439}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 754029491}
+  m_Script: {fileID: 11500000, guid: 12554a5b0183493499f20e1153ee5f39, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CircleGraphic
   m_Material: {fileID: 0}
@@ -12877,21 +12862,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1338758234}
   m_CullTransparentMesh: 1
---- !u!115 &1346601388
-MonoScript:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_Name: 
-  serializedVersion: 7
-  m_DefaultReferences: {}
-  m_Icon: {fileID: 0}
-  m_Type: 0
-  m_ExecutionOrder: 0
-  m_ClassName: ControlResizeHandle
-  m_Namespace: 
-  m_AssemblyName: Assembly-CSharp
 --- !u!1 &1371506917
 GameObject:
   m_ObjectHideFlags: 0
@@ -13437,7 +13407,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1457887022}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 1346601388}
+  m_Script: {fileID: 11500000, guid: c32b90af895543399427d583c30fc016, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ControlResizeHandle
 --- !u!114 &1457887025
@@ -13449,7 +13419,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1457887022}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 754029491}
+  m_Script: {fileID: 11500000, guid: 12554a5b0183493499f20e1153ee5f39, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CircleGraphic
   m_Material: {fileID: 0}
@@ -14602,7 +14572,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1526700412}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 754029491}
+  m_Script: {fileID: 11500000, guid: 12554a5b0183493499f20e1153ee5f39, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CircleGraphic
   m_Material: {fileID: 0}
@@ -15003,7 +14973,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1566405619}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 754029491}
+  m_Script: {fileID: 11500000, guid: 12554a5b0183493499f20e1153ee5f39, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CircleGraphic
   m_Material: {fileID: 0}
@@ -16615,7 +16585,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1774485168}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 1346601388}
+  m_Script: {fileID: 11500000, guid: c32b90af895543399427d583c30fc016, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ControlResizeHandle
 --- !u!114 &1774485171
@@ -16627,7 +16597,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1774485168}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 754029491}
+  m_Script: {fileID: 11500000, guid: 12554a5b0183493499f20e1153ee5f39, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CircleGraphic
   m_Material: {fileID: 0}
@@ -18071,7 +18041,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1901568265}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 754029491}
+  m_Script: {fileID: 11500000, guid: 12554a5b0183493499f20e1153ee5f39, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CircleGraphic
   m_Material: {fileID: 0}
@@ -18665,7 +18635,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1975835157}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 754029491}
+  m_Script: {fileID: 11500000, guid: 12554a5b0183493499f20e1153ee5f39, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CircleGraphic
   m_Material: {fileID: 0}
@@ -19200,7 +19170,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &2041005813
 MonoBehaviour:
   m_ObjectHideFlags: 0

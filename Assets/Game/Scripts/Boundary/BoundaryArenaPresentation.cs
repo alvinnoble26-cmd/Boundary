@@ -352,8 +352,8 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         if (includeVisuals)
         {
             platformMaterial = CreateMaterial(
-                new Color(0.09f, 0.095f, 0.105f),
-                new Color(0.01375f, 0.01625f, 0.0225f), 0.55f);
+                new Color(0.035f, 0.045f, 0.07f),
+                new Color(0.006f, 0.009f, 0.018f), 0.35f);
             fractureMaterial = CreateMaterial(
                 new Color(0.04f, 0.01f, 0.06f),
                 new Color(1f, 0.08f, 0.65f), 4.5f);
@@ -397,8 +397,9 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
         if (includeVisuals)
         {
-            // The saved scene is authoritative. Do not replace authored wall
-            // or platform materials with the procedural arena's gray default.
+            // Preserve authored materials while darkening their base colors
+            // through a property block for stronger player contrast.
+            ApplyDarkArenaBaseColors();
             singularityCore = FindDescendant(authoredRoot, "Boundary Singularity Core");
             horizonRing = FindDescendant(authoredRoot, "Event Horizon")?.GetComponent<LineRenderer>();
             RegisterAuthoredLines(authoredRoot, "Fracture Lines", fractureLines);
@@ -1014,7 +1015,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             Vector3 flat = spawnPoint.transform.position - match.ArenaCenter;
             flat.y = 0f;
             Vector3 position = spawnPoint.transform.position;
-            position.y = SurfaceYAtRadius(flat.magnitude) + 1.15f;
+            position.y = SurfaceYAtRadius(flat.magnitude) + PlayerMovement.StandingCenterHeight;
             spawnPoint.transform.position = position;
         }
 
@@ -1026,7 +1027,7 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
             Vector3 flat = player.transform.position - match.ArenaCenter;
             flat.y = 0f;
-            float safeY = SurfaceYAtRadius(flat.magnitude) + 1.15f;
+            float safeY = SurfaceYAtRadius(flat.magnitude) + PlayerMovement.StandingCenterHeight;
             if (player.rb.position.y >= safeY)
                 continue;
 
@@ -1213,11 +1214,25 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
 
     public static Color PlatformColorForHitCount(int hitCount)
     {
-        Color lightGray = new Color(0.36f, 0.38f, 0.42f);
-        Color darkGray = new Color(0.042f, 0.045f, 0.055f);
+        Color lightGray = new Color(0.075f, 0.09f, 0.13f);
+        Color darkGray = new Color(0.018f, 0.022f, 0.035f);
         float progress = Mathf.Clamp(hitCount, 0, BoundaryMatchController.PlatformHitsToCollapse) /
                          (float)BoundaryMatchController.PlatformHitsToCollapse;
         return Color.Lerp(lightGray, darkGray, progress);
+    }
+
+    private void ApplyDarkArenaBaseColors()
+    {
+        for (int index = 0; index < platforms.Count; index++)
+        {
+            PlatformTile tile = platforms[index];
+            if (tile.renderer == null)
+                continue;
+            Color color = tile.canCorrupt
+                ? PlatformColorForHitCount(tile.corruptionHits)
+                : new Color(0.045f, 0.055f, 0.085f);
+            SetPlatformColor(tile.renderer, color);
+        }
     }
 
     private void SetPlatformColor(Renderer renderer, Color color)
@@ -1642,9 +1657,4 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
         BuildArena(false);
     }
 #endif
-}
-
-public sealed class BoundaryBreakawayPlatform : MonoBehaviour
-{
-    public int PlatformIndex { get; set; }
 }

@@ -13,15 +13,15 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
     public const float DarkTransitionSeconds = 3f;
     public const float ImmunitySeconds = DurationSeconds;
     public const float GravityRadius = 70f;
-    public const float GravityAcceleration = 18f;
+    public const float GravityAcceleration = 27f;
     public const float BlackHoleHeight = 12f;
     public const float BlackHoleSpawnDistance = 10f;
     public const float CasterSpeedMultiplier = 1.3f;
-    public const float OpponentSpeedMultiplier = 0.7f;
+    public const float OpponentSpeedMultiplier = 0.75f;
     public const float EnemyOutlineBrightenSeconds = 1f;
     public const float EnemyOutlineFadeSeconds = 0.5f;
-    public const float EnemyOutlineMinimumBrightness = 0.8f;
-    public const float EnemyOutlineMaximumBrightness = 5f;
+    public const float EnemyOutlineMinimumBrightness = 1.8f;
+    public const float EnemyOutlineMaximumBrightness = 11.25f;
     public const float SlashIntervalSeconds = 0.55f;
     public const float SlashLifetimeSeconds = 2.2f;
 
@@ -29,7 +29,7 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
     private static readonly Color VoidBlue = new Color(1.1f, 2.4f, 7f, 1f);
     private static readonly Color VoidViolet = new Color(4.5f, 1.2f, 7f, 1f);
 
-    private readonly List<LightSnapshot> lights = new List<LightSnapshot>();
+    private static readonly List<LightSnapshot> lights = new List<LightSnapshot>();
     private readonly List<SlashBurst> slashBursts = new List<SlashBurst>();
     private readonly RaycastHit[] splashSurfaceHits = new RaycastHit[32];
     private Coroutine presentation;
@@ -39,21 +39,22 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
     private Material darkMaterial;
     private LineRenderer[] rings;
     private LineRenderer[] tendrils;
-    private PlayerMovement modifiedLocalMovement;
+    private readonly List<PlayerMovement> modifiedLocalMovements = new List<PlayerMovement>(2);
     private Transform enemyHighlight;
     private BoundaryPlayerState highlightedOpponent;
-    private readonly List<GameObject> enemyOutlineObjects = new List<GameObject>();
-    private Material enemyOutlineMaterial;
+    private PlayerOutlinePresentation enemyOutlinePresenter;
     private int speedModifierId;
-    private AmbientMode previousAmbientMode;
-    private Color previousAmbientLight;
-    private Color previousAmbientSky;
-    private Color previousAmbientEquator;
-    private Color previousAmbientGround;
-    private bool previousFog;
-    private Color previousFogColor;
-    private float previousFogDensity;
-    private bool renderStateCaptured;
+    private static AmbientMode previousAmbientMode;
+    private static Color previousAmbientLight;
+    private static Color previousAmbientSky;
+    private static Color previousAmbientEquator;
+    private static Color previousAmbientGround;
+    private static bool previousFog;
+    private static Color previousFogColor;
+    private static float previousFogDensity;
+    private static bool renderStateCaptured;
+    private static int renderStateUsers;
+    private bool hasRenderStateLease;
 
     private struct LightSnapshot
     {
@@ -89,6 +90,11 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         return presentationOwnedByCaster && hasOpponent;
     }
 
+    public static bool ShouldHighlightReadiness(bool cooldownReady, bool hasHealthAdvantage)
+    {
+        return cooldownReady && hasHealthAdvantage;
+    }
+
     public static Color EnemyOutlineColor(float elapsed)
     {
         float cycleDuration = EnemyOutlineBrightenSeconds + EnemyOutlineFadeSeconds;
@@ -98,14 +104,14 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
             float rise = Mathf.SmoothStep(0f, 1f, phase / EnemyOutlineBrightenSeconds);
             float brightness = Mathf.Lerp(EnemyOutlineMinimumBrightness,
                 EnemyOutlineMaximumBrightness, rise);
-            return new Color(brightness, brightness, brightness, 1f);
+            return new Color(brightness, 0.01f, 0.005f, 1f);
         }
 
         float fade = Mathf.SmoothStep(0f, 1f,
             (phase - EnemyOutlineBrightenSeconds) / EnemyOutlineFadeSeconds);
         float fadingBrightness = Mathf.Lerp(EnemyOutlineMaximumBrightness,
             EnemyOutlineMinimumBrightness, fade);
-        return new Color(fadingBrightness, fadingBrightness, fadingBrightness, 1f - fade);
+        return new Color(fadingBrightness, 0.01f, 0.005f, 1f - fade);
     }
 
     public static float GravityFalloff(float distance)
@@ -152,8 +158,8 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
             CreateEnemyHighlight(presentationRoot.transform);
         ApplyLocalSpeedModifier();
 
-        SfxManager.PlayVoidStart();
-        SfxManager.StartVoidLoop();
+        SfxManager.PlayVoidStart(blackHolePosition);
+        SfxManager.StartVoidLoop(blackHolePosition);
         RequestLocalFeedback();
 
         System.Random random = new System.Random(seed);
@@ -177,7 +183,7 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         }
 
         SfxManager.StopVoidLoop();
-        SfxManager.PlayVoidEnd();
+        SfxManager.PlayVoidEnd(blackHolePosition);
         StopPresentation(true);
     }
 
@@ -206,6 +212,13 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
 
     private void CaptureAndDarkenWorld()
     {
+        if (hasRenderStateLease)
+            return;
+        hasRenderStateLease = true;
+        renderStateUsers++;
+        if (renderStateUsers > 1)
+            return;
+
         previousAmbientMode = RenderSettings.ambientMode;
         previousAmbientLight = RenderSettings.ambientLight;
         previousAmbientSky = RenderSettings.ambientSkyColor;
@@ -317,73 +330,17 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
     private void ApplyEnemyOutline(Transform opponentRoot)
     {
         RestoreEnemyOutline();
-        Shader shader = Shader.Find("Boundary/Void Enemy Outline");
-        if (shader == null)
-            return;
-        enemyOutlineMaterial = new Material(shader) { name = "Void Enemy White Outline" };
-        enemyOutlineMaterial.SetColor("_OutlineColor", EnemyOutlineColor(0f));
-        enemyOutlineMaterial.SetFloat("_OutlineWidth", 0.045f);
-
-        Renderer[] renderers = opponentRoot.GetComponentsInChildren<Renderer>(true);
-        foreach (Renderer targetRenderer in renderers)
-        {
-            if (targetRenderer == null || targetRenderer is ParticleSystemRenderer ||
-                targetRenderer.GetComponentInParent<Canvas>() != null)
-                continue;
-
-            GameObject outlineObject = new GameObject(targetRenderer.name + " Void White Outline");
-            Transform sourceTransform = targetRenderer.transform;
-            outlineObject.transform.SetParent(sourceTransform.parent, false);
-            outlineObject.transform.localPosition = sourceTransform.localPosition;
-            outlineObject.transform.localRotation = sourceTransform.localRotation;
-            outlineObject.transform.localScale = sourceTransform.localScale;
-
-            Renderer outlineRenderer = null;
-            if (targetRenderer is SkinnedMeshRenderer sourceSkin)
-            {
-                SkinnedMeshRenderer skin = outlineObject.AddComponent<SkinnedMeshRenderer>();
-                skin.sharedMesh = sourceSkin.sharedMesh;
-                skin.bones = sourceSkin.bones;
-                skin.rootBone = sourceSkin.rootBone;
-                skin.localBounds = sourceSkin.localBounds;
-                skin.updateWhenOffscreen = true;
-                outlineRenderer = skin;
-            }
-            else if (targetRenderer is MeshRenderer &&
-                     targetRenderer.GetComponent<MeshFilter>() is MeshFilter sourceFilter)
-            {
-                outlineObject.AddComponent<MeshFilter>().sharedMesh = sourceFilter.sharedMesh;
-                outlineRenderer = outlineObject.AddComponent<MeshRenderer>();
-            }
-
-            if (outlineRenderer == null)
-            {
-                Destroy(outlineObject);
-                continue;
-            }
-
-            int materialCount = Mathf.Max(1, targetRenderer.sharedMaterials.Length);
-            Material[] outlineMaterials = new Material[materialCount];
-            for (int index = 0; index < outlineMaterials.Length; index++)
-                outlineMaterials[index] = enemyOutlineMaterial;
-            outlineRenderer.sharedMaterials = outlineMaterials;
-            outlineRenderer.shadowCastingMode = ShadowCastingMode.Off;
-            outlineRenderer.receiveShadows = false;
-            outlineRenderer.lightProbeUsage = LightProbeUsage.Off;
-            outlineRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
-            enemyOutlineObjects.Add(outlineObject);
-        }
+        enemyOutlinePresenter = opponentRoot.GetComponent<PlayerOutlinePresentation>() ??
+            opponentRoot.gameObject.AddComponent<PlayerOutlinePresentation>();
+        enemyOutlinePresenter.Refresh();
+        enemyOutlinePresenter.SetVoidReveal(true);
     }
 
     private void RestoreEnemyOutline()
     {
-        foreach (GameObject outlineObject in enemyOutlineObjects)
-            if (outlineObject != null)
-                Destroy(outlineObject);
-        enemyOutlineObjects.Clear();
-        if (enemyOutlineMaterial != null)
-            Destroy(enemyOutlineMaterial);
-        enemyOutlineMaterial = null;
+        if (enemyOutlinePresenter != null)
+            enemyOutlinePresenter.SetVoidReveal(false);
+        enemyOutlinePresenter = null;
     }
 
     private void UpdateEnemyHighlight(float elapsed)
@@ -391,9 +348,9 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         if (enemyHighlight == null || highlightedOpponent == null)
             return;
 
-        enemyHighlight.position = highlightedOpponent.transform.position + Vector3.up * 1.15f;
-        if (enemyOutlineMaterial != null)
-            enemyOutlineMaterial.SetColor("_OutlineColor", EnemyOutlineColor(elapsed));
+        enemyHighlight.position = highlightedOpponent.transform.position +
+            Vector3.up * PlayerMovement.StandingCenterHeight;
+        enemyOutlinePresenter?.SetVoidRevealColor(EnemyOutlineColor(elapsed));
     }
 
     private static void CreateBlackParticles(Transform parent, Material material)
@@ -542,7 +499,7 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
             light = slashLight,
             startedAt = Time.unscaledTime
         });
-        SfxManager.PlayVoidSlash();
+        SfxManager.PlayVoidSlash(root.transform.position);
     }
 
     private void ResolveSplashSurface(Vector3 arenaCenter, float playableRadius,
@@ -663,14 +620,13 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         PlayerMovement[] players = FindObjectsByType<PlayerMovement>(FindObjectsSortMode.None);
         foreach (PlayerMovement player in players)
         {
-            if (!player.isOwner)
+            if (!player.HasSimulationAuthority)
                 continue;
-            modifiedLocalMovement = player;
+            modifiedLocalMovements.Add(player);
             speedModifierId = GetInstanceID();
             bool caster = player.transform.root == transform.root;
             player.SetExternalSpeedMultiplier(speedModifierId,
                 caster ? CasterSpeedMultiplier : OpponentSpeedMultiplier);
-            break;
         }
     }
 
@@ -725,35 +681,44 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         presentation = null;
         SfxManager.StopVoidLoop();
 
-        if (modifiedLocalMovement != null)
-            modifiedLocalMovement.RemoveExternalSpeedMultiplier(speedModifierId);
-        modifiedLocalMovement = null;
+        foreach (PlayerMovement movement in modifiedLocalMovements)
+            if (movement != null) movement.RemoveExternalSpeedMultiplier(speedModifierId);
+        modifiedLocalMovements.Clear();
         RestoreEnemyOutline();
         enemyHighlight = null;
         highlightedOpponent = null;
 
-        for (int index = 0; index < lights.Count; index++)
+        if (hasRenderStateLease)
         {
-            LightSnapshot snapshot = lights[index];
-            if (snapshot.light != null)
-                snapshot.light.intensity = snapshot.intensity;
+            hasRenderStateLease = false;
+            renderStateUsers = Mathf.Max(0, renderStateUsers - 1);
         }
-        lights.Clear();
 
-        if (renderStateCaptured)
+        if (renderStateUsers == 0)
         {
-            RenderSettings.ambientMode = previousAmbientMode;
-            RenderSettings.ambientLight = previousAmbientLight;
-            RenderSettings.ambientSkyColor = previousAmbientSky;
-            RenderSettings.ambientEquatorColor = previousAmbientEquator;
-            RenderSettings.ambientGroundColor = previousAmbientGround;
-            RenderSettings.fog = previousFog;
-            RenderSettings.fogColor = previousFogColor;
-            RenderSettings.fogDensity = previousFogDensity;
-            renderStateCaptured = false;
+            for (int index = 0; index < lights.Count; index++)
+            {
+                LightSnapshot snapshot = lights[index];
+                if (snapshot.light != null)
+                    snapshot.light.intensity = snapshot.intensity;
+            }
+            lights.Clear();
+
+            if (renderStateCaptured)
+            {
+                RenderSettings.ambientMode = previousAmbientMode;
+                RenderSettings.ambientLight = previousAmbientLight;
+                RenderSettings.ambientSkyColor = previousAmbientSky;
+                RenderSettings.ambientEquatorColor = previousAmbientEquator;
+                RenderSettings.ambientGroundColor = previousAmbientGround;
+                RenderSettings.fog = previousFog;
+                RenderSettings.fogColor = previousFogColor;
+                RenderSettings.fogDensity = previousFogDensity;
+                renderStateCaptured = false;
+            }
+            BoundaryHazard.SetDarknessGlowForAll(false);
+            BoundaryArenaPresentation.Instance?.SetVoidWallGlow(false);
         }
-        BoundaryHazard.SetDarknessGlowForAll(false);
-        BoundaryArenaPresentation.Instance?.SetVoidWallGlow(false);
 
         slashBursts.Clear();
         if (presentationRoot != null)

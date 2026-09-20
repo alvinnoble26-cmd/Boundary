@@ -35,6 +35,7 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
     private float nextHealthTickAt;
     private float serverInvulnerableUntil;
 
+    public bool IsCpu => movement != null && movement.IsCpuControlled;
     public BoundaryKnockoutState State => state.value;
     public float EscapeProgress
     {
@@ -113,7 +114,7 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
         if (isServer)
             ServerUpdateHealth();
 
-        if (!isOwner || movement == null)
+        if (movement == null || !movement.HasSimulationAuthority)
             return;
 
         if (state.value == BoundaryKnockoutState.Consumed)
@@ -212,10 +213,11 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
 
     public void ServerPushOwner(Vector3 velocityChange)
     {
-        if (!isServer || !owner.HasValue)
-            return;
-
-        PushOwner(owner.Value, velocityChange);
+        if (!isServer) return;
+        if (IsCpu)
+            movement.ApplyAbilityImpulse(velocityChange);
+        else if (owner.HasValue)
+            PushOwner(owner.Value, velocityChange);
     }
 
     public void ServerRegisterBlackHoleContact(int sourceInstanceId)
@@ -279,7 +281,9 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
 
         serverDeathSent = true;
         serverBlackHoleContacts.Clear();
-        if (owner.HasValue)
+        if (IsCpu)
+            ConsumePlayer("CPU health reached zero.");
+        else if (owner.HasValue)
             NotifyOwnerHealthDepleted(owner.Value);
     }
 
@@ -307,7 +311,7 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
 
     public void ConsumeFromHazard(string reason)
     {
-        if (!isOwner)
+        if (movement == null || !movement.HasSimulationAuthority)
             return;
 
         ConsumePlayer(string.IsNullOrWhiteSpace(reason)
@@ -322,6 +326,12 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
 
         reportedLoss = true;
         SetState(BoundaryKnockoutState.Consumed);
+        if (IsCpu)
+        {
+            if (GameManager.I != null && GameManager.I.IsCpuPractice)
+                GameManager.I.EndGameWin("You defeated the CPU.");
+            return;
+        }
         LocalLethalFeedback.VibrateForAcceptedLocalContact();
         SfxManager.PlayLethalHit();
         if (GameManager.I != null)
@@ -336,7 +346,8 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
         Vector3 position = movement.rb.position;
         Vector3 flatOffset = position - match.ArenaCenter;
         flatOffset.y = 0f;
-        position.y = match.PlatformSurfaceYAtRadius(flatOffset.magnitude) + 1.15f;
+        position.y = match.PlatformSurfaceYAtRadius(flatOffset.magnitude) +
+            PlayerMovement.StandingCenterHeight;
         movement.rb.position = position;
 
         Vector3 velocity = movement.rb.linearVelocity;

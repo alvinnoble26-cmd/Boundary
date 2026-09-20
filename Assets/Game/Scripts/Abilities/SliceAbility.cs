@@ -7,9 +7,9 @@ public sealed class SliceAbility : MonoBehaviour, IAbility
 {
     public const float CooldownSeconds = 1f;
     public const float Damage = 7f;
-    public const float Radius = 7f;
+    public const float Radius = 10f;
     public const float ArcDegrees = 120f;
-    public const float SwingDuration = 0.14f;
+    public const float SwingDuration = 0.2f;
     public const float ScreenSliceDuration = 0.75f;
 
     public AbilityId Id => AbilityId.Slice;
@@ -58,10 +58,10 @@ public sealed class SlicePresentation : MonoBehaviour
     public void Play(Vector3 origin, Vector3 direction, bool hit, bool showScreenOverlay = true)
     {
         if (swingClip != null)
-            AudioSource.PlayClipAtPoint(swingClip, origin, 0.9f);
+            SfxManager.PlayWorldClip(swingClip, origin, 0.9f);
         SpawnSlash(origin, direction, hit);
         if (hit && hitClip != null)
-            AudioSource.PlayClipAtPoint(hitClip, origin, 1f);
+            SfxManager.PlayWorldClip(hitClip, origin, 1f);
         if (SliceAbility.ShouldShowScreenOverlay(hit, showScreenOverlay))
             SliceScreenOverlay.Show();
     }

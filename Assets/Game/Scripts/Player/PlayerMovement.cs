@@ -4,6 +4,10 @@ using PurrNet;
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerMovement : NetworkBehaviour
 {
+    public const float CharacterScale = 1.3f;
+    public const float StandingCenterHeight = 1.15f * CharacterScale;
+    public const float DefaultMaxSpeed = 10.92f;
+
     [Header("Slope Movement")]
     public float maxSlopeAngle = 45f;
     private RaycastHit slopeHit;
@@ -11,7 +15,7 @@ public class PlayerMovement : NetworkBehaviour
 
     [Header("Movement")]
     public float acceleration = 35f;
-    public float maxSpeed = 7f;
+    public float maxSpeed = DefaultMaxSpeed;
     public float deceleration = 20f;
     public float jumpForce = 7f;
     public float fallGravityMultiplier = 12f;
@@ -55,8 +59,28 @@ public class PlayerMovement : NetworkBehaviour
     [HideInInspector] public Rigidbody rb;
     [HideInInspector] public Vector2 moveInput;
 
+    // Set only by the local practice spawner, never by a network payload.
+    public bool IsCpuControlled { get; private set; }
+    public bool HasSimulationAuthority => isOwner || (IsCpuControlled && isServer);
+    private Vector2 cpuMoveInput;
+
+    public void ConfigureCpuControl()
+    {
+        IsCpuControlled = true;
+    }
+
+    public void SetCpuInput(Vector3 worldDirection, bool jump)
+    {
+        if (!IsCpuControlled || !isServer) return;
+        Transform basis = orientation != null ? orientation : transform;
+        cpuMoveInput = Vector2.ClampMagnitude(new Vector2(
+            Vector3.Dot(worldDirection, basis.right), Vector3.Dot(worldDirection, basis.forward)), 1f);
+        if (jump) RequestJump();
+    }
+
     public bool IsGrounded => isGrounded;
     public bool IsWallRunning => !isGrounded && wallStickCounter > 0f;
+    public bool CanWallJump => !isGrounded && wallStickCounter > 0f;
     public Vector3 WallRunNormal => IsWallRunning ? wallNormal : Vector3.zero;
     public bool IsStableGrounded { get; private set; }
     public bool JumpPressedThisFrame { get; private set; }
@@ -118,6 +142,7 @@ private SlideAbility slideAbility;
 // Replace your existing Awake with this
 void Awake()
 {
+    transform.localScale *= CharacterScale;
     rb = GetComponent<Rigidbody>();
     myCol = GetComponent<Collider>();
     if (input == null) input = GetComponent<PlayerInputReader>();
@@ -125,7 +150,11 @@ void Awake()
     slideAbility = GetComponentInChildren<SlideAbility>();
     boundaryState = GetComponent<BoundaryPlayerState>();
     viewYaw = transform.eulerAngles.y;
+    if (GetComponent<PlayerOutlinePresentation>() == null)
+        gameObject.AddComponent<PlayerOutlinePresentation>();
 }
+
+    public static float ScaleDistance(float distance) => distance * CharacterScale;
     protected override void OnSpawned()
 {
     StartCoroutine(SetupPhysicsAuthority());
@@ -140,13 +169,15 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
 
     Debug.Log($"[Move] OnSpawned isOwner={isOwner} kinematic(before)={rb.isKinematic}");
 
-    if (isOwner)
+    if (HasSimulationAuthority)
     {
         rb.isKinematic = false;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
     }
     else
     {
+        rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
         rb.isKinematic = true;
     }
 
@@ -212,11 +243,11 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
     void FixedUpdate()
     {
         
-        if (!isOwner) return;
+        if (!HasSimulationAuthority) return;
         slideJumpExecutedThisStep = false;
         if (slideJumpVerticalSpeedAllowance > 0f && rb != null && rb.linearVelocity.y <= 0f)
             slideJumpVerticalSpeedAllowance = -1f;
-        Vector2 raw = input != null ? input.Move : Vector2.zero;
+        Vector2 raw = IsCpuControlled ? cpuMoveInput : input != null ? input.Move : Vector2.zero;
         raw = Vector2.ClampMagnitude(raw, 1f);
         if (raw.magnitude < deadzone)
             raw = Vector2.zero;
@@ -235,7 +266,7 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
 
         moveInput = smoothedMoveInput;
 
-        if (input != null && input.ConsumeJump())
+        if (!IsCpuControlled && input != null && input.ConsumeJump())
         {
             RequestJump();
         }
@@ -248,7 +279,7 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         {
             heldJumpUsedOnCurrentGroundContact = false;
         }
-        else if (input != null && input.IsJumpHeld && !heldJumpUsedOnCurrentGroundContact)
+        else if (!IsCpuControlled && input != null && input.IsJumpHeld && !heldJumpUsedOnCurrentGroundContact)
         {
             heldJumpUsedOnCurrentGroundContact = true;
             RequestJump();
@@ -341,7 +372,8 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
     {
         if (myCol == null)
         {
-            isGrounded = Physics.Raycast(transform.position, Vector3.down, 1.2f, groundMask, QueryTriggerInteraction.Ignore);
+            isGrounded = Physics.Raycast(transform.position, Vector3.down,
+                ScaleDistance(1.2f), groundMask, QueryTriggerInteraction.Ignore);
             return;
         }
 
@@ -357,7 +389,7 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
             radius,
             Vector3.down,
             out _,
-            groundCheckDistance,
+            ScaleDistance(groundCheckDistance),
             groundMask,
             QueryTriggerInteraction.Ignore
         );
@@ -507,7 +539,8 @@ void HandleJump()
         rb.linearVelocity = new Vector3(horizontalVelocity.x, 0f, horizontalVelocity.z);
         rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
         rb.linearVelocity = new Vector3(horizontalVelocity.x, rb.linearVelocity.y, horizontalVelocity.z);
-        SfxManager.PlayJump();
+        if (isOwner)
+            SfxManager.PlayLocalJump(transform.position);
     }
     else if (wallStickCounter > 0f)
     {
@@ -518,7 +551,8 @@ void HandleJump()
         rb.AddForce(jumpDir * (wallJumpUp + wallJumpSide), ForceMode.Impulse);
         rb.linearVelocity = new Vector3(horizontalVelocity.x, rb.linearVelocity.y, horizontalVelocity.z);
         wallStickCounter = 0f;
-        SfxManager.PlayJump();
+        if (isOwner)
+            SfxManager.PlayLocalJump(transform.position);
     }
 
     jumpRequested = false;
@@ -544,7 +578,7 @@ void HandleJump()
 
     public void ApplyBoundaryImpulse(Vector3 velocityChange)
     {
-        if (!isOwner || rb == null)
+        if (!HasSimulationAuthority || rb == null)
             return;
 
         rb.AddForce(Vector3.ClampMagnitude(velocityChange, 18f), ForceMode.VelocityChange);
@@ -552,7 +586,7 @@ void HandleJump()
 
     public void ApplyAbilityImpulse(Vector3 velocityChange)
     {
-        if (!isOwner || rb == null)
+        if (!HasSimulationAuthority || rb == null)
             return;
 
         rb.AddForce(Vector3.ClampMagnitude(velocityChange, 60f), ForceMode.VelocityChange);
@@ -664,8 +698,9 @@ void HandleJump()
 
         for (int i = 0; i < dirs.Length; i++)
         {
-            if (Physics.SphereCast(transform.position, wallSphereRadius, dirs[i], out RaycastHit hit,
-                    wallCheckDistance, groundMask, QueryTriggerInteraction.Ignore))
+            if (Physics.SphereCast(transform.position, ScaleDistance(wallSphereRadius), dirs[i],
+                    out RaycastHit hit, ScaleDistance(wallCheckDistance), groundMask,
+                    QueryTriggerInteraction.Ignore))
             {
                 if (!IsWallJumpSurface(hit.collider, hit.normal, transform))
                     continue;
@@ -707,8 +742,9 @@ void HandleJump()
             return;
 
         Vector3 castOrigin = myCol != null ? myCol.bounds.center : transform.position;
-        if (!Physics.SphereCast(castOrigin, wallSphereRadius, direction.normalized,
-                out RaycastHit hit, wallCheckDistance, groundMask, QueryTriggerInteraction.Ignore) ||
+        if (!Physics.SphereCast(castOrigin, ScaleDistance(wallSphereRadius), direction.normalized,
+                out RaycastHit hit, ScaleDistance(wallCheckDistance), groundMask,
+                QueryTriggerInteraction.Ignore) ||
             !IsSlideWallSurface(hit.collider, hit.normal, transform) || hit.distance >= bestDistance)
             return;
 
@@ -793,7 +829,7 @@ void HandleJump()
     }
     private void OnCollisionEnter(Collision collision)
 {
-    if (!isOwner) return;
+    if (!HasSimulationAuthority) return;
 
     if (slideAbility != null && slideAbility.HandleObstacleCollision(collision))
         return;

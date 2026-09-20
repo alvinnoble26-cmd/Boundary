@@ -7,14 +7,14 @@ public sealed class ChargeAbilityTests
     public void UsesRequestedTimingDamageAndRadius()
     {
         Assert.That(ChargeAbility.CooldownSeconds, Is.EqualTo(7f));
-        Assert.That(ChargeAbility.ChargeSeconds, Is.EqualTo(0.5f));
+        Assert.That(ChargeAbility.ChargeSeconds, Is.EqualTo(0.35f));
         Assert.That(ChargeAbility.FirstTickDelay, Is.EqualTo(2f));
         Assert.That(ChargeAbility.SecondTickDelay, Is.EqualTo(2f));
         Assert.That(ChargeAbility.FirstTickDamage, Is.EqualTo(5f));
         Assert.That(ChargeAbility.SecondTickDamage, Is.EqualTo(7f));
         Assert.That(ChargeAbility.ExplosionRadius, Is.EqualTo(10f));
         Assert.That(ChargeAbility.HitEffectDuration, Is.EqualTo(2f));
-        Assert.That(ChargeAbility.ProjectileSpeed, Is.EqualTo(36f));
+        Assert.That(ChargeAbility.ProjectileSpeed, Is.EqualTo(54f));
     }
 
     [Test]

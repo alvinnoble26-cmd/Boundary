@@ -10,9 +10,11 @@ public class AbilityCooldownButton : MonoBehaviour
     private Button button;
     private Image baseImage;
     private Image cooldownFill;
+    private Image readinessGlow;
     private float cooldownStart;
     private float cooldownDuration;
     private bool coolingDown;
+    private bool readinessHighlighted;
 
     public void Initialize(Button targetButton)
     {
@@ -31,7 +33,15 @@ public class AbilityCooldownButton : MonoBehaviour
 
         button.transition = Selectable.Transition.None;
         CreateFillImageIfNeeded();
+        CreateReadinessGlowIfNeeded();
         ShowReadyState();
+    }
+
+    public void SetReadinessHighlight(bool highlighted)
+    {
+        readinessHighlighted = highlighted;
+        if (readinessGlow != null)
+            readinessGlow.enabled = highlighted;
     }
 
     public void BeginCooldown(float duration)
@@ -58,15 +68,23 @@ public class AbilityCooldownButton : MonoBehaviour
 
     private void Update()
     {
-        if (!coolingDown || cooldownFill == null)
-            return;
+        if (coolingDown && cooldownFill != null)
+        {
+            float elapsed = Time.time - cooldownStart;
+            float progress = Mathf.Clamp01(elapsed / cooldownDuration);
+            cooldownFill.fillAmount = progress;
 
-        float elapsed = Time.time - cooldownStart;
-        float progress = Mathf.Clamp01(elapsed / cooldownDuration);
-        cooldownFill.fillAmount = progress;
+            if (progress >= 1f)
+                ShowReadyState();
+        }
 
-        if (progress >= 1f)
-            ShowReadyState();
+        if (readinessHighlighted && readinessGlow != null)
+        {
+            float pulse = 0.86f + Mathf.Sin(Time.unscaledTime * 9f) * 0.14f;
+            readinessGlow.color = new Color(0.92f, 0.38f, 1f, pulse);
+            readinessGlow.rectTransform.localScale = Vector3.one *
+                (1.4f + Mathf.Sin(Time.unscaledTime * 9f) * 0.14f);
+        }
     }
 
     private void CreateFillImageIfNeeded()
@@ -96,6 +114,33 @@ public class AbilityCooldownButton : MonoBehaviour
         cooldownFill.fillOrigin = (int)Image.OriginVertical.Bottom;
         cooldownFill.fillClockwise = true;
         SyncFillAppearance();
+    }
+
+    private void CreateReadinessGlowIfNeeded()
+    {
+        Transform existing = transform.Find("ReadinessGlow");
+        if (existing != null)
+            readinessGlow = existing.GetComponent<Image>();
+
+        if (readinessGlow == null)
+        {
+            GameObject glowObject = new GameObject("ReadinessGlow", typeof(RectTransform),
+                typeof(CanvasRenderer), typeof(Image));
+            glowObject.layer = gameObject.layer;
+            glowObject.transform.SetParent(transform, false);
+            readinessGlow = glowObject.GetComponent<Image>();
+            RectTransform rect = readinessGlow.rectTransform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+        }
+
+        readinessGlow.raycastTarget = false;
+        readinessGlow.sprite = baseImage.sprite;
+        readinessGlow.material = baseImage.material;
+        readinessGlow.preserveAspect = baseImage.preserveAspect;
+        readinessGlow.enabled = readinessHighlighted;
+        readinessGlow.transform.SetAsFirstSibling();
     }
 
     private void SyncFillAppearance()

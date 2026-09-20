@@ -10,6 +10,102 @@ using UnityEngine.VFX;
 
 public class PlayerAbilities : NetworkBehaviour
 {
+    private bool IsLocalCpu => isServer && GetComponent<PlayerMovement>().IsCpuControlled;
+
+    // Local host only. These entry points reuse the same validation handlers as
+    // human requests; none is an RPC or changes the released network contract.
+    public bool ConfigureCpuLoadout(AbilityId[] selected)
+    {
+        EnsureGrappleAbility();
+        EnsureHollowAbility();
+        EnsureVoidAbility();
+        EnsureBullseyeAbility();
+        EnsureChargeAbility();
+        EnsureSliceAbility();
+        if (!TryApplyAuthoritativeLoadout(selected)) return false;
+        serverHasAuthoritativeLoadout = true;
+        ApplySkinVisual("beard");
+        return true;
+    }
+
+    public bool CpuAbilityReady(AbilityId id)
+    {
+        if (!IsLocalCpu || !IsAbilityEquipped(id)) return false;
+        switch (id)
+        {
+            case AbilityId.Grapple: return serverGrappleRoutine == null && Time.time >= serverGrappleCooldownUntil;
+            case AbilityId.Hollow: return serverHollowRoutine == null && Time.time >= serverHollowCooldownUntil;
+            case AbilityId.Void: return serverVoidRoutine == null && Time.time >= serverVoidCooldownUntil;
+            default: return !serverAbilityCooldownEnds.TryGetValue(id, out float until) || Time.time >= until;
+        }
+    }
+
+    public void CpuUseAbility(int slot, Vector3 direction)
+    {
+        if (!IsLocalCpu || slot < 0 || slot >= slots.Length || !slots[slot].HasValue ||
+            !CpuAbilityReady(slots[slot].Value)) return;
+        BoundaryPlayerState state = GetComponent<BoundaryPlayerState>();
+        if (state == null || state.State == BoundaryKnockoutState.Consumed ||
+            GameManager.I == null || !GameManager.I.IsCpuPractice ||
+            GameManager.I.State != GameManager.GameState.Playing) return;
+
+        AbilityId id = slots[slot].Value;
+        Vector3 origin = transform.position + Vector3.up *
+            PlayerMovement.ScaleDistance(HollowAbility.EyeHeight);
+        direction.Normalize();
+        switch (id)
+        {
+            case AbilityId.Bullseye: ServerBullseye(origin, direction, slot); break;
+            case AbilityId.Charge: ServerCharge(origin, direction, slot); break;
+            case AbilityId.Slice: ServerSlice(direction, slot); break;
+            case AbilityId.Hollow: ServerHollow(origin, direction, slot); break;
+            case AbilityId.Void: ServerVoid(direction, slot); break;
+            case AbilityId.Grapple:
+                if (Physics.Raycast(origin, direction, out RaycastHit hit, GrappleAbility.MaximumRange,
+                        ~0, QueryTriggerInteraction.Ignore) &&
+                    TryResolveGrappleTarget(hit, out bool movable, out _, out NetworkIdentity target))
+                    ServerGrapple(origin, movable ? target.transform.InverseTransformPoint(hit.point) : hit.point,
+                        movable ? target : null, slot);
+                break;
+            default:
+                // Legacy throws have their own ammunition/cooldown checks too.
+                if ((id == AbilityId.BlackThrow || id == AbilityId.AttractThrow || id == AbilityId.RepelThrow) &&
+                    !TryConsumeServerAbilityCooldown(id)) return;
+                ServerActivateAbility(id, origin, direction);
+                break;
+        }
+    }
+
+    // Sample visible, already-active attacks, never the human's future input.
+    // This local query adds no network messages and uses no per-tick collections.
+    public float CpuDangerAt(Vector3 point, Vector3 velocity, float horizon, bool selfDamageOnly = false)
+    {
+        float danger = 0f;
+        if (!selfDamageOnly)
+        foreach (ServerBullseyePresentationState shot in serverBullseyePresentations.Values)
+            danger += BoundaryCpuRules.MovingThreat(point, velocity, shot.position,
+                shot.direction * BullseyeAbility.ProjectileSpeed, 1.4f, horizon) * 140f;
+        if (serverChargePresentationActive)
+        {
+            Vector3 future = point + velocity * horizon;
+            float distance = Vector3.Distance(future, serverChargePresentationPosition);
+            danger += Mathf.Clamp01(1f - distance / (ChargeAbility.ExplosionRadius + 3f)) * 85f;
+            if (serverChargePresentationStage == 0)
+                danger += BoundaryCpuRules.MovingThreat(point, velocity, serverChargePresentationPosition,
+                    serverChargePresentationDirection * ChargeAbility.ProjectileSpeed, 3f, horizon) * 60f;
+        }
+        if (!selfDamageOnly && serverHollowRoutine != null)
+        {
+            Vector3 origin = Time.time - serverHollowStartedAt <
+                HollowAbility.ChargeDuration + HollowAbility.AimLockGraceSeconds
+                ? HollowAbility.GetBlastOrigin(transform.position, serverHollowDirection)
+                : serverHollowBlastOrigin;
+            if (HollowAbility.IsPointInsideBlast(point + velocity * horizon, origin, serverHollowDirection))
+                danger += 160f;
+        }
+        return danger;
+    }
+
     private const float GrappleEyeHeight = 1.1f;
     private const float MaximumSubmittedEyeOffset = 3.5f;
     private const float MaximumSubmittedAbilityOriginOffset = 4f;
@@ -108,6 +204,7 @@ public class PlayerAbilities : NetworkBehaviour
     private bool serverGrappleMovable;
     private float serverGrappleStartedAt;
     private Vector3 serverHollowDirection;
+    private Vector3 serverHollowBlastOrigin;
     private float serverHollowStartedAt;
     private Vector3 serverVoidPosition;
     private int serverVoidSeed;
@@ -226,6 +323,7 @@ protected override void OnOwnerChanged(PlayerID? oldOwner, PlayerID? newOwner, b
 
 private void SetupLocalPlayer()
 {
+    if (GetComponent<PlayerMovement>().IsCpuControlled) return;
     EnsureGrappleAbility();
     EnsureHollowAbility();
     EnsureVoidAbility();
@@ -425,6 +523,8 @@ private void ApplySkinVisual(string skinId)
 
 private void RefreshLocalFirstPersonVisuals(string skinId)
 {
+    GetComponent<PlayerOutlinePresentation>()?.Refresh();
+    if (!isOwner) return;
     Cam cameraController = GetLocalCameraController();
     if (cameraController != null)
         cameraController.RefreshLocalFirstPersonVisuals(skinId);
@@ -593,6 +693,11 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     [ServerRpc]
     private void RequestActivateAbility(AbilityId id, Vector3 spawnPosition, Vector3 aimDirection)
     {
+        ServerActivateAbility(id, spawnPosition, aimDirection);
+    }
+
+    private void ServerActivateAbility(AbilityId id, Vector3 spawnPosition, Vector3 aimDirection)
+    {
         if (!IsFiniteVector(spawnPosition) || !IsFiniteVector(aimDirection) ||
             aimDirection.sqrMagnitude < 0.0001f ||
             Vector3.Distance(spawnPosition, transform.position) > MaximumSubmittedAbilityOriginOffset ||
@@ -623,6 +728,11 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
 
     [ServerRpc]
     private void RequestBullseye(Vector3 submittedOrigin, Vector3 submittedDirection, int slotIndex)
+    {
+        ServerBullseye(submittedOrigin, submittedDirection, slotIndex);
+    }
+
+    private void ServerBullseye(Vector3 submittedOrigin, Vector3 submittedDirection, int slotIndex)
     {
         EnsureBullseyeAbility();
         if (slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Bullseye ||
@@ -704,6 +814,11 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     [ServerRpc]
     private void RequestCharge(Vector3 submittedOrigin, Vector3 submittedDirection, int slotIndex)
     {
+        ServerCharge(submittedOrigin, submittedDirection, slotIndex);
+    }
+
+    private void ServerCharge(Vector3 submittedOrigin, Vector3 submittedDirection, int slotIndex)
+    {
         EnsureChargeAbility();
         if (slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Charge ||
             !IsFiniteVector(submittedOrigin) || !IsFiniteVector(submittedDirection) ||
@@ -726,6 +841,11 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
 
     [ServerRpc]
     private void RequestSlice(Vector3 submittedDirection, int slotIndex)
+    {
+        ServerSlice(submittedDirection, slotIndex);
+    }
+
+    private void ServerSlice(Vector3 submittedDirection, int slotIndex)
     {
         EnsureSliceAbility();
         if (slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Slice ||
@@ -907,7 +1027,8 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
         {
             if (player == null)
                 continue;
-            Vector3 playerCenter = player.transform.position + Vector3.up * ChargeAbility.TargetCenterHeight;
+            Vector3 playerCenter = player.transform.position + Vector3.up *
+                PlayerMovement.ScaleDistance(ChargeAbility.TargetCenterHeight);
             if (CanReceiveServerAbilityDamage(player) &&
                 ChargeAbility.IsInsideExplosion(playerCenter, center))
             {
@@ -935,7 +1056,8 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
 
         Transform anchor = transform.Find("Visual/Tilt") ?? transform;
         GameObject effect = UnityProxy.InstantiateDirectly(chargeElectroHitPrefab,
-            anchor.position + Vector3.up * ChargeAbility.TargetCenterHeight, Quaternion.identity);
+            anchor.position + Vector3.up *
+                PlayerMovement.ScaleDistance(ChargeAbility.TargetCenterHeight), Quaternion.identity);
         effect.name = "Charge Electro Hit (2 Seconds)";
         effect.transform.SetParent(anchor, true);
         Destroy(effect, ChargeAbility.HitEffectDuration);
@@ -1000,7 +1122,7 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
         if (bullseyeProjectileVisuals.ContainsKey(projectileId))
             return;
         if (bullseyeThrowClip != null)
-            AudioSource.PlayClipAtPoint(bullseyeThrowClip, origin, 0.85f);
+            SfxManager.PlayWorldClip(bullseyeThrowClip, origin, 0.85f);
         if (bullseyeKnifePrefab == null)
             return;
         // This is a replicated presentation copy, not a network identity. The
@@ -1058,6 +1180,8 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
         }
     }
 
+    public bool HasEquippedAbility(AbilityId id) => IsAbilityEquipped(id);
+
     private bool IsAbilityEquipped(AbilityId id)
     {
         for (int slotIndex = 0; slotIndex < slots.Length; slotIndex++)
@@ -1085,6 +1209,11 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     [ServerRpc]
     private void RequestHollow(Vector3 submittedEyePosition, Vector3 aimDirection, int slotIndex)
     {
+        ServerHollow(submittedEyePosition, aimDirection, slotIndex);
+    }
+
+    private void ServerHollow(Vector3 submittedEyePosition, Vector3 aimDirection, int slotIndex)
+    {
         EnsureHollowAbility();
         if (serverHollowRoutine != null || Time.time < serverHollowCooldownUntil ||
             slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Hollow ||
@@ -1092,7 +1221,8 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
             aimDirection.sqrMagnitude < 0.0001f)
             return;
 
-        Vector3 expectedEye = transform.position + Vector3.up * HollowAbility.EyeHeight;
+        Vector3 expectedEye = transform.position + Vector3.up *
+            PlayerMovement.ScaleDistance(HollowAbility.EyeHeight);
         if (Vector3.Distance(submittedEyePosition, expectedEye) > MaximumSubmittedEyeOffset)
             return;
 
@@ -1101,14 +1231,16 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
         serverHollowDirection = direction;
         serverHollowStartedAt = Time.time;
         ObserversBeginHollow(direction);
-        serverHollowRoutine = StartCoroutine(ServerRunHollow(direction));
+        serverHollowRoutine = StartCoroutine(ServerRunHollow());
     }
 
-    private IEnumerator ServerRunHollow(Vector3 direction)
+    private IEnumerator ServerRunHollow()
     {
-        yield return new WaitForSeconds(HollowAbility.ChargeDuration);
+        yield return new WaitForSeconds(HollowAbility.ChargeDuration + HollowAbility.AimLockGraceSeconds);
 
+        Vector3 direction = serverHollowDirection;
         Vector3 origin = HollowAbility.GetBlastOrigin(transform.position, direction);
+        serverHollowBlastOrigin = origin;
         BoundaryPlayerState[] targets = FindObjectsByType<BoundaryPlayerState>(FindObjectsSortMode.None);
         float startedAt = Time.time;
         float lastTickAt = startedAt;
@@ -1125,7 +1257,8 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
             {
                 if (target == null || target.transform.root == transform.root)
                     continue;
-                Vector3 targetCenter = target.transform.position + Vector3.up * HollowAbility.TargetCenterHeight;
+                Vector3 targetCenter = target.transform.position + Vector3.up *
+                    PlayerMovement.ScaleDistance(HollowAbility.TargetCenterHeight);
                 if (HollowAbility.IsPointInsideBlast(targetCenter, origin, direction))
                     target.ServerApplyAbilityDamage(HollowAbility.DamagePerSecond * elapsed);
             }
@@ -1137,6 +1270,11 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     [ServerRpc]
     private void RequestVoid(Vector3 submittedAimDirection, int slotIndex)
     {
+        ServerVoid(submittedAimDirection, slotIndex);
+    }
+
+    private void ServerVoid(Vector3 submittedAimDirection, int slotIndex)
+    {
         EnsureVoidAbility();
         if (serverVoidRoutine != null || Time.time < serverVoidCooldownUntil ||
             slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Void ||
@@ -1144,7 +1282,7 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
             return;
 
         BoundaryPlayerState caster = GetComponent<BoundaryPlayerState>();
-        bool practiceMode = GameManager.I != null && GameManager.I.IsPracticeMode;
+        bool practiceMode = GameManager.I != null && GameManager.I.IsPlayground;
         BoundaryPlayerState opponent = null;
         bool hasOpponent = caster != null &&
             BoundaryPlayerState.TryGetOpponent(caster, out opponent);
@@ -1189,7 +1327,8 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     {
         if (opponent == null)
             return;
-        Vector3 delta = center - (opponent.transform.position + Vector3.up * 0.8f);
+        Vector3 delta = center - (opponent.transform.position + Vector3.up *
+            PlayerMovement.ScaleDistance(HollowAbility.TargetCenterHeight));
         Vector3 velocityChange = VoidAbility.GravityVelocityChange(delta, elapsed);
         if (velocityChange.sqrMagnitude > 0f)
             opponent.ServerPushOwner(velocityChange);
@@ -1227,13 +1366,20 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     private void RequestGrapple(Vector3 aimOrigin, Vector3 requestedPoint,
         NetworkIdentity requestedTarget, int slotIndex)
     {
+        ServerGrapple(aimOrigin, requestedPoint, requestedTarget, slotIndex);
+    }
+
+    private void ServerGrapple(Vector3 aimOrigin, Vector3 requestedPoint,
+        NetworkIdentity requestedTarget, int slotIndex)
+    {
         EnsureGrappleAbility();
         if (serverGrappleRoutine != null || Time.time < serverGrappleCooldownUntil ||
             slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Grapple ||
             !IsFiniteVector(aimOrigin) || !IsFiniteVector(requestedPoint))
             return;
 
-        Vector3 expectedEye = transform.position + Vector3.up * GrappleEyeHeight;
+        Vector3 expectedEye = transform.position + Vector3.up *
+            PlayerMovement.ScaleDistance(GrappleEyeHeight);
         if (Vector3.Distance(aimOrigin, expectedEye) > MaximumSubmittedEyeOffset)
             return;
 
@@ -1320,14 +1466,22 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
 
     public void CancelGrappleForJump()
     {
-        if (!isOwner || grappleAbility == null)
+        if ((!isOwner && !IsLocalCpu) || grappleAbility == null)
             return;
         grappleAbility.CancelForJump();
-        RequestCancelGrapple();
+        if (IsLocalCpu)
+            ServerCancelCpuGrapple();
+        else
+            RequestCancelGrapple();
     }
 
     [ServerRpc]
     private void RequestCancelGrapple()
+    {
+        ServerCancelCpuGrapple();
+    }
+
+    private void ServerCancelCpuGrapple()
     {
         if (serverGrappleRoutine != null)
         {
@@ -1415,7 +1569,7 @@ private void ObserversActivateAbility(AbilityId id, Vector3 aimDirection)
     if (id == AbilityId.Dash && registry != null && registry.TryGet(id, out var dashAbility) &&
         dashAbility is DashAbility dash)
     {
-        if (isOwner)
+        if (isOwner || IsLocalCpu)
             dash.Activate();
         else
             dash.PlayObserverPresentation(aimDirection);
@@ -1425,7 +1579,7 @@ private void ObserversActivateAbility(AbilityId id, Vector3 aimDirection)
     if (id == AbilityId.Slide && registry != null && registry.TryGet(id, out var slideAbility) &&
         slideAbility is SlideAbility slide)
     {
-        if (isOwner)
+        if (isOwner || IsLocalCpu)
             slide.Activate();
         else
             slide.PlayObserverPresentation(aimDirection);
@@ -1508,6 +1662,7 @@ private void ActivateAbility(AbilityId id)
             cooldownVisual = btn.gameObject.AddComponent<AbilityCooldownButton>();
 
         cooldownVisual.Initialize(btn);
+        cooldownVisual.SetReadinessHighlight(false);
         cooldownVisuals[slotIndex] = cooldownVisual;
 
         var id = slots[slotIndex];
@@ -1848,20 +2003,25 @@ private void SetBullseyeTargetVisible(bool visible)
 private void UpdateVoidButtonAvailability()
 {
     BoundaryPlayerState caster = GetComponent<BoundaryPlayerState>();
-    bool practiceMode = GameManager.I != null && GameManager.I.IsPracticeMode;
+    bool practiceMode = GameManager.I != null && GameManager.I.IsPlayground;
     BoundaryPlayerState opponent = null;
     bool hasOpponent = caster != null &&
         BoundaryPlayerState.TryGetOpponent(caster, out opponent);
     float opponentHealth = hasOpponent && opponent != null ? opponent.CurrentHealth : 0f;
     bool eligible = caster != null && VoidAbility.CanActivateForMode(
         practiceMode, hasOpponent, caster.CurrentHealth, opponentHealth);
+    bool hasHealthAdvantage = caster != null && hasOpponent &&
+        VoidAbility.CanActivate(caster.CurrentHealth, opponentHealth);
     for (int slotIndex = 0; slotIndex < slots.Length; slotIndex++)
     {
         if (slots[slotIndex] != AbilityId.Void)
             continue;
         Button button = GetAbilityButton(slotIndex);
+        bool cooldownReady = Time.time >= slotCooldownEnds[slotIndex];
         if (button != null)
-            button.interactable = Time.time >= slotCooldownEnds[slotIndex] && eligible;
+            button.interactable = cooldownReady && eligible;
+        cooldownVisuals[slotIndex]?.SetReadinessHighlight(
+            VoidAbility.ShouldHighlightReadiness(cooldownReady, hasHealthAdvantage));
     }
 }
 
@@ -1893,11 +2053,21 @@ private IEnumerator ShowLocalHollowArmsDuringCharge(Vector3 direction)
     float endsAt = Time.time + HollowAbility.ChargeDuration;
     while (Time.time < endsAt)
     {
+        Camera ownerCamera = GetComponentInChildren<Camera>(true);
+        direction = ownerCamera != null
+            ? HollowAbility.ResolveAimDirection(ownerCamera.transform.forward, direction)
+            : direction;
         Vector3 target = HollowAbility.GetChargePresentationPosition(transform.position, direction);
         GetLocalCameraController()?.SetHollowArmsActive(true, target);
         yield return null;
     }
 
+    Camera finalCamera = GetComponentInChildren<Camera>(true);
+    Vector3 finalDirection = finalCamera != null
+        ? HollowAbility.ResolveAimDirection(finalCamera.transform.forward, direction)
+        : direction;
+    hollowAbility?.SetPresentationDirection(finalDirection);
+    RequestHollowChargeAim(finalDirection);
     GetLocalCameraController()?.SetHollowArmsActive(false, transform.position);
     localHollowChargeRoutine = null;
 }
@@ -2196,6 +2366,30 @@ private void ReconstructAbilityPresentation(PlayerID target, AbilityId abilityId
             }
             break;
     }
+}
+
+// Appended after the released RPCs so older clients retain their existing IDs.
+[ServerRpc]
+private void RequestHollowChargeAim(Vector3 submittedDirection)
+{
+    if (serverHollowRoutine == null || !IsFiniteVector(submittedDirection) ||
+        submittedDirection.sqrMagnitude < 0.0001f)
+        return;
+
+    float chargeEndsAt = serverHollowStartedAt + HollowAbility.ChargeDuration;
+    if (Time.time < chargeEndsAt - 0.1f ||
+        Time.time > chargeEndsAt + HollowAbility.AimLockGraceSeconds)
+        return;
+
+    serverHollowDirection = submittedDirection.normalized;
+    ObserversRetargetHollow(serverHollowDirection);
+}
+
+[ObserversRpc]
+private void ObserversRetargetHollow(Vector3 direction)
+{
+    EnsureHollowAbility();
+    hollowAbility.SetPresentationDirection(direction);
 }
 
 private void OnDisable()

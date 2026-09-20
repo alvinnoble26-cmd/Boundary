@@ -103,7 +103,7 @@ public class SlideAbility : MonoBehaviour, IAbility
         BeginFlashPresentation();
         ApplyInstantSlideKick();
         StartCooldown();
-        SfxManager.PlaySlide();
+        SfxManager.PlaySlide(transform.position);
     }
 
     // Called before the UI cooldown starts so an unsupported airborne press is free.
@@ -283,7 +283,7 @@ public class SlideAbility : MonoBehaviour, IAbility
         SpawnTrail();
         SpawnHolyHit();
         BeginFlashPresentation();
-        SfxManager.PlaySlide();
+        SfxManager.PlaySlide(transform.position);
     }
 
     public void PlayObserverJumpBurst(Vector3 position)
@@ -397,7 +397,8 @@ public class SlideAbility : MonoBehaviour, IAbility
         pm.AllowSlideJumpVerticalSpeed(launchVelocity.y);
         pm.MarkExitingSlope();
         rb.linearVelocity = launchVelocity;
-        SfxManager.PlayJump();
+        if (pm != null && pm.isOwner)
+            SfxManager.PlayLocalJump(transform.position);
     }
 
     private void SpawnTrail()

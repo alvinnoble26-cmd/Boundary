@@ -134,8 +134,15 @@ public class MenuUIController : MonoBehaviour
         leavingResultScreen = true;
         if (losePanel != null) losePanel.SetActive(false);
         if (winPanel != null) winPanel.SetActive(false);
+        bool wasCpu = GameManager.I != null && GameManager.I.LastMatchWasCpu;
         if (GameManager.I != null)
             GameManager.I.ClearLastResult();
+        if (wasCpu)
+        {
+            ShowServerSelector();
+            PracticeModePanel.Show();
+            return;
+        }
 
         // A completed multiplayer match returns to its multiplayer selector,
         // not the play/start panel. This keeps the two menu stacks mutually

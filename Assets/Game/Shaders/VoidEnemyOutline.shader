@@ -2,8 +2,9 @@ Shader "Boundary/Void Enemy Outline"
 {
     Properties
     {
-        _OutlineColor ("Outline Color", Color) = (1, 1, 1, 1)
-        _OutlineWidth ("Outline Width", Range(0.001, 0.12)) = 0.045
+        [HDR] _OutlineColor ("Outline Color", Color) = (1.8, 0.01, 0.01, 1)
+        _OutlineWidth ("Outline Width", Range(0.001, 0.12)) = 0.025
+        [Enum(UnityEngine.Rendering.CompareFunction)] _ZTest ("Depth Test", Float) = 4
     }
 
     SubShader
@@ -12,10 +13,10 @@ Shader "Boundary/Void Enemy Outline"
 
         Pass
         {
-            Name "Through-Wall White Outline"
+            Name "Player Red Outline"
             Cull Front
             ZWrite Off
-            ZTest Always
+            ZTest [_ZTest]
             Blend SrcAlpha OneMinusSrcAlpha
 
             HLSLPROGRAM

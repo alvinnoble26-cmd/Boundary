@@ -753,7 +753,7 @@ MonoBehaviour:
   _visitiblityRules: {fileID: 0}
   maxSlopeAngle: 75
   acceleration: 120
-  maxSpeed: 15
+  maxSpeed: 23.4
   deceleration: 50
   jumpForce: 14
   fallGravityMultiplier: 13

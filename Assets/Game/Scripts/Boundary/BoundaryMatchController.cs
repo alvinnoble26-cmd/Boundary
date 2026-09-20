@@ -7,8 +7,8 @@ using UnityEngine;
 public sealed class BoundaryMatchController : NetworkBehaviour
 {
     public static BoundaryMatchController Instance { get; private set; }
-    public const int GroundArenaMassesPerKind = 22;
-    public const int FloatingArenaMassesPerKind = 18;
+    public const int GroundArenaMassesPerKind = 17;
+    public const int FloatingArenaMassesPerKind = 13;
     public const int ArenaMassPopulation = (GroundArenaMassesPerKind + FloatingArenaMassesPerKind) * 2;
     public const int ArenaMassInnerSurvivors = 5;
     public const int PlatformHitsToCollapse = 6;
@@ -97,6 +97,11 @@ public sealed class BoundaryMatchController : NetworkBehaviour
     public Vector3 ArenaCenter => new Vector3(transform.position.x, arenaFloorY, transform.position.z);
     public int DisasterSeed => disasterSeed.value;
     public bool IsDisasterActive => disasterStage.value == BoundaryDisasterStage.Active;
+
+    public int PlatformContactCount(int platformIndex)
+    {
+        return platformContactCounts.TryGetValue(platformIndex, out int count) ? count : 0;
+    }
 
     public float PlatformSurfaceYAtRadius(float horizontalDistance)
     {
@@ -231,7 +236,7 @@ public sealed class BoundaryMatchController : NetworkBehaviour
 
         if (!roundStarted)
         {
-            int requiredPlayers = GameManager.I != null && GameManager.I.IsPracticeMode ? 1 : 2;
+            int requiredPlayers = GameManager.I != null ? GameManager.I.RequiredPlayerObjects : 2;
             int loadedPlayers = FindObjectsByType<PlayerMovement>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
             NetworkManager manager = NetworkManager.main;
             int connectedPlayers = manager != null ? manager.playerCount : 0;

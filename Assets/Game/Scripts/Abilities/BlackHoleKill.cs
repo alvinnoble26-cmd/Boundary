@@ -58,7 +58,7 @@ public class BlackHoleKill : MonoBehaviour
     {
         // Every client receives the same networked projectile, making its spawn
         // sound universal without changing the multiplayer RPC layout.
-        SfxManager.PlayBlackHoleThrow();
+        SfxManager.PlayBlackHoleThrow(transform.position);
 
         if (armedTime <= 0f)
             armedTime = Time.time;
@@ -413,7 +413,7 @@ public class BlackHoleKill : MonoBehaviour
         if (implosionSpawned || !Application.isPlaying)
             return;
         implosionSpawned = true;
-        SfxManager.PlayBlackHoleImplosion();
+        SfxManager.PlayBlackHoleImplosion(center);
 
         Material material = CreateMobileSafeVfxMaterial();
         if (material == null)

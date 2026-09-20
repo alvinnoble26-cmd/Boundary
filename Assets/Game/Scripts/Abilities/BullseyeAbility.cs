@@ -31,7 +31,7 @@ internal sealed class AbilityRuntimeMaterialOwner : MonoBehaviour
 public sealed class BullseyeAbility : MonoBehaviour, IAbility
 {
     public const float CooldownSeconds = 2f;
-    public const float ProjectileSpeed = 95f;
+    public const float ProjectileSpeed = 285f;
     public const float ProjectileRadius = 0.08f;
     public const float MaximumLifetime = 30f;
     public const float CenterRadius = 0.60f;

@@ -75,6 +75,7 @@ public static class BullseyeKnifeEffects
         GameObject root = new GameObject("Bullseye Launch Wind Burst", typeof(ParticleSystem));
         root.transform.SetPositionAndRotation(position, Quaternion.LookRotation(direction, Vector3.up));
         ParticleSystem particles = root.GetComponent<ParticleSystem>();
+        particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         ParticleSystem.MainModule main = particles.main;
         main.loop = false;
         main.duration = 0.28f;
@@ -226,16 +227,27 @@ public sealed class BullseyeFlamePulse : MonoBehaviour
 
 public sealed class BullseyeTargetPresentation : MonoBehaviour
 {
+    public const float TargetScaleMultiplier = 1.3f;
+    public const float OuterRingRadius = 1.74f * TargetScaleMultiplier;
+    public const bool InnerTargetUsesOpponentBody = true;
+
     private LineRenderer outerRing;
-    private LineRenderer centerCircle;
     private Camera viewer;
+    private PlayerOutlinePresentation opponentOutline;
 
     public void Initialize(Camera camera)
     {
         viewer = camera;
-        outerRing = CreateRing("Bullseye Outer Ring", 1.74f, 0.055f, Color.white);
-        centerCircle = CreateRing("Bullseye Center Circle", 0.46f, 0.045f,
-            new Color(1f, 0.12f, 0.08f, 0.95f));
+        outerRing = CreateRing("Bullseye Outer Ring", OuterRingRadius,
+            0.055f * TargetScaleMultiplier, Color.white);
+        opponentOutline = GetComponentInParent<PlayerOutlinePresentation>();
+        if (opponentOutline == null)
+        {
+            PlayerMovement opponent = GetComponentInParent<PlayerMovement>();
+            if (opponent != null)
+                opponentOutline = opponent.gameObject.AddComponent<PlayerOutlinePresentation>();
+        }
+        opponentOutline?.SetBullseyeTargetReveal(true);
     }
 
     private void LateUpdate()
@@ -264,6 +276,11 @@ public sealed class BullseyeTargetPresentation : MonoBehaviour
             line.SetPosition(index, new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f) * radius);
         }
         return line;
+    }
+
+    private void OnDestroy()
+    {
+        opponentOutline?.SetBullseyeTargetReveal(false);
     }
 }
 

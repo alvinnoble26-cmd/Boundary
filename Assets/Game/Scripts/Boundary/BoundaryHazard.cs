@@ -893,7 +893,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
             return;
         }
 
-        if (!movement.isOwner)
+        if (!movement.HasSimulationAuthority)
             return;
 
         if (BoundaryMath.IsLethalContactHazard(kind.value, arenaMass.value))
@@ -960,7 +960,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
 
     public static void ApplyLocalFields(PlayerMovement movement)
     {
-        if (movement == null || !movement.isOwner || movement.rb == null)
+        if (movement == null || !movement.HasSimulationAuthority || movement.rb == null)
             return;
 
         for (int i = ActiveHazards.Count - 1; i >= 0; i--)

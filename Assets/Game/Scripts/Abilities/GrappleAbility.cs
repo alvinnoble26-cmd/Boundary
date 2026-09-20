@@ -52,7 +52,7 @@ public sealed class GrappleAbility : MonoBehaviour, IAbility
 
     private void FixedUpdate()
     {
-        if (!active || !attached || movable || movement == null || !movement.isOwner || movement.rb == null)
+        if (!active || !attached || movable || movement == null || !movement.HasSimulationAuthority || movement.rb == null)
             return;
 
         Vector3 delta = anchor - movement.rb.worldCenterOfMass;
@@ -78,7 +78,7 @@ public sealed class GrappleAbility : MonoBehaviour, IAbility
             return;
         Vector3 start = localCamera != null && movement != null && movement.isOwner
             ? localCamera.GetGrappleArmOrigin()
-            : transform.position + Vector3.up * 1.1f;
+            : transform.position + Vector3.up * PlayerMovement.ScaleDistance(1.1f);
         Vector3 anchorPosition = target != null ? target.TransformPoint(targetLocalAnchor) : anchor;
         float travelProgress = Mathf.Clamp01((Time.time - ropeStartTime) / cableTravelDuration);
         Vector3 end = Vector3.Lerp(start, anchorPosition, Mathf.SmoothStep(0f, 1f, travelProgress));
@@ -114,7 +114,7 @@ public sealed class GrappleAbility : MonoBehaviour, IAbility
         ropeStartTime = Time.time - Mathf.Max(0f, elapsed);
         Vector3 presentationStart = movement != null && movement.isOwner
             ? GetComponentInChildren<Cam>(true)?.GetGrappleArmOrigin() ?? transform.position
-            : transform.position + Vector3.up * 1.1f;
+            : transform.position + Vector3.up * PlayerMovement.ScaleDistance(1.1f);
         cableTravelDuration = GetCableTravelDuration(Vector3.Distance(presentationStart, hitPoint));
         if (movement != null && movement.isOwner)
         {
@@ -135,7 +135,7 @@ public sealed class GrappleAbility : MonoBehaviour, IAbility
         rope.startColor = CableWhite;
         rope.endColor = CableCyan;
         rope.enabled = true;
-        SfxManager.PlayGrappleActivation();
+        SfxManager.PlayGrappleActivation(transform.position);
         CreateLaunchEffects();
     }
 
@@ -143,7 +143,7 @@ public sealed class GrappleAbility : MonoBehaviour, IAbility
     {
         active = false;
         attached = false;
-        if (movement != null && movement.isOwner)
+        if (movement != null && movement.HasSimulationAuthority)
         {
             movement.ReleaseMovementSuppressionPreservingMomentum();
             localCamera?.SetGrappleArmActive(false, Vector3.forward);
@@ -155,7 +155,7 @@ public sealed class GrappleAbility : MonoBehaviour, IAbility
 
     public void CancelForJump()
     {
-        if (active && attached && !movable && movement != null && movement.isOwner && movement.rb != null)
+        if (active && attached && !movable && movement != null && movement.HasSimulationAuthority && movement.rb != null)
         {
             Vector3 delta = anchor - movement.rb.worldCenterOfMass;
             if (delta.sqrMagnitude > 1.5f * 1.5f)
@@ -257,7 +257,7 @@ public sealed class GrappleAbility : MonoBehaviour, IAbility
 
         Vector3 start = localCamera != null && movement != null && movement.isOwner
             ? localCamera.GetGrappleArmOrigin()
-            : transform.position + Vector3.up * 1.1f;
+            : transform.position + Vector3.up * PlayerMovement.ScaleDistance(1.1f);
         SpawnMuzzleFlash(start);
 
         GameObject cableObject = new GameObject("Grapple Traveling Particles", typeof(ParticleSystem));

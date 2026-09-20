@@ -22,7 +22,7 @@ public sealed class AbilityInformationUI : MonoBehaviour
         "<b>VOID</b>  •  45s cooldown\nAvailable when your health is higher than your opponent's (always available in Practice). For 15s you become immune and faster while the opponent slows and is pulled strongly toward the domain black hole. Only you see the enemy highlighted with a bright cyan glow.",
         "<b>BULLSEYE</b>  •  2s cooldown\nHold to mark your opponent, aim with the crosshair, then release to throw a very fast knife with unlimited reach. Hit the center for 12 damage or the surrounding ring for 7 damage; hits outside the ring deal no damage.",
         "<b>CHARGE</b>  •  7s cooldown\nHold the electrified Frost Sword, aim, then release. A blue magic ball charges for 1s and travels for 2s before exploding in a 10m radius for 5 damage. Two seconds later it destabilizes for a second 7-damage tick. Both players, including the caster, can be damaged.",
-        "<b>SLICE</b>  •  1s cooldown\nHold the black Electricity Sword at a 30-degree angle, aim, then release to sweep a purple-blue 120° slash across a recommended 4m radius. Enemies caught in the forward arc take 7 damage."
+        "<b>SLICE</b>  •  1s cooldown\nHold the black Electricity Sword at a 30-degree angle, aim, then release to sweep a purple-blue 120° slash across a 10m radius. Enemies caught in the forward arc take 7 damage."
     };
 
     private Button informationButton;

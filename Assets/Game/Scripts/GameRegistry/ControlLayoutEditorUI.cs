@@ -473,12 +473,50 @@ public class ControlLayoutRuntime : MonoBehaviour
 
     private void Start()
     {
+        NormalizeEventSystems(SceneManager.GetActiveScene());
         StartCoroutine(ConfigureSceneNextFrame(SceneManager.GetActiveScene()));
     }
 
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
+        NormalizeEventSystems(scene);
         StartCoroutine(ConfigureSceneNextFrame(scene));
+    }
+
+    private static void NormalizeEventSystems(Scene scene)
+    {
+        EventSystem selected = null;
+        EventSystem fallback = null;
+        foreach (EventSystem candidate in Resources.FindObjectsOfTypeAll<EventSystem>())
+        {
+            if (candidate == null || candidate.gameObject.scene != scene)
+                continue;
+
+            fallback ??= candidate;
+            if (candidate.GetComponent<InputSystemUIInputModule>() != null)
+            {
+                selected = candidate;
+                break;
+            }
+        }
+
+        selected ??= fallback;
+        if (selected == null)
+            return;
+
+        foreach (EventSystem candidate in Resources.FindObjectsOfTypeAll<EventSystem>())
+        {
+            if (candidate == null || candidate.gameObject.scene != scene)
+                continue;
+
+            bool enabled = candidate == selected;
+            candidate.enabled = enabled;
+            foreach (BaseInputModule inputModule in candidate.GetComponents<BaseInputModule>())
+                inputModule.enabled = enabled;
+        }
+
+        selected.gameObject.SetActive(true);
+        EventSystem.current = selected;
     }
 
     private IEnumerator ConfigureSceneNextFrame(Scene scene)
