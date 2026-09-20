@@ -2,6 +2,8 @@ using UnityEngine;
 
 public class SafeAreaFitter : MonoBehaviour
 {
+    public static Rect? SimulatedSafeArea { get; set; }
+
     RectTransform rect;
     Rect lastSafeArea = new Rect(0, 0, 0, 0);
     Vector2Int lastScreenSize = new Vector2Int(0, 0);
@@ -28,7 +30,7 @@ public class SafeAreaFitter : MonoBehaviour
 
     void ApplySafeArea()
     {
-        Rect safe = Screen.safeArea;
+        Rect safe = SimulatedSafeArea ?? Screen.safeArea;
 
         lastSafeArea = safe;
         lastScreenSize = new Vector2Int(Screen.width, Screen.height);

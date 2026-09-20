@@ -18,7 +18,7 @@ public static class MenuUIStyler
     private const string ThemePath = ResourcesRoot + "/UITheme.asset";
     private const string ExistingFontPath = "Assets/Items/Models & Prefabs/GameElements/Button/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF.asset";
 
-    [MenuItem("Boundary/UI/Build Style Kit")]
+    [MenuItem("Entropy Zero/UI/Build Style Kit")]
     public static void BuildStyleKit()
     {
         EnsureFolders();
@@ -46,7 +46,7 @@ public static class MenuUIStyler
         Debug.Log("[MenuUIStyler] Style kit built.");
     }
 
-    [MenuItem("Boundary/UI/Apply First Batch to Menu")]
+    [MenuItem("Entropy Zero/UI/Apply First Batch to Menu")]
     public static void ApplyFirstBatch()
     {
         BuildStyleKit();
