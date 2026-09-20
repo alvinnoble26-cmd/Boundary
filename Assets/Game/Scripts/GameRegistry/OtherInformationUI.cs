@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using TMPro;
 
 /// <summary>Provides account, support, privacy, and restore actions from Options.</summary>
 public sealed class OtherInformationUI : MonoBehaviour
@@ -103,30 +104,33 @@ public sealed class OtherInformationUI : MonoBehaviour
         RectTransform rect = gameObject.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0.5f, 0.5f);
         rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = new Vector2(0f, -124f);
-        rect.sizeDelta = new Vector2(430f, 44f);
+        rect.anchoredPosition = new Vector2(0f, -174f);
+        rect.sizeDelta = new Vector2(560f, 88f);
 
         Image hitArea = gameObject.GetComponent<Image>();
-        hitArea.color = Color.clear;
+        UITheme theme = UITheme.Current;
+        if (theme != null)
+        {
+            hitArea.sprite = theme.roundedFill;
+            hitArea.type = Image.Type.Sliced;
+            hitArea.color = theme.raisedPanel;
+        }
         Button button = gameObject.GetComponent<Button>();
         button.targetGraphic = hitArea;
 
-        GameObject labelObject = new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        GameObject labelObject = new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
         labelObject.transform.SetParent(gameObject.transform, false);
         RectTransform labelRect = labelObject.GetComponent<RectTransform>();
         labelRect.anchorMin = Vector2.zero;
         labelRect.anchorMax = Vector2.one;
         labelRect.offsetMin = Vector2.zero;
         labelRect.offsetMax = Vector2.zero;
-        Text label = labelObject.GetComponent<Text>();
+        TMP_Text label = labelObject.GetComponent<TMP_Text>();
         label.text = "OTHER INFORMATION";
-        label.font = font;
-        label.fontSize = 32;
-        label.fontStyle = FontStyle.Bold;
-        label.alignment = TextAnchor.MiddleCenter;
-        label.color = OptionsTextColor;
+        label.alignment = TextAlignmentOptions.Center;
+        UIStyle.ApplyText(label, theme != null ? theme.buttonSize : 40f, theme != null ? theme.text : Color.white, FontStyles.Bold);
         label.raycastTarget = false;
-        gameObject.AddComponent<MenuTextButtonFeedback>().Initialize(label);
+        gameObject.AddComponent<UIAnimator>().ConfigureButton(false);
 
         return button;
     }

@@ -17,7 +17,7 @@ Unity source of truth: `6000.3.6f1`
 
 - P1 Verification tooling + D1 root cause: DONE
 - P2 Foundation: DONE
-- P3 Main/Start/Multiplayer/Options: NOT STARTED
+- P3 Main/Start/Multiplayer/Options: DONE
 - P4 Runtime-built and abilities/control panels: NOT STARTED
 - P5 Join/Host/Results and D10-D12: NOT STARTED
 - P6 Full regression/final report: NOT STARTED
@@ -62,6 +62,12 @@ Unity source of truth: `6000.3.6f1`
 - Added the shared foundation: responsive 1920×1080 canvas matching, safe areas on all serialized roots, four-size typography (110/56/32/24; button 40), shared styling helpers, and a single-writer unscaled-time motion system.
 - Replaced the rectangle motif with a deterministic star field and soft cyan horizon glow. The first verification image exposed a solid teal lower band from using a sliced glow sprite; replaced it with a dedicated fading horizon texture before committing.
 - Full player matrix and contact sheets completed at `/tmp/ez-ui/iter-4`; Unity build and compilation passed. Remaining failures are panel-level styling and undersized legacy controls, assigned to P3-P5.
+
+### Iteration 5 — P3
+
+- Main now visibly identifies the game as ENTROPY ZERO, retains the original actions, and uses the prescribed upper-left identity / lower-right CTA composition. Start and Multiplayer use the same hierarchy and ≥88px actions.
+- Options now has a centered glass settings card, labeled volume/accessibility groups, themed runtime Edit Controls and Other Information buttons, and a separated Back action. Runtime builders use the shared theme so orange legacy styling no longer reappears there.
+- Full matrix `/tmp/ez-ui/iter-5` and targeted rebuild `/tmp/ez-ui/p3-targeted` exposed button collisions in Options; spacing was corrected and Unity compilation/apply passed in `/tmp/ez-ui-p3-core-3.log`.
 
 ## Blockers
 

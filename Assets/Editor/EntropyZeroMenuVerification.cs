@@ -27,6 +27,21 @@ public static class EntropyZeroMenuVerification
     [MenuItem("Entropy Zero/UI/Run Full Verification")]
     public static void RunFromMenu() => Run();
 
+    public static void BuildPlayerOnly()
+    {
+        BuildPlayerOptions options = new BuildPlayerOptions
+        {
+            scenes = new[] { ScenePath },
+            locationPathName = AppPath,
+            target = BuildTarget.StandaloneOSX,
+            options = BuildOptions.Development
+        };
+        BuildReport build = BuildPipeline.BuildPlayer(options);
+        if (build.summary.result != BuildResult.Succeeded)
+            throw new InvalidOperationException("Verification player build failed: " + build.summary.result);
+        EditorApplication.Exit(0);
+    }
+
     public static void Run()
     {
         string root = NextIterationFolder();

@@ -90,6 +90,36 @@ public static class MenuUIStyler
         EditorApplication.Exit(0);
     }
 
+    [MenuItem("Entropy Zero/UI/Apply Core Menu Panels")]
+    public static void ApplyCorePanels()
+    {
+        Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        UITheme theme = AssetDatabase.LoadAssetAtPath<UITheme>(ThemePath);
+        Canvas canvas = FindSceneObject<Canvas>(scene, "Canvas");
+        Transform main = canvas.transform.Find("MainMenu");
+        Transform start = canvas.transform.Find("StartMenu");
+        Transform multiplayer = canvas.transform.Find("MuiltiplayerMenu");
+        Transform options = canvas.transform.Find("OptionsMenu");
+        StyleMainMenu(main, start, theme);
+        StyleStartMenu(start, theme);
+        StyleMultiplayerMenu(multiplayer, theme);
+        StyleOptionsMenu(options, theme);
+        foreach (Transform root in new[] { main, start, multiplayer, options })
+        {
+            EnsureSafeArea(root);
+            EnsurePanelAnimator(root);
+        }
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        AssetDatabase.SaveAssets();
+    }
+
+    public static void BatchApplyCorePanels()
+    {
+        ApplyCorePanels();
+        EditorApplication.Exit(0);
+    }
+
     [MenuItem("Entropy Zero/UI/Apply First Batch to Menu")]
     public static void ApplyFirstBatch()
     {
@@ -447,9 +477,10 @@ public static class MenuUIStyler
     private static void StyleMainMenu(Transform main, Transform start, UITheme theme)
     {
         SetFullScreen(main);
-        EnsureHeading(main, "BoundaryLogo", "BOUNDARY", "CONTAIN THE INSTABILITY", new Vector2(72f, -70f), theme);
+        EnsureHeading(main, "BoundaryLogo", "ENTROPY ZERO", "CONTAIN THE INSTABILITY", new Vector2(72f, -70f), theme);
         Button play = RequireButton(main, "PlayButton");
         StyleButton(play, true, theme);
+        SetLabel(play, "PLAY", theme, theme.buttonSize);
         SetRect(play.transform as RectTransform, new Vector2(1f, 0f), new Vector2(-72f, 72f), new Vector2(520f, 128f), new Vector2(1f, 0f));
 
         Button options = RequireButton(main, "OptionsButton");
@@ -505,6 +536,64 @@ public static class MenuUIStyler
         SetLabel(back, "BACK", theme);
         SetRect(practice.transform as RectTransform, new Vector2(0.5f, 0f), new Vector2(120f, 54f), new Vector2(280f, 88f));
         SetRect(back.transform as RectTransform, new Vector2(0.5f, 0f), new Vector2(-180f, 54f), new Vector2(240f, 88f));
+    }
+
+    private static void StyleOptionsMenu(Transform menu, UITheme theme)
+    {
+        if (menu == null) return;
+        SetFullScreen(menu);
+        EnsureHeading(menu, "OptionsHeading", "OPTIONS", "AUDIO, CONTROLS, AND ACCESSIBILITY", new Vector2(72f, -70f), theme);
+        Transform card = menu.Find("StyleOptionsCard");
+        if (card == null)
+        {
+            GameObject cardObject = NewUiObject("StyleOptionsCard", typeof(Image));
+            cardObject.transform.SetParent(menu, false);
+            card = cardObject.transform;
+            card.SetAsFirstSibling();
+        }
+        Image cardImage = card.GetComponent<Image>();
+        cardImage.sprite = theme.roundedFill;
+        cardImage.type = Image.Type.Sliced;
+        cardImage.color = theme.panel;
+        cardImage.raycastTarget = false;
+        SetRect((RectTransform)card, new Vector2(0.5f, 0.5f), new Vector2(0f, -30f), new Vector2(760f, 720f));
+        AddBorder(card, theme);
+
+        EnsureOptionsLabel(menu, "VolumeLabel", "MASTER VOLUME", new Vector2(0f, 270f), theme);
+        EnsureOptionsLabel(menu, "AccessibilityLabel", "ACCESSIBILITY", new Vector2(0f, 135f), theme);
+
+        Button[] buttons = menu.GetComponentsInChildren<Button>(true);
+        foreach (Button button in buttons)
+        {
+            StyleButton(button, false, theme);
+            SetRect((RectTransform)button.transform, new Vector2(0.5f, 0.5f), new Vector2(0f, -290f), new Vector2(240f, 88f));
+            SetLabel(button, "BACK", theme, theme.buttonSize);
+        }
+        Slider slider = menu.GetComponentInChildren<Slider>(true);
+        if (slider != null)
+            SetRect((RectTransform)slider.transform, new Vector2(0.5f, 0.5f), new Vector2(0f, 205f), new Vector2(560f, 56f));
+        Toggle toggle = menu.GetComponentInChildren<Toggle>(true);
+        if (toggle != null)
+            SetRect((RectTransform)toggle.transform, new Vector2(0.5f, 0.5f), new Vector2(0f, 82f), new Vector2(560f, 88f));
+        foreach (TMP_Text text in menu.GetComponentsInChildren<TMP_Text>(true))
+        {
+            if (text.transform.IsChildOf(menu.Find("OptionsHeading"))) continue;
+            text.font = theme.font;
+            text.color = theme.text;
+            text.fontSize = text.GetComponentInParent<Button>() != null ? theme.buttonSize : theme.bodySize;
+            text.fontStyle = FontStyles.Bold;
+            text.enableAutoSizing = false;
+        }
+    }
+
+    private static void EnsureOptionsLabel(Transform parent, string name, string value, Vector2 position, UITheme theme)
+    {
+        Transform existing = parent.Find(name);
+        TMP_Text label = existing != null ? existing.GetComponent<TMP_Text>() : CreateLabel(parent, name, value, theme.captionSize, theme, theme.muted);
+        label.text = value;
+        label.alignment = TextAlignmentOptions.Left;
+        label.fontStyle = FontStyles.Bold;
+        SetRect(label.rectTransform, new Vector2(0.5f, 0.5f), position, new Vector2(560f, 40f));
     }
 
     private static void StyleCardAction(Button button, string title, string caption, UITheme theme, bool primary)

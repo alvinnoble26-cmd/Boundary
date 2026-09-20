@@ -5,6 +5,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using TMPro;
 
 public class ControlLayoutEditorUI : MonoBehaviour
 {
@@ -39,7 +40,7 @@ public class ControlLayoutEditorUI : MonoBehaviour
         // Match the existing menu labels rather than covering Options with a
         // blue card. Other Information is placed below this text control.
         editButton = CreateMenuTextButton(canvas.transform, "Edit Controls",
-            new Vector2(0.5f, 0.5f), new Vector2(0f, -58f), new Vector2(360f, 42f), OpenEditor);
+            new Vector2(0.5f, 0.5f), new Vector2(0f, -62f), new Vector2(560f, 88f), OpenEditor);
 
         editorPanel = CreateImage(canvas.transform, "ControlLayoutEditor", Navy).gameObject;
         StretchToParent((RectTransform)editorPanel.transform);
@@ -302,7 +303,8 @@ public class ControlLayoutEditorUI : MonoBehaviour
     private static GameObject CreateMenuTextButton(Transform parent, string label, Vector2 anchor,
         Vector2 position, Vector2 size, UnityEngine.Events.UnityAction action)
     {
-        Image hitArea = CreateImage(parent, label + "Button", Color.clear);
+        UITheme theme = UITheme.Current;
+        Image hitArea = CreateImage(parent, label + "Button", theme != null ? theme.raisedPanel : Navy);
         RectTransform rect = hitArea.rectTransform;
         rect.anchorMin = anchor;
         rect.anchorMax = anchor;
@@ -313,10 +315,21 @@ public class ControlLayoutEditorUI : MonoBehaviour
         Button button = hitArea.gameObject.AddComponent<Button>();
         button.targetGraphic = hitArea;
         button.onClick.AddListener(action);
-        Text text = CreateText(rect, label.ToUpperInvariant(), 32, TextAnchor.MiddleCenter,
-            new Color(0.90f, 0.20f, 0.02f, 1f), new Vector2(0.5f, 0.5f),
-            Vector2.zero, Vector2.zero, true);
-        hitArea.gameObject.AddComponent<MenuTextButtonFeedback>().Initialize(text);
+        if (theme != null)
+        {
+            hitArea.sprite = theme.roundedFill;
+            hitArea.type = Image.Type.Sliced;
+        }
+        GameObject labelObject = new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        labelObject.transform.SetParent(rect, false);
+        RectTransform labelRect = (RectTransform)labelObject.transform;
+        StretchToParent(labelRect);
+        TMP_Text text = labelObject.GetComponent<TMP_Text>();
+        text.text = label.ToUpperInvariant();
+        text.alignment = TextAlignmentOptions.Center;
+        UIStyle.ApplyText(text, theme != null ? theme.buttonSize : 40f, theme != null ? theme.text : Color.white, FontStyles.Bold);
+        text.raycastTarget = false;
+        hitArea.gameObject.AddComponent<UIAnimator>().ConfigureButton(false);
         return hitArea.gameObject;
     }
 
