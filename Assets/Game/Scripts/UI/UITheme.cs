@@ -8,6 +8,7 @@ public sealed class UITheme : ScriptableObject
 
     [Header("Typography")]
     public TMP_FontAsset font;
+    public Material fontMaterial;
     public float titleSize = 110f;
     public float headerSize = 56f;
     public float bodySize = 32f;

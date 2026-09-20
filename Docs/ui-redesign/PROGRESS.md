@@ -18,7 +18,7 @@ Unity source of truth: `6000.3.6f1`
 - P1 Verification tooling + D1 root cause: DONE
 - P2 Foundation: DONE
 - P3 Main/Start/Multiplayer/Options: DONE
-- P4 Runtime-built and abilities/control panels: NOT STARTED
+- P4 Runtime-built and abilities/control panels: DONE
 - P5 Join/Host/Results and D10-D12: NOT STARTED
 - P6 Full regression/final report: NOT STARTED
 
@@ -68,6 +68,13 @@ Unity source of truth: `6000.3.6f1`
 - Main now visibly identifies the game as ENTROPY ZERO, retains the original actions, and uses the prescribed upper-left identity / lower-right CTA composition. Start and Multiplayer use the same hierarchy and ≥88px actions.
 - Options now has a centered glass settings card, labeled volume/accessibility groups, themed runtime Edit Controls and Other Information buttons, and a separated Back action. Runtime builders use the shared theme so orange legacy styling no longer reappears there.
 - Full matrix `/tmp/ez-ui/iter-5` and targeted rebuild `/tmp/ez-ui/p3-targeted` exposed button collisions in Options; spacing was corrected and Unity compilation/apply passed in `/tmp/ez-ui-p3-core-3.log`.
+
+### Iteration 6 — P4
+
+- Skins now presents Beard, Turtle, and Sun Ducker as an equal three-card row; existing previews, purchase/equip callbacks, prices, and swipe code remain. Carousel arrows/page copy are hidden because all cards are directly available.
+- Practice, Other Information, Ability Guide, and control-editor chrome now consume UITheme; safe areas were added to their runtime roots and safe legacy labels were converted to TMP.
+- Targeted captures: `/tmp/ez-ui/p4-targeted`. The review found the existing fallback font asset's embedded material had a black face and gray outline, causing low contrast. Added a generated white-face material referenced by UITheme rather than altering the source asset.
+- Abilities use a glass grid with shared navigation styling; control widgets retain their original drag/resize behavior. Final compile passed (`/tmp/ez-ui-p4-final-compile.log`).
 
 ## Blockers
 

@@ -123,6 +123,7 @@ public sealed class AbilityInformationUI : MonoBehaviour
 
     private void ApplyInformationStyling()
     {
+        UITheme theme = UITheme.Current;
         if (informationButton != null)
         {
             Image informationImage = informationButton.GetComponent<Image>();
@@ -136,13 +137,14 @@ public sealed class AbilityInformationUI : MonoBehaviour
             if (informationImage != null)
             {
                 informationImage.enabled = true;
-                informationImage.color = Color.clear;
+                UIStyle.ApplySliced(informationImage, theme != null ? theme.roundedFill : null, theme != null ? theme.raisedPanel : Color.black);
                 informationImage.raycastTarget = true;
             }
 
             if (informationText != null)
             {
                 CopyTextAppearance(backText, informationText);
+                UIStyle.ApplyText(informationText, theme != null ? theme.buttonSize : 40f, theme != null ? theme.text : Color.white, FontStyles.Bold);
                 informationButton.targetGraphic = informationText;
             }
 
@@ -160,9 +162,16 @@ public sealed class AbilityInformationUI : MonoBehaviour
 
         if (informationPanel != null)
         {
+            if (informationPanel.GetComponent<SafeAreaFitter>() == null)
+                informationPanel.AddComponent<SafeAreaFitter>();
+            Image panelImage = informationPanel.GetComponent<Image>();
+            if (panelImage != null && theme != null)
+                panelImage.color = new Color(theme.background.r, theme.background.g, theme.background.b, 0.94f);
             foreach (TMP_Text text in informationPanel.GetComponentsInChildren<TMP_Text>(true))
             {
-                text.color = Color.white;
+                if (theme != null && theme.font != null) text.font = theme.font;
+                if (theme != null && theme.fontMaterial != null) text.fontSharedMaterial = theme.fontMaterial;
+                text.color = theme != null ? theme.text : Color.white;
                 text.alpha = 1f;
                 text.enableVertexGradient = false;
             }
@@ -246,9 +255,10 @@ public sealed class AbilityInformationUI : MonoBehaviour
         headerRect.pivot = new Vector2(0.5f, 1f);
         headerRect.sizeDelta = new Vector2(0f, 82f);
         headerRect.anchoredPosition = Vector2.zero;
-        header.GetComponent<Image>().color = new Color(0.025f, 0f, 0.04f, 1f);
+        UITheme theme = UITheme.Current;
+        header.GetComponent<Image>().color = theme != null ? theme.panel : new Color(0.025f, 0f, 0.04f, 1f);
 
-        TMP_Text title = CreateText(header.transform, "Title", "ABILITY GUIDE", 32, FontStyles.Bold);
+        TMP_Text title = CreateText(header.transform, "Title", "ABILITY GUIDE", theme != null ? theme.headerSize : 56f, FontStyles.Bold);
         SetStretch(title.rectTransform, 170f, 170f, 10f, 10f);
         title.alignment = TextAlignmentOptions.Center;
 
@@ -257,7 +267,7 @@ public sealed class AbilityInformationUI : MonoBehaviour
         backRect.anchorMin = backRect.anchorMax = new Vector2(0f, 0.5f);
         backRect.pivot = new Vector2(0f, 0.5f);
         backRect.anchoredPosition = new Vector2(22f, 0f);
-        backRect.sizeDelta = new Vector2(132f, 48f);
+        backRect.sizeDelta = new Vector2(220f, 88f);
 
         GameObject viewport = UiObject("Ability Guide Viewport", panel.transform,
             typeof(Image), typeof(RectMask2D), typeof(ScrollRect));
@@ -299,11 +309,12 @@ public sealed class AbilityInformationUI : MonoBehaviour
         int titleEnd = description.IndexOf("</b>", System.StringComparison.Ordinal);
         GameObject card = UiObject(description.Substring(3, titleEnd - 3) + " Card", parent,
             typeof(Image), typeof(LayoutElement));
-        card.GetComponent<Image>().color = new Color(0.035f, 0.01f, 0.055f, 1f);
+        UITheme theme = UITheme.Current;
+        UIStyle.ApplySliced(card.GetComponent<Image>(), theme != null ? theme.roundedFill : null, theme != null ? theme.panel : new Color(0.035f, 0.01f, 0.055f, 1f));
         LayoutElement element = card.GetComponent<LayoutElement>();
         element.minHeight = 112f;
         element.preferredHeight = 124f;
-        TMP_Text text = CreateText(card.transform, "Description", description, 20, FontStyles.Normal);
+        TMP_Text text = CreateText(card.transform, "Description", description, theme != null ? theme.captionSize : 24f, FontStyles.Normal);
         SetStretch(text.rectTransform, 22f, 22f, 14f, 14f);
         text.alignment = TextAlignmentOptions.TopLeft;
         text.textWrappingMode = TextWrappingModes.Normal;
@@ -316,7 +327,9 @@ public sealed class AbilityInformationUI : MonoBehaviour
         GameObject textObject = UiObject(objectName, parent, typeof(TextMeshProUGUI));
         TMP_Text text = textObject.GetComponent<TMP_Text>();
         TMP_Text template = GetComponentInChildren<TMP_Text>(true);
-        text.font = template != null && template.font != null ? template.font : TMP_Settings.defaultFontAsset;
+        UITheme theme = UITheme.Current;
+        text.font = theme != null && theme.font != null ? theme.font : template != null && template.font != null ? template.font : TMP_Settings.defaultFontAsset;
+        if (theme != null && theme.fontMaterial != null) text.fontSharedMaterial = theme.fontMaterial;
         text.text = value;
         text.fontSize = size;
         text.fontStyle = style;
@@ -329,12 +342,14 @@ public sealed class AbilityInformationUI : MonoBehaviour
     {
         GameObject buttonObject = UiObject(objectName, parent, typeof(Image), typeof(Button));
         Image image = buttonObject.GetComponent<Image>();
-        image.color = color;
+        UITheme theme = UITheme.Current;
+        UIStyle.ApplySliced(image, theme != null ? theme.roundedFill : null, theme != null ? theme.raisedPanel : color);
         Button button = buttonObject.GetComponent<Button>();
         button.targetGraphic = image;
-        TMP_Text text = CreateText(buttonObject.transform, "Label", label, 22, FontStyles.Bold);
+        TMP_Text text = CreateText(buttonObject.transform, "Label", label, theme != null ? theme.buttonSize : 40f, FontStyles.Bold);
         SetStretch(text.rectTransform, 4f, 4f, 4f, 4f);
         text.alignment = TextAlignmentOptions.Center;
+        buttonObject.AddComponent<UIAnimator>().ConfigureButton(false);
         return button;
     }
 

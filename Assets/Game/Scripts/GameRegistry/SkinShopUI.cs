@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using TMPro;
 
 public sealed class SkinShopUI : MonoBehaviour
 {
@@ -18,10 +19,10 @@ public sealed class SkinShopUI : MonoBehaviour
     private readonly List<GameObject> cards = new List<GameObject>();
     private readonly string[] skinIds = { "beard", "turtle", "sun_ducker" };
     private GameObject panel;
-    private Text beardState;
-    private Text turtleState;
-    private Text sunState;
-    private Text pageLabel;
+    private TMP_Text beardState;
+    private TMP_Text turtleState;
+    private TMP_Text sunState;
+    private TMP_Text pageLabel;
     private Button beardButton;
     private Button turtleButton;
     private Button sunButton;
@@ -117,6 +118,7 @@ public sealed class SkinShopUI : MonoBehaviour
         if (canvas == null) return;
 
         panel = Ui("SkinsPanel", canvas.transform, NavyPanel);
+        panel.AddComponent<SafeAreaFitter>();
         panel.transform.SetAsLastSibling();
         RectTransform panelRect = panel.GetComponent<RectTransform>();
         panelRect.anchorMin = Vector2.zero;
@@ -143,16 +145,19 @@ public sealed class SkinShopUI : MonoBehaviour
         sunButton.onClick.AddListener(SunClicked);
 
         Button previous = MakeButton("PreviousSkin", panel.transform, "‹", new Vector2(-720, 25), new Vector2(90, 110));
-        previous.GetComponentInChildren<Text>().fontSize = 58;
+        previous.GetComponentInChildren<TMP_Text>().fontSize = 58;
         previous.onClick.AddListener(PreviousPage);
         Button next = MakeButton("NextSkin", panel.transform, "›", new Vector2(720, 25), new Vector2(90, 110));
-        next.GetComponentInChildren<Text>().fontSize = 58;
+        next.GetComponentInChildren<TMP_Text>().fontSize = 58;
         next.onClick.AddListener(NextPage);
+        previous.gameObject.SetActive(false);
+        next.gameObject.SetActive(false);
+        pageLabel.gameObject.SetActive(false);
 
         ShowPage(0, false);
     }
 
-    private Button MakeSkinCard(string objectName, string title, string skinId, out Text state)
+    private Button MakeSkinCard(string objectName, string title, string skinId, out TMP_Text state)
     {
         GameObject card = Ui(objectName, panel.transform, NavyCard);
         card.AddComponent<CanvasGroup>();
@@ -174,12 +179,12 @@ public sealed class SkinShopUI : MonoBehaviour
         liveRect.offsetMin = new Vector2(8, 8);
         liveRect.offsetMax = new Vector2(-8, -8);
         livePreview.GetComponent<SkinPreview3D>().Initialize(skinId);
-        Text hint = Label("DRAG HERE TO ROTATE", preview.transform, 15,
+        TMP_Text hint = Label("DRAG HERE TO ROTATE", preview.transform, 15,
             new Vector2(0, -175), new Vector2(300, 25));
         hint.raycastTarget = false;
 
         Button button = MakeButton("StateButton", card.transform, "", new Vector2(0, -270), new Vector2(300, 70));
-        state = button.GetComponentInChildren<Text>();
+        state = button.GetComponentInChildren<TMP_Text>();
         cards.Add(card);
         return button;
     }
@@ -222,8 +227,8 @@ public sealed class SkinShopUI : MonoBehaviour
             startAlphas[i] = group.alpha;
             GetCardLayout(i, out targetPositions[i], out targetScales[i], out targetAlphas[i]);
             cards[i].SetActive(true);
-            group.blocksRaycasts = i == currentPage;
-            group.interactable = i == currentPage;
+            group.blocksRaycasts = true;
+            group.interactable = true;
         }
 
         cards[currentPage].transform.SetAsLastSibling();
@@ -259,27 +264,17 @@ public sealed class SkinShopUI : MonoBehaviour
             rect.localScale = scale;
             CanvasGroup group = card.GetComponent<CanvasGroup>();
             group.alpha = alpha;
-            group.blocksRaycasts = i == currentPage;
-            group.interactable = i == currentPage;
+            group.blocksRaycasts = true;
+            group.interactable = true;
         }
         cards[currentPage].transform.SetAsLastSibling();
     }
 
     private void GetCardLayout(int cardIndex, out Vector2 position, out Vector3 scale, out float alpha)
     {
-        if (cardIndex == currentPage)
-        {
-            position = new Vector2(0f, 20f);
-            scale = Vector3.one;
-            alpha = 1f;
-            return;
-        }
-
-        int previousIndex = (currentPage - 1 + cards.Count) % cards.Count;
-        bool isPrevious = cardIndex == previousIndex;
-        position = new Vector2(isPrevious ? -SideCardOffset : SideCardOffset, 20f);
-        scale = Vector3.one * SideCardScale;
-        alpha = SideCardAlpha;
+        position = new Vector2((cardIndex - 1) * 470f, 10f);
+        scale = Vector3.one * 0.92f;
+        alpha = 1f;
     }
 
     private void SelectEquippedPage()
@@ -357,36 +352,49 @@ public sealed class SkinShopUI : MonoBehaviour
     {
         GameObject gameObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         gameObject.transform.SetParent(parent, false);
-        gameObject.GetComponent<Image>().color = color;
+        Image image = gameObject.GetComponent<Image>();
+        UITheme theme = UITheme.Current;
+        image.color = color;
+        if (theme != null)
+        {
+            image.sprite = theme.roundedFill;
+            image.type = Image.Type.Sliced;
+            if (name == "SkinsPanel") image.color = new Color(theme.background.r, theme.background.g, theme.background.b, 0.78f);
+            else if (name.EndsWith("Card")) image.color = theme.panel;
+        }
         return gameObject;
     }
 
-    private Text Label(string value, Transform parent, int size, Vector2 position, Vector2 dimensions)
+    private TMP_Text Label(string value, Transform parent, int size, Vector2 position, Vector2 dimensions)
     {
-        GameObject gameObject = new GameObject(value, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        GameObject gameObject = new GameObject(value, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
         gameObject.transform.SetParent(parent, false);
         RectTransform rect = gameObject.GetComponent<RectTransform>();
         rect.sizeDelta = dimensions;
         rect.anchoredPosition = position;
-        Text text = gameObject.GetComponent<Text>();
-        text.font = font;
+        TMP_Text text = gameObject.GetComponent<TMP_Text>();
         text.fontSize = size;
-        text.fontStyle = FontStyle.Bold;
-        text.alignment = TextAnchor.MiddleCenter;
-        text.color = Color.white;
+        text.fontStyle = FontStyles.Bold;
+        text.alignment = TextAlignmentOptions.Center;
+        UITheme theme = UITheme.Current;
+        if (theme != null && theme.font != null) text.font = theme.font;
+        if (theme != null && theme.fontMaterial != null) text.fontSharedMaterial = theme.fontMaterial;
+        text.color = theme != null ? theme.text : Color.white;
         text.text = value;
         return text;
     }
 
     private Button MakeButton(string name, Transform parent, string text, Vector2 position, Vector2 size)
     {
-        GameObject gameObject = Ui(name, parent, AccentBlue);
+        UITheme theme = UITheme.Current;
+        GameObject gameObject = Ui(name, parent, theme != null ? theme.raisedPanel : AccentBlue);
         RectTransform rect = gameObject.GetComponent<RectTransform>();
         rect.sizeDelta = size;
         rect.anchoredPosition = position;
         Button button = gameObject.AddComponent<Button>();
         button.targetGraphic = gameObject.GetComponent<Image>();
-        Label(text, gameObject.transform, 23, Vector2.zero, size);
+        Label(text, gameObject.transform, theme != null ? Mathf.RoundToInt(theme.buttonSize) : 23, Vector2.zero, size);
+        gameObject.AddComponent<UIAnimator>().ConfigureButton(false);
         return button;
     }
 }

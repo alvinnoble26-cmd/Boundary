@@ -42,14 +42,16 @@ public class ControlLayoutEditorUI : MonoBehaviour
         editButton = CreateMenuTextButton(canvas.transform, "Edit Controls",
             new Vector2(0.5f, 0.5f), new Vector2(0f, -62f), new Vector2(560f, 88f), OpenEditor);
 
-        editorPanel = CreateImage(canvas.transform, "ControlLayoutEditor", Navy).gameObject;
+        UITheme theme = UITheme.Current;
+        editorPanel = CreateImage(canvas.transform, "ControlLayoutEditor", theme != null ? theme.background : Navy).gameObject;
+        editorPanel.AddComponent<SafeAreaFitter>();
         StretchToParent((RectTransform)editorPanel.transform);
         editorPanel.transform.SetAsLastSibling();
 
-        workspace = (RectTransform)CreateImage(editorPanel.transform, "ControlWorkspace", new Color(0.018f, 0.055f, 0.13f, 1f)).transform;
+        workspace = (RectTransform)CreateImage(editorPanel.transform, "ControlWorkspace", theme != null ? theme.background : new Color(0.018f, 0.055f, 0.13f, 1f)).transform;
         StretchToParent(workspace);
 
-        RectTransform topBar = (RectTransform)CreateImage(editorPanel.transform, "TopBar", DeepNavy).transform;
+        RectTransform topBar = (RectTransform)CreateImage(editorPanel.transform, "TopBar", theme != null ? theme.panel : DeepNavy).transform;
         topBar.anchorMin = new Vector2(0f, 1f);
         topBar.anchorMax = new Vector2(1f, 1f);
         topBar.pivot = new Vector2(0.5f, 1f);
@@ -285,18 +287,21 @@ public class ControlLayoutEditorUI : MonoBehaviour
         Vector2 size, Color color, UnityEngine.Events.UnityAction action)
     {
         Image image = CreateImage(parent, label + "Button", color);
+        UITheme theme = UITheme.Current;
+        if (theme != null) UIStyle.ApplySliced(image, theme.roundedFill, label == "Save" ? theme.accent : theme.raisedPanel);
         RectTransform rect = image.rectTransform;
         rect.anchorMin = anchor;
         rect.anchorMax = anchor;
         rect.pivot = new Vector2(0.5f, 0.5f);
         rect.anchoredPosition = position;
-        rect.sizeDelta = size;
+        rect.sizeDelta = new Vector2(Mathf.Max(size.x, 150f), Mathf.Max(size.y, 88f));
 
         Button button = image.gameObject.AddComponent<Button>();
         button.targetGraphic = image;
         button.onClick.AddListener(action);
         CreateText(rect, label.ToUpperInvariant(), 24, TextAnchor.MiddleCenter, Color.white,
             new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, true);
+        image.gameObject.AddComponent<UIAnimator>().ConfigureButton(label == "Save");
         return image.gameObject;
     }
 
@@ -374,24 +379,35 @@ public class ControlLayoutEditorUI : MonoBehaviour
         rootRect.anchorMax = new Vector2(0.5f, 1f);
         rootRect.pivot = new Vector2(0.5f, 0.5f);
         rootRect.anchoredPosition = position;
-        rootRect.sizeDelta = new Vector2(470f, 26f);
+        rootRect.sizeDelta = new Vector2(470f, 40f);
 
-        Image background = CreateImage(root.transform, "Background", new Color(0.012f, 0.03f, 0.075f, 1f));
-        StretchToParent(background.rectTransform);
+        UITheme theme = UITheme.Current;
+        Image background = CreateImage(root.transform, "Background", theme != null ? theme.raisedPanel : new Color(0.012f, 0.03f, 0.075f, 1f));
+        background.rectTransform.anchorMin = background.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+        background.rectTransform.sizeDelta = new Vector2(470f, 8f);
 
-        Image fill = CreateImage(root.transform, "Fill", AccentBlue);
+        Image fill = CreateImage(root.transform, "Fill", theme != null ? theme.accent : AccentBlue);
         RectTransform fillRect = fill.rectTransform;
         fillRect.anchorMin = Vector2.zero;
         fillRect.anchorMax = Vector2.one;
-        fillRect.offsetMin = new Vector2(7f, 7f);
-        fillRect.offsetMax = new Vector2(-7f, -7f);
+        fillRect.offsetMin = new Vector2(0f, 16f);
+        fillRect.offsetMax = new Vector2(0f, -16f);
 
         Image handleImage = CreateImage(root.transform, "Handle", Color.white);
         RectTransform handleRect = handleImage.rectTransform;
         handleRect.anchorMin = Vector2.one * 0.5f;
         handleRect.anchorMax = Vector2.one * 0.5f;
         handleRect.pivot = Vector2.one * 0.5f;
-        handleRect.sizeDelta = new Vector2(24f, 30f);
+        handleRect.sizeDelta = new Vector2(28f, 28f);
+        if (theme != null)
+        {
+            background.sprite = theme.roundedFill;
+            background.type = Image.Type.Sliced;
+            fill.sprite = theme.roundedFill;
+            fill.type = Image.Type.Sliced;
+            handleImage.sprite = theme.roundedFill;
+            handleImage.color = theme.accent;
+        }
 
         Slider slider = root.GetComponent<Slider>();
         slider.fillRect = fillRect;

@@ -11,6 +11,7 @@ public static class UIStyle
         if (text == null) return;
         UITheme theme = Theme;
         if (theme != null && theme.font != null) text.font = theme.font;
+        if (theme != null && theme.fontMaterial != null) text.fontSharedMaterial = theme.fontMaterial;
         text.fontSize = size;
         text.color = color;
         text.fontStyle = style;

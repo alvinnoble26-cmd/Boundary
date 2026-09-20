@@ -36,6 +36,18 @@ public static class MenuUIStyler
         }
 
         theme.font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ExistingFontPath);
+        const string fontMaterialPath = GeneratedRoot + "/EntropyZeroFont.mat";
+        Material fontMaterial = AssetDatabase.LoadAssetAtPath<Material>(fontMaterialPath);
+        if (fontMaterial == null && theme.font != null)
+        {
+            fontMaterial = new Material(theme.font.material) { name = "EntropyZeroFont" };
+            fontMaterial.SetColor(ShaderUtilities.ID_FaceColor, Color.white);
+            fontMaterial.SetColor(ShaderUtilities.ID_OutlineColor, Color.clear);
+            fontMaterial.SetFloat(ShaderUtilities.ID_OutlineWidth, 0f);
+            fontMaterial.SetFloat(ShaderUtilities.ID_FaceDilate, 0f);
+            AssetDatabase.CreateAsset(fontMaterial, fontMaterialPath);
+        }
+        theme.fontMaterial = fontMaterial;
         theme.titleSize = 110f;
         theme.headerSize = 56f;
         theme.bodySize = 32f;
@@ -117,6 +129,27 @@ public static class MenuUIStyler
     public static void BatchApplyCorePanels()
     {
         ApplyCorePanels();
+        EditorApplication.Exit(0);
+    }
+
+    [MenuItem("Entropy Zero/UI/Apply Extended Menu Panels")]
+    public static void ApplyExtendedPanels()
+    {
+        Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        UITheme theme = AssetDatabase.LoadAssetAtPath<UITheme>(ThemePath);
+        Canvas canvas = FindSceneObject<Canvas>(scene, "Canvas");
+        Transform abilities = canvas.transform.Find("AbilitiesMenu");
+        if (abilities != null) StyleAbilitiesMenu(abilities, theme);
+        AbilityInformationUI information = abilities != null ? abilities.GetComponent<AbilityInformationUI>() : null;
+        if (information != null) information.EnsureBuilt();
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        AssetDatabase.SaveAssets();
+    }
+
+    public static void BatchApplyExtendedPanels()
+    {
+        ApplyExtendedPanels();
         EditorApplication.Exit(0);
     }
 
@@ -586,6 +619,35 @@ public static class MenuUIStyler
         }
     }
 
+    private static void StyleAbilitiesMenu(Transform menu, UITheme theme)
+    {
+        SetFullScreen(menu);
+        EnsureHeading(menu, "AbilitiesHeading", "ABILITIES", "SELECT THREE TO BUILD YOUR LOADOUT", new Vector2(72f, -70f), theme);
+        Button[] buttons = menu.GetComponentsInChildren<Button>(true);
+        int cardIndex = 0;
+        foreach (Button button in buttons)
+        {
+            bool navigation = button.name.Contains("Back", StringComparison.OrdinalIgnoreCase) ||
+                              button.name.Contains("Info", StringComparison.OrdinalIgnoreCase);
+            StyleButton(button, false, theme);
+            if (navigation)
+            {
+                float x = button.name.Contains("Info", StringComparison.OrdinalIgnoreCase) ? 300f : 72f;
+                SetRect((RectTransform)button.transform, Vector2.zero, new Vector2(x, 48f), new Vector2(210f, 88f), Vector2.zero);
+                continue;
+            }
+            TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+            if (label != null) label.text = label.text.ToUpperInvariant();
+            int column = cardIndex % 4;
+            int row = cardIndex / 4;
+            SetRect((RectTransform)button.transform, new Vector2(0.5f, 0.5f),
+                new Vector2((column - 1.5f) * 330f, 165f - row * 150f), new Vector2(300f, 120f));
+            cardIndex++;
+        }
+        EnsureSafeArea(menu);
+        EnsurePanelAnimator(menu);
+    }
+
     private static void EnsureOptionsLabel(Transform parent, string name, string value, Vector2 position, UITheme theme)
     {
         Transform existing = parent.Find(name);
@@ -675,6 +737,7 @@ public static class MenuUIStyler
         if (label != null)
         {
             label.font = theme.font;
+            label.fontSharedMaterial = theme.fontMaterial;
             label.fontSize = theme.bodySize;
             label.fontStyle = FontStyles.Bold;
             label.color = primary ? theme.background : theme.text;
@@ -726,6 +789,7 @@ public static class MenuUIStyler
         TMP_Text text = go.GetComponent<TMP_Text>();
         text.text = value;
         text.font = theme.font;
+        text.fontSharedMaterial = theme.fontMaterial;
         text.fontSize = size;
         text.color = color;
         text.alignment = TextAlignmentOptions.Center;
@@ -740,6 +804,7 @@ public static class MenuUIStyler
         if (label == null) return;
         label.text = value;
         label.font = theme.font;
+        label.fontSharedMaterial = theme.fontMaterial;
         label.fontSize = size > 0f ? size : theme.bodySize;
     }
 

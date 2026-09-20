@@ -18,7 +18,7 @@ public sealed class OtherInformationUI : MonoBehaviour
     private GameObject informationPanel;
     private Button optionsButton;
     private Button deleteAccountButton;
-    private Text deleteAccountText;
+    private TMP_Text deleteAccountText;
     private float deleteConfirmationExpiresAt;
     private Font font;
 
@@ -59,6 +59,7 @@ public sealed class OtherInformationUI : MonoBehaviour
         optionsButton.onClick.AddListener(Open);
 
         informationPanel = Ui("OtherInformationPanel", transform, PanelColor);
+        informationPanel.AddComponent<SafeAreaFitter>();
         RectTransform panelRect = informationPanel.GetComponent<RectTransform>();
         panelRect.anchorMin = Vector2.zero;
         panelRect.anchorMax = Vector2.one;
@@ -67,22 +68,23 @@ public sealed class OtherInformationUI : MonoBehaviour
         informationPanel.transform.SetAsLastSibling();
         informationPanel.SetActive(false);
 
-        Label("OTHER INFORMATION", informationPanel.transform, 48, new Vector2(0, 410), new Vector2(700, 70));
+        UITheme theme = UITheme.Current;
+        Label("OTHER INFORMATION", informationPanel.transform, theme != null ? Mathf.RoundToInt(theme.headerSize) : 48, new Vector2(0, 410), new Vector2(900, 90));
         Label("ACCOUNT, PURCHASE, AND SUPPORT SETTINGS", informationPanel.transform, 19,
             new Vector2(0, 355), new Vector2(720, 35)).color = new Color(.68f, .84f, 1f, 1f);
 
         Button restore = MakeButton("RestorePurchases", informationPanel.transform, "RECOVER OWNED SKINS",
-            new Vector2(0, 175), new Vector2(410, 62));
+            new Vector2(0, 175), new Vector2(560, 88));
         restore.onClick.AddListener(() => SkinPurchaseManager.I?.RestorePurchases());
         MakeButton("PrivacyPolicy", informationPanel.transform, "PRIVACY POLICY",
-            new Vector2(0, 82), new Vector2(410, 62)).onClick.AddListener(() => Application.OpenURL(PrivacyUrl));
+            new Vector2(0, 63), new Vector2(560, 88)).onClick.AddListener(() => Application.OpenURL(PrivacyUrl));
         MakeButton("Support", informationPanel.transform, "SUPPORT",
-            new Vector2(0, -11), new Vector2(410, 62)).onClick.AddListener(() => Application.OpenURL(SupportUrl));
+            new Vector2(0, -49), new Vector2(560, 88)).onClick.AddListener(() => Application.OpenURL(SupportUrl));
         deleteAccountButton = MakeButton("DeleteAccount", informationPanel.transform, "DELETE ACCOUNT",
-            new Vector2(0, -104), new Vector2(410, 62));
-        deleteAccountText = deleteAccountButton.GetComponentInChildren<Text>();
+            new Vector2(0, -161), new Vector2(560, 88));
+        deleteAccountText = deleteAccountButton.GetComponentInChildren<TMP_Text>();
         deleteAccountButton.onClick.AddListener(DeleteAccountClicked);
-        MakeButton("Back", informationPanel.transform, "BACK", new Vector2(0, -230), new Vector2(250, 58))
+        MakeButton("Back", informationPanel.transform, "BACK", new Vector2(0, -290), new Vector2(250, 88))
             .onClick.AddListener(Close);
     }
 
@@ -177,36 +179,48 @@ public sealed class OtherInformationUI : MonoBehaviour
     {
         GameObject gameObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         gameObject.transform.SetParent(parent, false);
-        gameObject.GetComponent<Image>().color = color;
+        Image image = gameObject.GetComponent<Image>();
+        UITheme theme = UITheme.Current;
+        image.color = color;
+        if (theme != null)
+        {
+            image.sprite = theme.roundedFill;
+            image.type = Image.Type.Sliced;
+            image.color = name == "OtherInformationPanel" ? new Color(theme.background.r, theme.background.g, theme.background.b, 0.94f) : theme.raisedPanel;
+        }
         return gameObject;
     }
 
-    private Text Label(string value, Transform parent, int size, Vector2 position, Vector2 dimensions)
+    private TMP_Text Label(string value, Transform parent, int size, Vector2 position, Vector2 dimensions)
     {
-        GameObject gameObject = new GameObject(value, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        GameObject gameObject = new GameObject(value, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
         gameObject.transform.SetParent(parent, false);
         RectTransform rect = gameObject.GetComponent<RectTransform>();
         rect.sizeDelta = dimensions;
         rect.anchoredPosition = position;
-        Text text = gameObject.GetComponent<Text>();
-        text.font = font;
+        TMP_Text text = gameObject.GetComponent<TMP_Text>();
         text.fontSize = size;
-        text.fontStyle = FontStyle.Bold;
-        text.alignment = TextAnchor.MiddleCenter;
-        text.color = Color.white;
+        text.fontStyle = FontStyles.Bold;
+        text.alignment = TextAlignmentOptions.Center;
+        UITheme theme = UITheme.Current;
+        if (theme != null && theme.font != null) text.font = theme.font;
+        if (theme != null && theme.fontMaterial != null) text.fontSharedMaterial = theme.fontMaterial;
+        text.color = theme != null ? theme.text : Color.white;
         text.text = value;
         return text;
     }
 
     private Button MakeButton(string name, Transform parent, string text, Vector2 position, Vector2 size)
     {
-        GameObject gameObject = Ui(name, parent, AccentBlue);
+        UITheme theme = UITheme.Current;
+        GameObject gameObject = Ui(name, parent, name == "DeleteAccount" && theme != null ? theme.danger : theme != null ? theme.raisedPanel : AccentBlue);
         RectTransform rect = gameObject.GetComponent<RectTransform>();
         rect.sizeDelta = size;
         rect.anchoredPosition = position;
         Button button = gameObject.AddComponent<Button>();
         button.targetGraphic = gameObject.GetComponent<Image>();
-        Label(text, gameObject.transform, 23, Vector2.zero, size).raycastTarget = false;
+        Label(text, gameObject.transform, theme != null ? Mathf.RoundToInt(theme.buttonSize) : 23, Vector2.zero, size).raycastTarget = false;
+        gameObject.AddComponent<UIAnimator>().ConfigureButton(false);
         return button;
     }
 }

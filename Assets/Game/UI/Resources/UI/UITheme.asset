@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: UITheme
   m_EditorClassIdentifier: Assembly-CSharp::UITheme
   font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  fontMaterial: {fileID: 2100000, guid: cd5ae3c0d7ee34e909c1e6bd958d12b3, type: 2}
   titleSize: 110
   headerSize: 56
   bodySize: 32
