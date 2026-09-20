@@ -26,6 +26,7 @@ public static class MenuUIStyler
         Sprite border = GenerateRoundedSprite("RoundedBorder", SpriteKind.Border);
         Sprite shadow = GenerateRoundedSprite("SoftShadow", SpriteKind.Shadow);
         Sprite glow = GenerateRoundedSprite("AccentGlow", SpriteKind.Glow);
+        Sprite horizon = GenerateHorizonSprite();
 
         UITheme theme = AssetDatabase.LoadAssetAtPath<UITheme>(ThemePath);
         if (theme == null)
@@ -35,15 +36,58 @@ public static class MenuUIStyler
         }
 
         theme.font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ExistingFontPath);
+        theme.titleSize = 110f;
+        theme.headerSize = 56f;
+        theme.bodySize = 32f;
+        theme.captionSize = 24f;
+        theme.buttonSize = 40f;
+        theme.titleCharacterSpacing = 9f;
         theme.roundedFill = fill;
         theme.roundedBorder = border;
         theme.softShadow = shadow;
         theme.accentGlow = glow;
+        theme.spaceHorizon = horizon;
         EditorUtility.SetDirty(theme);
         CreatePrefabs(theme);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Debug.Log("[MenuUIStyler] Style kit built.");
+    }
+
+    [MenuItem("Entropy Zero/UI/Apply Shared Foundation")]
+    public static void ApplySharedFoundation()
+    {
+        BuildStyleKit();
+        Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        UITheme theme = AssetDatabase.LoadAssetAtPath<UITheme>(ThemePath);
+        Canvas canvas = FindSceneObject<Canvas>(scene, "Canvas");
+        if (canvas == null) throw new InvalidOperationException("Menu Canvas was not found.");
+        CanvasScaler scaler = canvas.GetComponent<CanvasScaler>();
+        if (scaler != null)
+        {
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 0.5f;
+        }
+        if (canvas.GetComponent<ResponsiveCanvasMatch>() == null)
+            Undo.AddComponent<ResponsiveCanvasMatch>(canvas.gameObject);
+        StyleGlobalPanel(canvas.transform.Find("Panel"), canvas.transform, theme);
+        string[] roots = { "MainMenu", "StartMenu", "MuiltiplayerMenu", "JoinLobbyPanel", "HostLobbyPanel", "Lost", "Won", "OptionsMenu", "AbilitiesMenu", "Ability Information Panel", "ControlLayoutEditor" };
+        foreach (string rootName in roots)
+        {
+            Transform root = canvas.transform.Find(rootName);
+            if (root != null) EnsureSafeArea(root);
+        }
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        AssetDatabase.SaveAssets();
+    }
+
+    public static void BatchApplyFoundation()
+    {
+        ApplySharedFoundation();
+        EditorApplication.Exit(0);
     }
 
     [MenuItem("Entropy Zero/UI/Apply First Batch to Menu")]
@@ -214,6 +258,34 @@ public static class MenuUIStyler
         return t * t * (3f - 2f * t);
     }
 
+    private static Sprite GenerateHorizonSprite()
+    {
+        const int width = 256;
+        const int height = 128;
+        Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        for (int y = 0; y < height; y++)
+        for (int x = 0; x < width; x++)
+        {
+            float nx = (x + 0.5f - width * 0.5f) / (width * 0.5f);
+            float ny = y / (float)(height - 1);
+            float alpha = Mathf.Exp(-nx * nx * 2.1f) * Mathf.Pow(1f - ny, 2.4f);
+            texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+        }
+        texture.Apply();
+        string path = GeneratedRoot + "/SpaceHorizon.png";
+        File.WriteAllBytes(path, texture.EncodeToPNG());
+        UnityEngine.Object.DestroyImmediate(texture);
+        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+        TextureImporter importer = (TextureImporter)AssetImporter.GetAtPath(path);
+        importer.textureType = TextureImporterType.Sprite;
+        importer.spriteImportMode = SpriteImportMode.Single;
+        importer.alphaIsTransparency = true;
+        importer.mipmapEnabled = false;
+        importer.filterMode = FilterMode.Bilinear;
+        importer.SaveAndReimport();
+        return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+    }
+
     private static void CreatePrefabs(UITheme theme)
     {
         SaveButtonPrefab("PrimaryButton", "PRIMARY ACTION", theme, true);
@@ -310,17 +382,52 @@ public static class MenuUIStyler
         rect.anchorMin = Vector2.zero;
         rect.anchorMax = Vector2.one;
         rect.offsetMin = rect.offsetMax = Vector2.zero;
-        Transform decoration = panel.Find("ContainedInstability");
+        Transform oldDecoration = panel.Find("ContainedInstability");
+        if (oldDecoration != null)
+            UnityEngine.Object.DestroyImmediate(oldDecoration.gameObject);
+        Transform decoration = panel.Find("SpaceBackground");
+        if (decoration != null)
+        {
+            UnityEngine.Object.DestroyImmediate(decoration.gameObject);
+            decoration = null;
+        }
         if (decoration == null)
         {
-            GameObject root = NewUiObject("ContainedInstability", typeof(ContainedInstabilityBackground));
+            GameObject root = NewUiObject("SpaceBackground", typeof(SpaceBackground));
             root.transform.SetParent(panel, false);
             Stretch((RectTransform)root.transform, 0f);
-            Image first = CreateDecorativeArc(root.transform, "OuterArc", new Vector2(880f, 880f), theme.accent);
-            Image second = CreateDecorativeArc(root.transform, "InnerArc", new Vector2(620f, 620f), theme.secondary);
-            first.rectTransform.anchoredPosition = new Vector2(510f, -220f);
-            second.rectTransform.anchoredPosition = new Vector2(-610f, 300f);
-            root.GetComponent<ContainedInstabilityBackground>().Configure(first.rectTransform, first, second.rectTransform, second);
+            GameObject stars = NewUiObject("StarField");
+            stars.transform.SetParent(root.transform, false);
+            Stretch((RectTransform)stars.transform, -40f);
+            UnityEngine.Random.State previousState = UnityEngine.Random.state;
+            UnityEngine.Random.InitState(40719);
+            for (int i = 0; i < 54; i++)
+            {
+                GameObject star = NewUiObject("Star", typeof(Image));
+                star.transform.SetParent(stars.transform, false);
+                RectTransform starRect = (RectTransform)star.transform;
+                starRect.anchorMin = starRect.anchorMax = new Vector2(UnityEngine.Random.value, UnityEngine.Random.value);
+                float size = UnityEngine.Random.Range(2f, 5f);
+                starRect.sizeDelta = new Vector2(size, size);
+                Image starImage = star.GetComponent<Image>();
+                starImage.sprite = theme.roundedFill;
+                starImage.color = new Color(theme.text.r, theme.text.g, theme.text.b, UnityEngine.Random.Range(0.12f, 0.48f));
+                starImage.raycastTarget = false;
+            }
+            UnityEngine.Random.state = previousState;
+            GameObject horizon = NewUiObject("HorizonGlow", typeof(Image));
+            horizon.transform.SetParent(root.transform, false);
+            RectTransform horizonRect = (RectTransform)horizon.transform;
+            horizonRect.anchorMin = horizonRect.anchorMax = new Vector2(0.5f, 0f);
+            horizonRect.pivot = new Vector2(0.5f, 0f);
+            horizonRect.anchoredPosition = new Vector2(0f, -170f);
+            horizonRect.sizeDelta = new Vector2(2500f, 520f);
+            Image glow = horizon.GetComponent<Image>();
+            glow.sprite = theme.spaceHorizon;
+            glow.type = Image.Type.Simple;
+            glow.color = new Color(theme.accent.r, theme.accent.g, theme.accent.b, 0.32f);
+            glow.raycastTarget = false;
+            root.GetComponent<SpaceBackground>().Configure((RectTransform)stars.transform, horizonRect, glow);
         }
     }
 

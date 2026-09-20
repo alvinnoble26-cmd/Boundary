@@ -30,6 +30,7 @@ public class SafeAreaFitter : MonoBehaviour
 
     void ApplySafeArea()
     {
+        if (rect == null || Screen.width <= 0 || Screen.height <= 0) return;
         Rect safe = SimulatedSafeArea ?? Screen.safeArea;
 
         lastSafeArea = safe;

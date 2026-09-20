@@ -16,7 +16,7 @@ Unity source of truth: `6000.3.6f1`
 ## Phase status
 
 - P1 Verification tooling + D1 root cause: DONE
-- P2 Foundation: NOT STARTED
+- P2 Foundation: DONE
 - P3 Main/Start/Multiplayer/Options: NOT STARTED
 - P4 Runtime-built and abilities/control panels: NOT STARTED
 - P5 Join/Host/Results and D10-D12: NOT STARTED
@@ -56,6 +56,12 @@ Unity source of truth: `6000.3.6f1`
 - D1 confirmed: the serialized full-screen `Canvas/Panel` Image, legacy orange TMP materials/button sprites, and runtime builders applying their own navy/orange styling recreate the old look. These must be neutralized both in the scene styler and in each runtime builder; the current decorative rectangle background also fails R1 and will be replaced in P2.
 - Verification tooling now builds/reuses a development player, injects the notch safe area, captures all states, writes JSON/text audit output, and emits one contact sheet per resolution.
 - Evidence: `/tmp/ez-ui/iter-3`; compilation recheck passed with Unity 6000.3.6f1 (`/tmp/ez-ui-p1-compile.log`).
+
+### Iteration 4 — P2
+
+- Added the shared foundation: responsive 1920×1080 canvas matching, safe areas on all serialized roots, four-size typography (110/56/32/24; button 40), shared styling helpers, and a single-writer unscaled-time motion system.
+- Replaced the rectangle motif with a deterministic star field and soft cyan horizon glow. The first verification image exposed a solid teal lower band from using a sliced glow sprite; replaced it with a dedicated fading horizon texture before committing.
+- Full player matrix and contact sheets completed at `/tmp/ez-ui/iter-4`; Unity build and compilation passed. Remaining failures are panel-level styling and undersized legacy controls, assigned to P3-P5.
 
 ## Blockers
 

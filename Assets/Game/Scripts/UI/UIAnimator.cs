@@ -15,10 +15,9 @@ public sealed class UIAnimator : MonoBehaviour, IPointerDownHandler, IPointerUpH
     private Vector2 restingPosition;
     private Vector3 restingScale;
     private Coroutine panelRoutine;
-    private Coroutine scaleRoutine;
-    private Coroutine pulseRoutine;
     private bool pointerDown;
     private bool focused;
+    private float displayedScale = 1f;
 
     public void ConfigurePanel(bool enabled = true) => animatePanelOnEnable = enabled;
 
@@ -26,8 +25,6 @@ public sealed class UIAnimator : MonoBehaviour, IPointerDownHandler, IPointerUpH
     {
         animateButton = true;
         pulsePrimary = primary;
-        if (isActiveAndEnabled && primary)
-            StartPrimaryPulse();
     }
 
     private void Awake()
@@ -49,14 +46,12 @@ public sealed class UIAnimator : MonoBehaviour, IPointerDownHandler, IPointerUpH
             if (panelRoutine != null) StopCoroutine(panelRoutine);
             panelRoutine = StartCoroutine(AnimatePanelIn());
         }
-        if (pulsePrimary)
-            StartPrimaryPulse();
     }
 
     private void OnDisable()
     {
         StopAllCoroutines();
-        panelRoutine = scaleRoutine = pulseRoutine = null;
+        panelRoutine = null;
         transform.localScale = restingScale;
         if (rectTransform != null)
             rectTransform.anchoredPosition = restingPosition;
@@ -104,55 +99,27 @@ public sealed class UIAnimator : MonoBehaviour, IPointerDownHandler, IPointerUpH
         gameObject.SetActive(false);
     }
 
-    public void OnPointerDown(PointerEventData eventData) { pointerDown = true; AnimateScale(TargetPressScale()); }
-    public void OnPointerUp(PointerEventData eventData) { pointerDown = false; AnimateScale(focused ? TargetFocusScale() : 1f); }
-    public void OnPointerEnter(PointerEventData eventData) { focused = true; if (!pointerDown) AnimateScale(TargetFocusScale()); }
-    public void OnPointerExit(PointerEventData eventData) { focused = false; pointerDown = false; AnimateScale(1f); }
-    public void OnSelect(BaseEventData eventData) { focused = true; if (!pointerDown) AnimateScale(TargetFocusScale()); }
-    public void OnDeselect(BaseEventData eventData) { focused = false; if (!pointerDown) AnimateScale(1f); }
+    public void OnPointerDown(PointerEventData eventData) => pointerDown = true;
+    public void OnPointerUp(PointerEventData eventData) => pointerDown = false;
+    public void OnPointerEnter(PointerEventData eventData) => focused = true;
+    public void OnPointerExit(PointerEventData eventData) { focused = false; pointerDown = false; }
+    public void OnSelect(BaseEventData eventData) => focused = true;
+    public void OnDeselect(BaseEventData eventData) => focused = false;
 
     private float TargetPressScale() => UITheme.Current != null ? UITheme.Current.buttonPressScale : 0.96f;
     private float TargetFocusScale() => UITheme.Current != null ? UITheme.Current.buttonFocusScale : 1.03f;
 
-    private void AnimateScale(float multiplier)
+    private void Update()
     {
         if (!animateButton || !isActiveAndEnabled) return;
-        if (scaleRoutine != null) StopCoroutine(scaleRoutine);
-        scaleRoutine = StartCoroutine(ScaleTo(restingScale * multiplier, 0.08f));
-    }
-
-    private IEnumerator ScaleTo(Vector3 target, float duration)
-    {
-        Vector3 start = transform.localScale;
-        float elapsed = 0f;
-        while (elapsed < duration)
+        float target = pointerDown ? TargetPressScale() : focused ? TargetFocusScale() : 1f;
+        if (pulsePrimary && !pointerDown && !focused)
         {
-            elapsed += Time.unscaledDeltaTime;
-            transform.localScale = Vector3.LerpUnclamped(start, target, 1f - Mathf.Pow(1f - Mathf.Clamp01(elapsed / duration), 3f));
-            yield return null;
+            float duration = UITheme.Current != null ? UITheme.Current.primaryPulseDuration : 2.4f;
+            float wave = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 2f / duration) + 1f) * 0.5f;
+            target *= Mathf.Lerp(1f, 1.018f, wave);
         }
-        transform.localScale = target;
-        scaleRoutine = null;
-    }
-
-    private void StartPrimaryPulse()
-    {
-        if (!isActiveAndEnabled || !pulsePrimary) return;
-        if (pulseRoutine != null) StopCoroutine(pulseRoutine);
-        pulseRoutine = StartCoroutine(PulsePrimary());
-    }
-
-    private IEnumerator PulsePrimary()
-    {
-        float duration = UITheme.Current != null ? UITheme.Current.primaryPulseDuration : 2.4f;
-        while (true)
-        {
-            if (!pointerDown && !focused && scaleRoutine == null)
-            {
-                float wave = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 2f / duration) + 1f) * 0.5f;
-                transform.localScale = restingScale * Mathf.Lerp(1f, 1.018f, wave);
-            }
-            yield return null;
-        }
+        displayedScale = Mathf.Lerp(displayedScale, target, 1f - Mathf.Exp(-18f * Time.unscaledDeltaTime));
+        transform.localScale = restingScale * displayedScale;
     }
 }

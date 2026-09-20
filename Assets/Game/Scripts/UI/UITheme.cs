@@ -1,18 +1,19 @@
 using TMPro;
 using UnityEngine;
 
-[CreateAssetMenu(fileName = "UITheme", menuName = "Boundary/UI Theme")]
+[CreateAssetMenu(fileName = "UITheme", menuName = "Entropy Zero/UI Theme")]
 public sealed class UITheme : ScriptableObject
 {
     private static UITheme current;
 
     [Header("Typography")]
     public TMP_FontAsset font;
-    public float titleSize = 72f;
-    public float headerSize = 42f;
-    public float bodySize = 28f;
-    public float captionSize = 20f;
-    public float titleCharacterSpacing = 6f;
+    public float titleSize = 110f;
+    public float headerSize = 56f;
+    public float bodySize = 32f;
+    public float captionSize = 24f;
+    public float buttonSize = 40f;
+    public float titleCharacterSpacing = 9f;
 
     [Header("Colors")]
     public Color background = new Color32(10, 13, 20, 255);
@@ -44,6 +45,7 @@ public sealed class UITheme : ScriptableObject
     public Sprite roundedBorder;
     public Sprite softShadow;
     public Sprite accentGlow;
+    public Sprite spaceHorizon;
 
     public static UITheme Current
     {

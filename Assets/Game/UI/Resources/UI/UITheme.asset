@@ -13,11 +13,12 @@ MonoBehaviour:
   m_Name: UITheme
   m_EditorClassIdentifier: Assembly-CSharp::UITheme
   font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
-  titleSize: 72
-  headerSize: 42
-  bodySize: 28
-  captionSize: 20
-  titleCharacterSpacing: 6
+  titleSize: 110
+  headerSize: 56
+  bodySize: 32
+  captionSize: 24
+  buttonSize: 40
+  titleCharacterSpacing: 9
   background: {r: 0.039215688, g: 0.050980393, b: 0.078431375, a: 1}
   panel: {r: 0.07058824, g: 0.09411765, b: 0.14901961, a: 0.9019608}
   raisedPanel: {r: 0.101960786, g: 0.13333334, b: 0.21176471, a: 1}
@@ -41,3 +42,4 @@ MonoBehaviour:
   roundedBorder: {fileID: 21300000, guid: 50bea6519f19d42f3b0addefc82d2771, type: 3}
   softShadow: {fileID: 21300000, guid: 65ffac448d9104322bb01c795850d5cc, type: 3}
   accentGlow: {fileID: 21300000, guid: c3c32430fed9a4910992ee5a2a2af576, type: 3}
+  spaceHorizon: {fileID: 21300000, guid: 7afeceb3167844e9da7d46de8ed2da6f, type: 3}
