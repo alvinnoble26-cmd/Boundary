@@ -19,7 +19,7 @@ Unity source of truth: `6000.3.6f1`
 - P2 Foundation: DONE
 - P3 Main/Start/Multiplayer/Options: DONE
 - P4 Runtime-built and abilities/control panels: DONE
-- P5 Join/Host/Results and D10-D12: NOT STARTED
+- P5 Join/Host/Results and D10-D12: DONE
 - P6 Full regression/final report: NOT STARTED
 
 ## Rubric status
@@ -75,6 +75,13 @@ Unity source of truth: `6000.3.6f1`
 - Practice, Other Information, Ability Guide, and control-editor chrome now consume UITheme; safe areas were added to their runtime roots and safe legacy labels were converted to TMP.
 - Targeted captures: `/tmp/ez-ui/p4-targeted`. The review found the existing fallback font asset's embedded material had a black face and gray outline, causing low contrast. Added a generated white-face material referenced by UITheme rather than altering the source asset.
 - Abilities use a glass grid with shared navigation styling; control widgets retain their original drag/resize behavior. Final compile passed (`/tmp/ez-ui-p4-final-compile.log`).
+
+### Iteration 7 — P5
+
+- Join keeps the existing TMP_InputField authoritative and adds four mirrored, non-interactive digit boxes; the invisible input remains over the row and raycastable for mobile keyboard focus. Numeric/4-character/Firebase auto-submit code was not changed.
+- Host now has a large code treatment, Copy Code, waiting pulse/radar, progress line, and opponent/VS presentation. Public `SetWaiting`, `SetOpponentJoined`, `SetStatus`, and `SetProgress` hooks exist but intentionally remain unwired to Firebase/PurrNet.
+- Won/Lost use dim overlays and centered cards. MenuUIController reason fields are TMP, both Back buttons are persistently routed to `ContinueToMainMenu`, and exit forces inactive/alpha 0/raycast off/interactable off. `leavingResultScreen` resets on every entry path.
+- Targeted captures `/tmp/ez-ui/p5-targeted-2` caught missing lobby references in the isolated scene lookup and narrow result title bounds; both were corrected. D10 repair now prefers FirebaseLobbyManager's authoritative serialized code label and falls back safely.
 
 ## Blockers
 

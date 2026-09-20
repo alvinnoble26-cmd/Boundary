@@ -34,13 +34,16 @@ public sealed class UIAnimator : MonoBehaviour, IPointerDownHandler, IPointerUpH
         if (rectTransform != null)
             restingPosition = rectTransform.anchoredPosition;
         if (animatePanelOnEnable)
-            canvasGroup = GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
+            EnsureCanvasGroup();
     }
 
     private void OnEnable()
     {
         if (rectTransform == null)
             Awake();
+        if (rectTransform != null)
+            restingPosition = rectTransform.anchoredPosition;
+        restingScale = transform.localScale;
         if (animatePanelOnEnable)
         {
             if (panelRoutine != null) StopCoroutine(panelRoutine);
@@ -68,7 +71,7 @@ public sealed class UIAnimator : MonoBehaviour, IPointerDownHandler, IPointerUpH
         UITheme theme = UITheme.Current;
         float duration = theme != null ? theme.panelDuration : 0.2f;
         float distance = theme != null ? theme.panelSlideDistance : 24f;
-        canvasGroup ??= GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
+        EnsureCanvasGroup();
         canvasGroup.alpha = 0f;
         canvasGroup.interactable = false;
         canvasGroup.blocksRaycasts = false;
@@ -92,7 +95,7 @@ public sealed class UIAnimator : MonoBehaviour, IPointerDownHandler, IPointerUpH
     public void HideAndDeactivate()
     {
         StopAllCoroutines();
-        canvasGroup ??= GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
+        EnsureCanvasGroup();
         canvasGroup.alpha = 0f;
         canvasGroup.interactable = false;
         canvasGroup.blocksRaycasts = false;
@@ -121,5 +124,12 @@ public sealed class UIAnimator : MonoBehaviour, IPointerDownHandler, IPointerUpH
         }
         displayedScale = Mathf.Lerp(displayedScale, target, 1f - Mathf.Exp(-18f * Time.unscaledDeltaTime));
         transform.localScale = restingScale * displayedScale;
+    }
+
+    private void EnsureCanvasGroup()
+    {
+        if (canvasGroup != null) return;
+        if (!TryGetComponent(out canvasGroup))
+            canvasGroup = gameObject.AddComponent<CanvasGroup>();
     }
 }

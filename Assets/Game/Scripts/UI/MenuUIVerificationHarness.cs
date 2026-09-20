@@ -87,6 +87,7 @@ public static class MenuUIVerificationHarness
             {
                 Transform panel = canvas.transform.Find(target);
                 if (panel != null) panel.gameObject.SetActive(true);
+                if (id == "host") MenuLobbyUI.I?.ShowHostLobby("4071");
             }
             else if (id == "skins")
             {

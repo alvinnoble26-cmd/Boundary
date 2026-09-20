@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class MenuUIController : MonoBehaviour
 {
@@ -10,10 +11,10 @@ public class MenuUIController : MonoBehaviour
     [SerializeField] private GameObject winPanel;
 
     [Header("Lose Screen UI")]
-    [SerializeField] private Text loseReasonText;
+    [SerializeField] private TMP_Text loseReasonText;
 
     [Header("Win Screen UI")]
-    [SerializeField] private Text winReasonText;
+    [SerializeField] private TMP_Text winReasonText;
 
     private bool leavingResultScreen;
 
@@ -57,6 +58,7 @@ public class MenuUIController : MonoBehaviour
 
     private void ShowMainMenu()
     {
+        leavingResultScreen = false;
         if (mainMenuPanel != null)
             mainMenuPanel.SetActive(true);
 
@@ -72,6 +74,7 @@ public class MenuUIController : MonoBehaviour
 
     private void ShowServerSelector()
     {
+        leavingResultScreen = false;
         if (mainMenuPanel != null)
             mainMenuPanel.SetActive(false);
 
@@ -87,6 +90,7 @@ public class MenuUIController : MonoBehaviour
 
     private void ShowWin(string reason)
     {
+        leavingResultScreen = false;
         if (mainMenuPanel != null)
             mainMenuPanel.SetActive(false);
 
@@ -107,6 +111,7 @@ public class MenuUIController : MonoBehaviour
 
     private void ShowLose(string reason)
     {
+        leavingResultScreen = false;
         if (mainMenuPanel != null)
             mainMenuPanel.SetActive(false);
 
@@ -132,8 +137,8 @@ public class MenuUIController : MonoBehaviour
     {
         if (leavingResultScreen) return;
         leavingResultScreen = true;
-        if (losePanel != null) losePanel.SetActive(false);
-        if (winPanel != null) winPanel.SetActive(false);
+        HideResultPanel(losePanel);
+        HideResultPanel(winPanel);
         bool wasCpu = GameManager.I != null && GameManager.I.LastMatchWasCpu;
         if (GameManager.I != null)
             GameManager.I.ClearLastResult();
@@ -148,6 +153,19 @@ public class MenuUIController : MonoBehaviour
         // not the play/start panel. This keeps the two menu stacks mutually
         // exclusive after pressing Back on the loss or win screen.
         ShowServerSelector();
+    }
+
+    private static void HideResultPanel(GameObject panel)
+    {
+        if (panel == null) return;
+        CanvasGroup group = panel.GetComponent<CanvasGroup>();
+        if (group != null)
+        {
+            group.alpha = 0f;
+            group.blocksRaycasts = false;
+            group.interactable = false;
+        }
+        panel.SetActive(false);
     }
 
     public void PlayAgain()

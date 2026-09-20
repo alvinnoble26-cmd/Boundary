@@ -1,9 +1,11 @@
 #if UNITY_EDITOR
 using System;
 using System.IO;
+using System.Linq;
 using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEditor.Events;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -150,6 +152,48 @@ public static class MenuUIStyler
     public static void BatchApplyExtendedPanels()
     {
         ApplyExtendedPanels();
+        EditorApplication.Exit(0);
+    }
+
+    [MenuItem("Entropy Zero/UI/Apply Lobby and Result Panels")]
+    public static void ApplyLobbyAndResults()
+    {
+        Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        UITheme theme = AssetDatabase.LoadAssetAtPath<UITheme>(ThemePath);
+        Canvas canvas = FindSceneObject<Canvas>(scene, "Canvas");
+        FirebaseLobbyManager firebase = canvas.GetComponent<FirebaseLobbyManager>();
+        SerializedObject serializedFirebase = firebase != null ? new SerializedObject(firebase) : null;
+        TMP_InputField codeInput = serializedFirebase?.FindProperty("codeInput").objectReferenceValue as TMP_InputField;
+        TMP_Text hostCode = serializedFirebase?.FindProperty("hostCodeText").objectReferenceValue as TMP_Text;
+        Transform joinPanel = canvas.transform.Find("JoinLobbyPanel");
+        Transform hostPanel = canvas.transform.Find("HostLobbyPanel");
+        if (codeInput == null && joinPanel != null) codeInput = joinPanel.GetComponentInChildren<TMP_InputField>(true);
+        if (hostCode == null && hostPanel != null)
+            hostCode = hostPanel.GetComponentsInChildren<TMP_Text>(true).FirstOrDefault(text => text.GetComponentInParent<Button>() == null);
+        StyleJoinPanel(joinPanel, codeInput, theme);
+        StyleHostPanel(hostPanel, hostCode, theme);
+
+        MenuUIController controller = canvas.GetComponent<MenuUIController>();
+        Transform lost = canvas.transform.Find("Lost");
+        Transform won = canvas.transform.Find("Won");
+        TMP_Text loseReason = StyleResultPanel(lost, false, controller, theme);
+        TMP_Text winReason = StyleResultPanel(won, true, controller, theme);
+        if (controller != null)
+        {
+            SerializedObject serializedController = new SerializedObject(controller);
+            serializedController.FindProperty("loseReasonText").objectReferenceValue = loseReason;
+            serializedController.FindProperty("winReasonText").objectReferenceValue = winReason;
+            serializedController.ApplyModifiedPropertiesWithoutUndo();
+        }
+        RepairMenuLobbyReferences(canvas, canvas.transform.Find("MainMenu"), canvas.transform.Find("HostLobbyPanel"));
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        AssetDatabase.SaveAssets();
+    }
+
+    public static void BatchApplyLobbyAndResults()
+    {
+        ApplyLobbyAndResults();
         EditorApplication.Exit(0);
     }
 
@@ -537,6 +581,7 @@ public static class MenuUIStyler
     {
         SetFullScreen(start);
         EnsureHeading(start, "StartHeading", "CHOOSE LOADOUT", "CONFIGURE, THEN ENTER THE ARENA", new Vector2(72f, -70f), theme);
+        SetSubscreenHeading(start.Find("StartHeading"), theme);
         Button server = RequireButton(start, "ServerSelectorButton");
         Button abilities = RequireButton(start, "AbilitiesButton");
         Button back = RequireButton(start, "BackButton (1)");
@@ -555,6 +600,7 @@ public static class MenuUIStyler
     {
         SetFullScreen(menu);
         EnsureHeading(menu, "MultiplayerHeading", "MULTIPLAYER", "CREATE A SPACE OR ENTER A FOUR-DIGIT CODE", new Vector2(72f, -70f), theme);
+        SetSubscreenHeading(menu.Find("MultiplayerHeading"), theme);
         Button host = RequireButton(menu, "HOST");
         Button join = RequireButton(menu, "JOIN");
         Button practice = RequireButton(menu, "PracticeButton");
@@ -576,6 +622,7 @@ public static class MenuUIStyler
         if (menu == null) return;
         SetFullScreen(menu);
         EnsureHeading(menu, "OptionsHeading", "OPTIONS", "AUDIO, CONTROLS, AND ACCESSIBILITY", new Vector2(72f, -70f), theme);
+        SetSubscreenHeading(menu.Find("OptionsHeading"), theme);
         Transform card = menu.Find("StyleOptionsCard");
         if (card == null)
         {
@@ -623,6 +670,7 @@ public static class MenuUIStyler
     {
         SetFullScreen(menu);
         EnsureHeading(menu, "AbilitiesHeading", "ABILITIES", "SELECT THREE TO BUILD YOUR LOADOUT", new Vector2(72f, -70f), theme);
+        SetSubscreenHeading(menu.Find("AbilitiesHeading"), theme);
         Button[] buttons = menu.GetComponentsInChildren<Button>(true);
         int cardIndex = 0;
         foreach (Button button in buttons)
@@ -646,6 +694,217 @@ public static class MenuUIStyler
         }
         EnsureSafeArea(menu);
         EnsurePanelAnimator(menu);
+    }
+
+    private static void StyleJoinPanel(Transform panel, TMP_InputField input, UITheme theme)
+    {
+        if (panel == null || input == null) return;
+        SetFullScreen(panel);
+        EnsureHeading(panel, "JoinHeading", "JOIN WITH CODE", "ENTER THE FOUR-DIGIT INVITATION", new Vector2(72f, -70f), theme);
+        SetSubscreenHeading(panel.Find("JoinHeading"), theme);
+        Transform row = panel.Find("CodeDigitRow");
+        if (row == null)
+        {
+            GameObject rowObject = NewUiObject("CodeDigitRow", typeof(Image), typeof(JoinCodePresentation));
+            rowObject.transform.SetParent(panel, false);
+            row = rowObject.transform;
+            Image hit = rowObject.GetComponent<Image>();
+            hit.color = Color.clear;
+            hit.raycastTarget = true;
+            TMP_Text[] digits = new TMP_Text[4];
+            Image[] borders = new Image[4];
+            for (int i = 0; i < 4; i++)
+            {
+                GameObject box = NewUiObject("Digit " + (i + 1), typeof(Image));
+                box.transform.SetParent(row, false);
+                SetRect((RectTransform)box.transform, new Vector2(0.5f, 0.5f), new Vector2((i - 1.5f) * 144f, 0f), new Vector2(112f, 128f));
+                Image image = box.GetComponent<Image>();
+                image.sprite = theme.roundedBorder;
+                image.type = Image.Type.Sliced;
+                image.color = theme.border;
+                image.raycastTarget = false;
+                digits[i] = CreateLabel(box.transform, "Digit", "—", theme.headerSize, theme, theme.text);
+                borders[i] = image;
+            }
+            rowObject.GetComponent<JoinCodePresentation>().Configure(input, digits, borders);
+        }
+        SetRect((RectTransform)row, new Vector2(0.5f, 0.5f), new Vector2(0f, 40f), new Vector2(600f, 150f));
+        input.characterLimit = 4;
+        input.contentType = TMP_InputField.ContentType.IntegerNumber;
+        RectTransform inputRect = input.transform as RectTransform;
+        SetRect(inputRect, new Vector2(0.5f, 0.5f), new Vector2(0f, 40f), new Vector2(600f, 150f));
+        Image inputImage = input.GetComponent<Image>();
+        if (inputImage != null) inputImage.color = new Color(1f, 1f, 1f, 0.001f);
+        if (input.textComponent != null) input.textComponent.color = Color.clear;
+        if (input.placeholder is TMP_Text placeholder) placeholder.color = Color.clear;
+        input.transform.SetAsLastSibling();
+        foreach (TMP_Text text in panel.GetComponentsInChildren<TMP_Text>(true))
+            if (text.name.IndexOf("ERROR", StringComparison.OrdinalIgnoreCase) >= 0 || text.text.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0)
+                UIStyle.ApplyText(text, theme.captionSize, theme.danger, FontStyles.Bold);
+        foreach (Button button in panel.GetComponentsInChildren<Button>(true))
+        {
+            StyleButton(button, false, theme);
+            SetRect((RectTransform)button.transform, Vector2.zero, new Vector2(72f, 48f), new Vector2(220f, 88f), Vector2.zero);
+        }
+        EnsureSafeArea(panel);
+        EnsurePanelAnimator(panel);
+    }
+
+    private static void StyleHostPanel(Transform panel, TMP_Text code, UITheme theme)
+    {
+        if (panel == null || code == null) return;
+        SetFullScreen(panel);
+        EnsureHeading(panel, "HostHeading", "LOBBY", "SHARE THE CODE WITH YOUR OPPONENT", new Vector2(72f, -70f), theme);
+        SetSubscreenHeading(panel.Find("HostHeading"), theme);
+        UIStyle.ApplyText(code, 104f, theme.accent, FontStyles.Bold);
+        code.characterSpacing = 18f;
+        SetRect(code.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 135f), new Vector2(720f, 140f));
+        LobbyPresentation presentation = panel.GetComponent<LobbyPresentation>();
+        if (presentation == null) presentation = panel.gameObject.AddComponent<LobbyPresentation>();
+        Transform content = panel.Find("LobbyPresentationContent");
+        if (content == null)
+        {
+            content = NewUiObject("LobbyPresentationContent").transform;
+            content.SetParent(panel, false);
+            SetFullScreen(content);
+        }
+        TMP_Text status = GetOrCreateLabel(content, "Status", "WAITING FOR OPPONENT…", theme.bodySize, theme, theme.muted);
+        SetRect(status.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -20f), new Vector2(720f, 70f));
+        Transform waiting = content.Find("WaitingRadar");
+        if (waiting == null)
+        {
+            GameObject radar = NewUiObject("WaitingRadar", typeof(Image));
+            radar.transform.SetParent(content, false);
+            waiting = radar.transform;
+            Image radarImage = radar.GetComponent<Image>();
+            radarImage.sprite = theme.roundedBorder;
+            radarImage.type = Image.Type.Sliced;
+            radarImage.color = new Color(theme.accent.r, theme.accent.g, theme.accent.b, 0.48f);
+            radarImage.raycastTarget = false;
+        }
+        SetRect((RectTransform)waiting, new Vector2(0.5f, 0.5f), new Vector2(0f, -145f), new Vector2(180f, 180f));
+        Transform opponent = content.Find("OpponentJoined");
+        if (opponent == null)
+        {
+            opponent = NewUiObject("OpponentJoined").transform;
+            opponent.SetParent(content, false);
+            CreateLabel(opponent, "You", "YOU", theme.headerSize, theme, theme.text);
+            CreateLabel(opponent, "VS", "VS", theme.bodySize, theme, theme.accent);
+            CreateLabel(opponent, "Opponent", "OPPONENT", theme.headerSize, theme, theme.text);
+        }
+        SetRect((RectTransform)opponent, new Vector2(0.5f, 0.5f), new Vector2(0f, -145f), new Vector2(900f, 160f));
+        TMP_Text[] versus = opponent.GetComponentsInChildren<TMP_Text>(true);
+        for (int i = 0; i < versus.Length; i++)
+            SetRect(versus[i].rectTransform, new Vector2(0.5f, 0.5f), new Vector2((i - 1) * 300f, 0f), new Vector2(260f, 100f));
+        GameObject progressObject = content.Find("Progress")?.gameObject;
+        if (progressObject == null)
+        {
+            progressObject = NewUiObject("Progress", typeof(Image));
+            progressObject.transform.SetParent(content, false);
+        }
+        Image progress = progressObject.GetComponent<Image>();
+        progress.sprite = theme.roundedFill;
+        progress.color = theme.accent;
+        progress.type = Image.Type.Filled;
+        progress.fillMethod = Image.FillMethod.Horizontal;
+        progress.fillAmount = 0f;
+        SetRect((RectTransform)progressObject.transform, new Vector2(0.5f, 0.5f), new Vector2(0f, -275f), new Vector2(640f, 8f));
+        TMP_Text opponentName = opponent.Find("Opponent").GetComponent<TMP_Text>();
+        presentation.Configure(code, status, waiting.gameObject, opponent.gameObject, opponentName, progress);
+        foreach (Button button in panel.GetComponentsInChildren<Button>(true))
+        {
+            StyleButton(button, false, theme);
+            SetRect((RectTransform)button.transform, Vector2.zero, new Vector2(72f, 48f), new Vector2(220f, 88f), Vector2.zero);
+        }
+        Transform copy = panel.Find("CopyCodeButton");
+        if (copy == null)
+        {
+            GameObject copyObject = NewUiObject("CopyCodeButton", typeof(Image), typeof(Button), typeof(UIAnimator));
+            copyObject.transform.SetParent(panel, false);
+            Button copyButton = copyObject.GetComponent<Button>();
+            StyleButton(copyButton, false, theme);
+            CreateLabel(copyObject.transform, "Label", "COPY CODE", theme.buttonSize, theme, theme.text);
+            UnityEventTools.AddPersistentListener(copyButton.onClick, presentation.CopyCode);
+            SetRect((RectTransform)copyObject.transform, new Vector2(0.5f, 0.5f), new Vector2(0f, 55f), new Vector2(280f, 88f));
+        }
+        EnsureSafeArea(panel);
+        EnsurePanelAnimator(panel);
+    }
+
+    private static TMP_Text StyleResultPanel(Transform panel, bool won, MenuUIController controller, UITheme theme)
+    {
+        if (panel == null) return null;
+        SetFullScreen(panel);
+        Image overlay = panel.GetComponent<Image>();
+        if (overlay != null) overlay.color = new Color(0.01f, 0.015f, 0.035f, 0.82f);
+        Transform card = panel.Find("ResultCard");
+        if (card == null)
+        {
+            GameObject cardObject = NewUiObject("ResultCard", typeof(Image));
+            cardObject.transform.SetParent(panel, false);
+            card = cardObject.transform;
+            card.SetAsFirstSibling();
+        }
+        Image cardImage = card.GetComponent<Image>();
+        cardImage.sprite = theme.roundedFill;
+        cardImage.type = Image.Type.Sliced;
+        cardImage.color = theme.panel;
+        cardImage.raycastTarget = false;
+        SetRect((RectTransform)card, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(920f, 570f));
+        AddBorder(card, theme);
+        TMP_Text reason = null;
+        foreach (TMP_Text text in panel.GetComponentsInChildren<TMP_Text>(true))
+        {
+            Button owner = text.GetComponentInParent<Button>();
+            if (owner != null)
+            {
+                text.text = text.text.ToUpperInvariant();
+                continue;
+            }
+            bool title = text.text.IndexOf("WON", StringComparison.OrdinalIgnoreCase) >= 0 || text.text.IndexOf("LOST", StringComparison.OrdinalIgnoreCase) >= 0;
+            UIStyle.ApplyText(text, title ? theme.titleSize : theme.bodySize, title ? (won ? theme.success : theme.danger) : theme.text, title ? FontStyles.Bold : FontStyles.Normal);
+            if (title)
+                SetRect(text.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 105f), new Vector2(800f, 150f));
+            else
+            {
+                reason = text;
+                SetRect(text.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -10f), new Vector2(760f, 80f));
+            }
+        }
+        if (reason == null)
+        {
+            reason = CreateLabel(panel, "ResultReason", string.Empty, theme.bodySize, theme, theme.text);
+            SetRect(reason.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -10f), new Vector2(760f, 80f));
+        }
+        Button[] buttons = panel.GetComponentsInChildren<Button>(true);
+        int action = 0;
+        foreach (Button button in buttons)
+        {
+            TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+            bool back = button.name.IndexOf("Back", StringComparison.OrdinalIgnoreCase) >= 0 || label != null && label.text.IndexOf("Back", StringComparison.OrdinalIgnoreCase) >= 0;
+            StyleButton(button, !back, theme);
+            if (label != null) label.text = back ? "BACK" : "PLAY AGAIN";
+            SetRect((RectTransform)button.transform, new Vector2(0.5f, 0.5f), new Vector2(back ? -170f : 170f, -175f), new Vector2(300f, 96f));
+            if (back && controller != null)
+            {
+                for (int i = button.onClick.GetPersistentEventCount() - 1; i >= 0; i--)
+                    UnityEventTools.RemovePersistentListener(button.onClick, i);
+                UnityEventTools.AddPersistentListener(button.onClick, controller.ContinueToMainMenu);
+            }
+            action++;
+        }
+        EnsureSafeArea(panel);
+        EnsurePanelAnimator(panel);
+        return reason;
+    }
+
+    private static TMP_Text GetOrCreateLabel(Transform parent, string name, string value, float size, UITheme theme, Color color)
+    {
+        Transform existing = parent.Find(name);
+        TMP_Text text = existing != null ? existing.GetComponent<TMP_Text>() : CreateLabel(parent, name, value, size, theme, color);
+        text.text = value;
+        UIStyle.ApplyText(text, size, color);
+        return text;
     }
 
     private static void EnsureOptionsLabel(Transform parent, string name, string value, Vector2 position, UITheme theme)
@@ -734,6 +993,15 @@ public static class MenuUIStyler
         animator.ConfigureButton(primary);
         AddBorder(button.transform, theme);
         TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+        if (label == null)
+        {
+            Text legacy = button.GetComponentInChildren<Text>(true);
+            if (legacy != null)
+            {
+                legacy.enabled = false;
+                label = CreateLabel(button.transform, "StyleLabel", legacy.text.ToUpperInvariant(), theme.buttonSize, theme, primary ? theme.background : theme.text);
+            }
+        }
         if (label != null)
         {
             label.font = theme.font;
@@ -747,6 +1015,15 @@ public static class MenuUIStyler
             label.raycastTarget = false;
             Stretch(label.rectTransform, 16f);
         }
+    }
+
+    private static void SetSubscreenHeading(Transform heading, UITheme theme)
+    {
+        if (heading == null) return;
+        RectTransform root = (RectTransform)heading;
+        root.sizeDelta = new Vector2(1200f, 118f);
+        TMP_Text title = heading.Find("Title")?.GetComponent<TMP_Text>();
+        if (title != null) title.fontSize = theme.headerSize;
     }
 
     private static void SetButtonColors(Button button, Color normal, UITheme theme)
@@ -873,7 +1150,16 @@ public static class MenuUIStyler
         SerializedObject serialized = new SerializedObject(lobby);
         serialized.FindProperty("mainMenuPanel").objectReferenceValue = main.gameObject;
         serialized.FindProperty("hostLobbyPanel").objectReferenceValue = host.gameObject;
-        serialized.FindProperty("hostCodeText").objectReferenceValue = host.GetComponentInChildren<TMP_Text>(true);
+        FirebaseLobbyManager firebase = canvas.GetComponent<FirebaseLobbyManager>();
+        TMP_Text hostCode = null;
+        if (firebase != null)
+        {
+            SerializedObject firebaseSerialized = new SerializedObject(firebase);
+            hostCode = firebaseSerialized.FindProperty("hostCodeText").objectReferenceValue as TMP_Text;
+        }
+        if (hostCode == null)
+            hostCode = host.GetComponentsInChildren<TMP_Text>(true).FirstOrDefault(text => text.text.Length <= 4);
+        serialized.FindProperty("hostCodeText").objectReferenceValue = hostCode;
         serialized.ApplyModifiedPropertiesWithoutUndo();
     }
 
