@@ -2,7 +2,7 @@
 
 ## Requested behavior
 
-Practice opens a Playground / CPU panel. Playground uses the previous local free-play path. CPU starts the same Game scene with the human and one Beard opponent. The CPU receives three distinct random enabled abilities on every new round; disabled Slide is excluded without changing its serialized ID. Winning or losing shows the existing result screen. Play Again immediately starts another CPU round with a fresh loadout, without lobby/rematch negotiation. Back reopens the practice chooser. CPU matches do not write wins, losses, purchases, or lobby records.
+Practice opens a Playground / CPU panel. Playground uses the previous local free-play path. CPU starts the same Game scene with the human and one Beard opponent. The CPU receives three distinct random enabled abilities on every new round; disabled Slide is excluded without changing its serialized ID. It uses the additive Base ability as a recovery tool when airborne, outside safety, or approaching missing floor, and consumes either independently cooling charge through the same server handler as a human player. Winning or losing shows the existing result screen. Play Again immediately starts another CPU round with a fresh loadout, without lobby/rematch negotiation. Back reopens the practice chooser. CPU matches do not write wins, losses, purchases, or lobby records.
 
 The opponent uses normal player health, damage, movement speed, jumping, wall jumping, environmental forces, cooldowns, immunity and throwing ammunition. It uses utility scores, predictive aiming, moving-threat avoidance, short- and long-range floor checks, wall escape steering, and inward retreat before and during ring collapses. It treats a missing landing surface or a position below the current arena tier as an emergency and favors inward traversal abilities. Decisions run at 10 Hz with reused physics buffers. A new round rerolls three abilities and rejects the immediately previous three-ability set. No external AI service, model download, new package, or dedicated CPU server is used.
 
@@ -16,10 +16,10 @@ Design references: [Game AI Pro: utility decisions](https://www.gameaipro.com/Ga
 - The start gate waits for one connection and two player objects for CPU, one of each for Playground, and two of each for online multiplayer.
 - The CPU is instantiated from the human player's registered prefab, preserving its network identity layout, serialized ability assets, colliders and skin geometry. It is placed at a different authored spawn point.
 - The project uses PurrNet's Unsafe spawn rules, which briefly assign local ownership to host-created objects. The CPU marker is set before spawning; camera, input and loadout setup ignore that marker during ownership callbacks. Ownership is then removed with propagation. The local server simulates the CPU's existing PlayerMovement and BoundaryPlayerState.
-- Human RPCs delegate to the same validated handlers the CPU calls locally. Existing RPC attributes, payload signatures and declaration order are retained. No replicated fields, ability IDs, prefab registrations, Firebase contracts or production configuration change.
+- Human RPCs delegate to the same validated handlers the CPU calls locally. Existing released RPC attributes, payload signatures and declaration order are retained, and Base RPCs are appended after them. Existing ability numeric values remain unchanged, but Base adds numeric ID `12`; no prefab registrations, Firebase contracts or production configuration change.
 - CPU pushes go directly through the existing movement impulse method. Human pushes retain their TargetRpc path. CPU elimination produces a local win; human elimination produces a local loss. The existing result latch accepts only the first result.
 - Void uses the competitive health-advantage rule in CPU mode. Only Playground keeps the free-play exemption. Void speed effects apply to both locally simulated fighters and are removed on cleanup.
-- The public client is owner-reported as version 1.12 build 20. Compatibility with that binary is intended, but has not been exercised with two physical clients in this implementation session.
+- The public client is owner-reported as version 1.12 build 20. Compatibility with that binary is intended, but has not been exercised with two physical clients in this implementation session. Do not point production matchmaking at this server until a 1.12 build 20 client has completed a full match against it, including a match where the new peer equips Base; an old client must not receive an unsupported Base presentation if that test fails.
 
 ## Changed files
 
@@ -47,7 +47,7 @@ No existing scene, prefab or asset sidecar was edited. The pre-existing change t
 
 1. **C# compilation passed** using the compiler bundled with Unity 6000.3.6f1 and the current editor/iOS `Assembly-CSharp.rsp`. New sources were appended and outputs redirected to `/tmp`. It completed with exit 0 and 11 existing obsolete-API warnings; no warning originated in the new feature code. The initial CPU baseline was also compiled previously with the then-available Linux dedicated-server response file, but the playtest follow-up has not received a current Linux build. These are compiler checks, **not** full Unity/IL2CPP builds or PurrNet postprocessing tests.
 2. **All EditMode test sources compiled** against the newly compiled game assembly using existing Unity/NUnit references. The stale missing WebGL editor-module reference was omitted. Exit 0, no compiler output.
-3. **Static network contract comparison passed** against the implementation starting commit `25036f6`: all existing RPC signatures/attributes/declaration order and SyncVar declarations in modified scripts remain unchanged.
+3. **Static network contract review passed** for the current candidate: existing RPC signatures/attributes remain in their prior order and the new Base RPCs are appended. Base adds ability ID `12`, so mixed-version runtime validation is still mandatory.
 4. **Serialized reference checks passed**: Game's spawner resolves the existing Player prefab GUID and its movement, abilities, state, input and camera scripts. Four tagged authored spawn points exist. Existing scene/prefab/asset/GUID files are unchanged.
 5. **`git diff --check` passed.**
 6. Rosetta 2 was installed successfully with Apple's `softwareupdate` after owner approval. A focused batch Test Runner invocation then exited with code 1 before running tests because another Unity instance already had this project open: “Multiple Unity instances cannot open the same project.” It produced no test report. The open editor log showed no C# errors from these changes. Existing unrelated imported Piloto HDRP shaders still report missing HDRP include errors in this URP project.
@@ -62,6 +62,8 @@ No existing scene, prefab or asset sidecar was edited. The pre-existing change t
    ```
 
 Not run: PlayMode, actual CPU matches, mobile performance, iOS export/IL2CPP, Xcode archive, Linux executable build, PurrNet postprocessing/runtime, two-client multiplayer, disconnect/reconnect/late join and scene-transition soak tests. CPU difficulty and navigation quality need actual playtesting; compilation does not establish how hard the opponent is to beat.
+
+**2026-09-20 follow-up:** the complete runtime assembly and Editor test assembly compiled with Unity 6000.3.6f1's Roslyn compiler (exit 0). Runtime compilation reported 12 existing obsolete-API warnings and no errors; Editor test compilation produced no output. A new focused Test Runner attempt was again blocked by the Unity process holding `Temp/UnityLockfile`, so no new tests were executed. Static review found and fixed Base receiving zero CPU utility, plus Bullseye's rendered target being scaled twice under the 1.3× player root while authoritative scoring used a different center/radius. Focused regression tests were added for both fixes.
 
 ## Owner testing checklist
 

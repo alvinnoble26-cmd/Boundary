@@ -77,4 +77,9 @@ public static class BoundaryCpuRules
         return hasOpponent && ownHealth > 0f && enemyHealth > 0f &&
             VoidAbility.CanActivateForMode(false, true, ownHealth, enemyHealth);
     }
+
+    public static bool ShouldUseBase(bool emergency, bool grounded, bool hasFloorAhead)
+    {
+        return emergency || !grounded || !hasFloorAhead;
+    }
 }

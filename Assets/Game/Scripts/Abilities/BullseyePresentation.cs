@@ -229,17 +229,29 @@ public sealed class BullseyeTargetPresentation : MonoBehaviour
 {
     public const float TargetScaleMultiplier = 1.3f;
     public const float OuterRingRadius = 1.74f * TargetScaleMultiplier;
+    public const float InnerRingRadius = OuterRingRadius * BullseyeAbility.CenterRadius;
     public const bool InnerTargetUsesOpponentBody = true;
 
     private LineRenderer outerRing;
+    private LineRenderer innerRing;
     private Camera viewer;
     private PlayerOutlinePresentation opponentOutline;
 
     public void Initialize(Camera camera)
     {
         viewer = camera;
+        // PlayerMovement scales the whole player root. Keep the authored ring radius in
+        // world units so the visible target and the server's TargetRadius remain identical.
+        Vector3 parentScale = transform.parent != null
+            ? transform.parent.lossyScale : Vector3.one;
+        transform.localScale = new Vector3(
+            SafeReciprocal(parentScale.x),
+            SafeReciprocal(parentScale.y),
+            SafeReciprocal(parentScale.z));
         outerRing = CreateRing("Bullseye Outer Ring", OuterRingRadius,
             0.055f * TargetScaleMultiplier, Color.white);
+        innerRing = CreateRing("Bullseye Inner Ring", InnerRingRadius,
+            0.045f * TargetScaleMultiplier, new Color(1f, 0.18f, 0.18f, 1f));
         opponentOutline = GetComponentInParent<PlayerOutlinePresentation>();
         if (opponentOutline == null)
         {
@@ -248,6 +260,11 @@ public sealed class BullseyeTargetPresentation : MonoBehaviour
                 opponentOutline = opponent.gameObject.AddComponent<PlayerOutlinePresentation>();
         }
         opponentOutline?.SetBullseyeTargetReveal(true);
+    }
+
+    public static float SafeReciprocal(float scale)
+    {
+        return Mathf.Abs(scale) > 0.0001f ? 1f / scale : 1f;
     }
 
     private void LateUpdate()
@@ -335,5 +352,91 @@ public sealed class BullseyeScreenFeedback : MonoBehaviour
             yield return null;
         }
         Destroy(gameObject);
+    }
+}
+
+public sealed class BullseyeRingHitFeedback : MonoBehaviour
+{
+    // A cool icy blue - matches the project's existing accent colour used elsewhere in the
+    // UI, and reads as clearly distinct from the pink/magenta knife flames and the dragon
+    // overlay's warm flash, so a ring hit never looks like a re-run of the center hit.
+    private static readonly Color VignetteColor = new Color(0.35f, 0.82f, 1f, 1f);
+
+    public static void Show()
+    {
+        GameObject host = new GameObject("Bullseye Ring Hit Feedback");
+        host.AddComponent<BullseyeRingHitFeedback>().Begin();
+    }
+
+    private void Begin()
+    {
+        Canvas canvas = gameObject.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 31900; // just under BullseyeScreenFeedback's 32000
+        CanvasGroup group = gameObject.AddComponent<CanvasGroup>();
+        Image vignette = CreateImage("Vignette", CreateVignetteTexture(), VignetteColor);
+        StartCoroutine(Pulse(group, vignette));
+    }
+
+    private Image CreateImage(string imageName, Texture2D texture, Color color)
+    {
+        GameObject imageObject = new GameObject(imageName, typeof(RectTransform), typeof(Image));
+        imageObject.transform.SetParent(transform, false);
+        Image image = imageObject.GetComponent<Image>();
+        image.sprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height),
+            new Vector2(0.5f, 0.5f));
+        image.type = Image.Type.Simple;
+        image.color = color;
+        image.raycastTarget = false;
+        RectTransform rect = image.rectTransform;
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = rect.offsetMax = Vector2.zero;
+        return image;
+    }
+
+    private IEnumerator Pulse(CanvasGroup group, Image vignette)
+    {
+        // A quick punch-in followed by a gentle fade - deliberately much snappier than the
+        // dragon overlay's 1s hold, so it reads as "confirmed, lesser hit" rather than a
+        // weaker copy of the center-hit payoff.
+        const float duration = 0.45f;
+        const float attackFraction = 0.15f;
+        float startedAt = Time.unscaledTime;
+        while (Time.unscaledTime - startedAt < duration)
+        {
+            float progress = (Time.unscaledTime - startedAt) / duration;
+            float envelope = progress < attackFraction
+                ? progress / attackFraction
+                : 1f - Mathf.SmoothStep(0f, 1f, (progress - attackFraction) / (1f - attackFraction));
+            group.alpha = envelope;
+            yield return null;
+        }
+        Destroy(gameObject);
+    }
+
+    private static Texture2D CreateVignetteTexture()
+    {
+        const int size = 128;
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            name = "Bullseye Ring Hit Vignette",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        Vector2 center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
+        float maxDistance = center.magnitude;
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            float normalizedDistance = Vector2.Distance(new Vector2(x, y), center) / maxDistance;
+            // Transparent through the middle so gameplay stays readable, ramping up to a
+            // soft coloured frame at the screen edges.
+            float alpha = Mathf.Clamp01((normalizedDistance - 0.42f) / 0.58f);
+            alpha *= alpha;
+            texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+        }
+        texture.Apply(false, true);
+        return texture;
     }
 }

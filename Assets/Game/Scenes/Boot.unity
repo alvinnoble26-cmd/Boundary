@@ -529,6 +529,8 @@ MonoBehaviour:
   voidLoop: {fileID: 8300000, guid: 3dcd44873bfc8e7458fcdbbe5e1c1d5b, type: 3}
   voidSlash: {fileID: 8300000, guid: 74a6f494eaf259243b4fbffba9cba9f6, type: 3}
   voidEnd: {fileID: 8300000, guid: a1bbc999ff2d55d4eb374d8dd622a961, type: 3}
+  baseCast: {fileID: 8300000, guid: 20bc9548174b672f5b4299da24b6de5b, type: 3}
+  baseDissolve: {fileID: 8300000, guid: 809f64af39f70c09669a9772a0d4d3c0, type: 3}
 --- !u!1 &960290029
 GameObject:
   m_ObjectHideFlags: 0

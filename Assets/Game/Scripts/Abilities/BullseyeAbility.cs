@@ -31,14 +31,23 @@ internal sealed class AbilityRuntimeMaterialOwner : MonoBehaviour
 public sealed class BullseyeAbility : MonoBehaviour, IAbility
 {
     public const float CooldownSeconds = 2f;
-    public const float ProjectileSpeed = 285f;
+    public const float ProjectileSpeed = 570f;
     public const float ProjectileRadius = 0.08f;
     public const float MaximumLifetime = 30f;
-    public const float CenterRadius = 0.60f;
-    public const float RingRadius = 3f;
+    // Normalized against TargetRadius below (1.0 = exactly the edge of the ring drawn on
+    // screen by BullseyeTargetPresentation). Previously this was normalized against
+    // whichever collider the knife's raycast happened to connect with (a body capsule, a
+    // head sphere, or a shorter capsule - three different sizes/centers on the same
+    // player), which almost never matched where the ring was actually drawn, making the
+    // ability read as much harder to hit than the reticle suggested.
+    public const float CenterRadius = 0.30f;
+    public const float RingRadius = 1f;
     public const float CenterDamage = 12f;
     public const float RingDamage = 7f;
     public const float TargetCenterHeight = 0.8f;
+    // The real-world radius (in metres) that CenterRadius/RingRadius above are normalized
+    // against - kept identical to the ring's own drawn radius so the reticle is WYSIWYG.
+    public const float TargetRadius = BullseyeTargetPresentation.OuterRingRadius;
 
     public AbilityId Id => AbilityId.Bullseye;
     public float CooldownDuration => CooldownSeconds;
@@ -174,14 +183,28 @@ public sealed class BullseyeAbility : MonoBehaviour, IAbility
         return 0f;
     }
 
-    public static float NormalizedTargetOffset(Vector3 hitPoint, Bounds targetBounds, Vector3 shotDirection)
+    public static bool IsCenterHit(float normalizedOffset) => normalizedOffset <= CenterRadius;
+
+    public static Vector3 TargetCenter(Vector3 playerPosition)
+    {
+        return playerPosition + Vector3.up * PlayerMovement.ScaleDistance(TargetCenterHeight);
+    }
+
+    /// <summary>
+    /// Distance of the hit point from a fixed target centre (perpendicular to the shot),
+    /// normalized against TargetRadius. Deliberately takes a caller-supplied centre/radius
+    /// instead of the struck collider's own bounds - the player has several overlapping
+    /// colliders (body capsule, head sphere, a second shorter capsule) with different sizes
+    /// and centres, and scoring against whichever one the raycast happened to hit made the
+    /// result depend on hit collider rather than on how close the shot was to the target
+    /// the player actually sees on screen.
+    /// </summary>
+    public static float NormalizedTargetOffset(Vector3 hitPoint, Vector3 targetCenter, float targetRadius, Vector3 shotDirection)
     {
         Vector3 direction = shotDirection.sqrMagnitude > 0.0001f
             ? shotDirection.normalized : Vector3.forward;
-        Vector3 offset = hitPoint - targetBounds.center;
+        Vector3 offset = hitPoint - targetCenter;
         Vector3 radialOffset = offset - Vector3.Project(offset, direction);
-        float targetRadius = Mathf.Max(0.01f,
-            Mathf.Max(targetBounds.extents.x, targetBounds.extents.y));
-        return radialOffset.magnitude / targetRadius;
+        return radialOffset.magnitude / Mathf.Max(0.01f, targetRadius);
     }
 }

@@ -56,37 +56,66 @@ public class ControlLayoutEditorUI : MonoBehaviour
         topBar.anchorMax = new Vector2(1f, 1f);
         topBar.pivot = new Vector2(0.5f, 1f);
         topBar.anchoredPosition = Vector2.zero;
-        topBar.sizeDelta = new Vector2(0f, 242f);
 
-        CreateButton(topBar, "Cancel", new Vector2(0f, 1f), new Vector2(90f, -52f), new Vector2(150f, 58f), new Color(0.08f, 0.16f, 0.28f, 1f), Cancel);
-        CreateButton(topBar, "Save", new Vector2(1f, 1f), new Vector2(-90f, -52f), new Vector2(150f, 58f), AccentBlue, Save);
-        CreateButton(topBar, "Reset", new Vector2(1f, 1f), new Vector2(-90f, -116f), new Vector2(150f, 45f), new Color(0.08f, 0.16f, 0.28f, 1f), ResetToDefaults);
+        // Every offset below is derived from the panel's actual width and from a running
+        // vertical cursor instead of hard-coded pixel positions. The old fixed offsets left
+        // as little as 7px between a header and the slider under it (and let the centered
+        // slider/value column reach past the Cancel/Save/Reset buttons on narrower screens),
+        // which is what read as "CAMERA SENSITIVITY" and "FIELD OF VIEW" overlapping their
+        // sliders and values in-game. Deriving everything from canvasWidth and a cursor keeps
+        // a guaranteed gap regardless of screen size.
+        float canvasWidth = ((RectTransform)canvas.transform).rect.width;
+        if (canvasWidth < 100f) canvasWidth = 1920f;
+        const float buttonWidth = 140f;
+        const float buttonZone = buttonWidth + 40f;
+        float availableHalfWidth = Mathf.Max(150f, canvasWidth * 0.5f - buttonZone - 24f);
+        const float valueWidth = 90f, valueGap = 26f;
+        float desiredReach = 470f * 0.5f + valueGap + valueWidth;
+        float reach = Mathf.Min(desiredReach, availableHalfWidth);
+        float sliderWidth = Mathf.Clamp((reach - valueGap - valueWidth) * 2f, 220f, 470f);
+        float valueOffsetX = sliderWidth * 0.5f + valueGap;
+        float labelWidth = Mathf.Clamp(sliderWidth + 60f, 300f, 420f);
+        float hintWidth = Mathf.Clamp(canvasWidth * 0.8f, 380f, 620f);
 
+        CreateButton(topBar, "Cancel", new Vector2(0f, 1f), new Vector2(90f, -52f), new Vector2(buttonWidth, 58f), new Color(0.08f, 0.16f, 0.28f, 1f), Cancel);
+        CreateButton(topBar, "Save", new Vector2(1f, 1f), new Vector2(-90f, -52f), new Vector2(buttonWidth, 58f), AccentBlue, Save);
+        CreateButton(topBar, "Reset", new Vector2(1f, 1f), new Vector2(-90f, -122f), new Vector2(buttonWidth, 45f), new Color(0.08f, 0.16f, 0.28f, 1f), ResetToDefaults);
+
+        float cursor = -16f;
+        const float rowGap = 22f;
+
+        float title1Y = cursor - 15f; cursor -= 30f + rowGap;
         CreateText(topBar, "CAMERA SENSITIVITY", 20, TextAnchor.MiddleCenter, Color.white,
-            new Vector2(0.5f, 1f), new Vector2(0f, -20f), new Vector2(420f, 28f));
+            new Vector2(0.5f, 1f), new Vector2(0f, title1Y), new Vector2(labelWidth, 30f));
 
-        sensitivitySlider = CreateSlider(topBar, "SensitivitySlider", new Vector2(0f, -61f));
+        float slider1Y = cursor - 23f; cursor -= 46f + rowGap;
+        sensitivitySlider = CreateSlider(topBar, "SensitivitySlider", new Vector2(0f, slider1Y), sliderWidth);
         sensitivitySlider.minValue = ControlLayoutSettings.MinimumCameraSensitivity;
         sensitivitySlider.maxValue = ControlLayoutSettings.MaximumCameraSensitivity;
         sensitivitySlider.wholeNumbers = false;
         sensitivitySlider.onValueChanged.AddListener(UpdateSensitivityLabel);
         sensitivityValue = CreateText(topBar, string.Empty, 22, TextAnchor.MiddleLeft, Color.white,
-            new Vector2(0.5f, 1f), new Vector2(282f, -61f), new Vector2(90f, 34f));
+            new Vector2(0.5f, 1f), new Vector2(valueOffsetX, slider1Y), new Vector2(valueWidth, 34f));
 
+        float title2Y = cursor - 15f; cursor -= 30f + rowGap;
         CreateText(topBar, "FIELD OF VIEW", 20, TextAnchor.MiddleCenter, Color.white,
-            new Vector2(0.5f, 1f), new Vector2(0f, -105f), new Vector2(420f, 28f));
+            new Vector2(0.5f, 1f), new Vector2(0f, title2Y), new Vector2(labelWidth, 30f));
 
-        fieldOfViewSlider = CreateSlider(topBar, "FieldOfViewSlider", new Vector2(0f, -146f));
+        float slider2Y = cursor - 23f; cursor -= 46f + rowGap;
+        fieldOfViewSlider = CreateSlider(topBar, "FieldOfViewSlider", new Vector2(0f, slider2Y), sliderWidth);
         fieldOfViewSlider.minValue = ControlLayoutSettings.MinimumCameraFieldOfView;
         fieldOfViewSlider.maxValue = ControlLayoutSettings.MaximumCameraFieldOfView;
         fieldOfViewSlider.wholeNumbers = true;
         fieldOfViewSlider.onValueChanged.AddListener(UpdateFieldOfViewLabel);
         fieldOfViewValue = CreateText(topBar, string.Empty, 22, TextAnchor.MiddleLeft, Color.white,
-            new Vector2(0.5f, 1f), new Vector2(282f, -146f), new Vector2(90f, 34f));
+            new Vector2(0.5f, 1f), new Vector2(valueOffsetX, slider2Y), new Vector2(valueWidth, 34f));
 
+        float hintY = cursor - 15f; cursor -= 30f + rowGap;
         CreateText(topBar, "Drag controls to move them. The centered crosshair is size-only.", 18,
             TextAnchor.MiddleCenter, new Color(0.68f, 0.84f, 1f, 1f),
-            new Vector2(0.5f, 1f), new Vector2(0f, -215f), new Vector2(620f, 28f));
+            new Vector2(0.5f, 1f), new Vector2(0f, hintY), new Vector2(hintWidth, 28f));
+
+        topBar.sizeDelta = new Vector2(0f, Mathf.Max(242f, -cursor + 20f));
 
         CreateControlWidget("Move", 175f, new Color(0.20f, 0.55f, 0.86f, 0.88f));
         CreateControlWidget("Jump", 250f, new Color(0.92f, 0.45f, 0.20f, 0.88f));
@@ -369,7 +398,7 @@ public class ControlLayoutEditorUI : MonoBehaviour
         return uiText;
     }
 
-    private static Slider CreateSlider(Transform parent, string name, Vector2 position)
+    private static Slider CreateSlider(Transform parent, string name, Vector2 position, float width = 470f)
     {
         var root = new GameObject(name, typeof(RectTransform), typeof(Slider));
         root.layer = 5;
@@ -379,12 +408,12 @@ public class ControlLayoutEditorUI : MonoBehaviour
         rootRect.anchorMax = new Vector2(0.5f, 1f);
         rootRect.pivot = new Vector2(0.5f, 0.5f);
         rootRect.anchoredPosition = position;
-        rootRect.sizeDelta = new Vector2(470f, 40f);
+        rootRect.sizeDelta = new Vector2(width, 40f);
 
         UITheme theme = UITheme.Current;
         Image background = CreateImage(root.transform, "Background", theme != null ? theme.raisedPanel : new Color(0.012f, 0.03f, 0.075f, 1f));
         background.rectTransform.anchorMin = background.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-        background.rectTransform.sizeDelta = new Vector2(470f, 8f);
+        background.rectTransform.sizeDelta = new Vector2(width, 8f);
 
         Image fill = CreateImage(root.transform, "Fill", theme != null ? theme.accent : AccentBlue);
         RectTransform fillRect = fill.rectTransform;

@@ -15,6 +15,7 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
     public const float EyeHeight = 1.1f;
     public const float TargetCenterHeight = 0.8f;
     public const float ChargePresentationVerticalOffset = -0.35f;
+    public const float RecoilJumpForceMultiplier = 1.5f;
 
     private const float VisualPortalRadius = 2.35f;
     private const float VisualPortalSpacing = 12f;
@@ -64,6 +65,12 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
     {
         return GetBlastOrigin(playerPosition, direction) +
             Vector3.up * PlayerMovement.ScaleDistance(ChargePresentationVerticalOffset);
+    }
+
+    public static Vector3 GetRecoilImpulse(Vector3 blastDirection, float jumpForce)
+    {
+        Vector3 direction = ResolveAimDirection(blastDirection, Vector3.forward);
+        return -direction * Mathf.Max(0f, jumpForce) * RecoilJumpForceMultiplier;
     }
 
     public static bool IsPointInsideBlast(Vector3 point, Vector3 origin, Vector3 direction)
@@ -147,7 +154,6 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
         ParticleSystem particles = CreateChargeParticles(charge, softPurpleMaterial);
         ParticleSystem sparks = CreateSparkParticles(charge, softWhiteMaterial, "Hollow Charge Sparks", 1.15f, true);
         Light chargeLight = CreateLight(charge, new Color(1f, 0.72f, 1f), 10f, 10f);
-        SpawnCasterMagicCircle(root.transform);
         PlayClip(chargeClip, transform.position, 0.7f);
 
         float chargeStartedAt = Time.time - Mathf.Min(elapsedAtStart, ChargeDuration);
@@ -176,6 +182,7 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
         direction = ResolveAimDirection(presentationDirection, direction);
 
         Vector3 origin = GetBlastOrigin(transform.position, direction);
+        SpawnCasterMagicCircle(root.transform);
         PlayClip(blastClip, origin, 0.85f);
         if (showCrispBlastEffect)
             SpawnCrispBurst(root.transform, origin, direction);

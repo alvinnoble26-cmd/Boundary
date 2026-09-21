@@ -100,6 +100,15 @@ public sealed class BoundaryCpuTests
     }
 
     [Test]
+    public void CpuUsesBaseForRecoveryAndMissingFloorButNotOnSafeGround()
+    {
+        Assert.IsTrue(BoundaryCpuRules.ShouldUseBase(true, true, true));
+        Assert.IsTrue(BoundaryCpuRules.ShouldUseBase(false, false, true));
+        Assert.IsTrue(BoundaryCpuRules.ShouldUseBase(false, true, false));
+        Assert.IsFalse(BoundaryCpuRules.ShouldUseBase(false, true, true));
+    }
+
+    [Test]
     public void CpuMarkerAloneDoesNotGrantAuthorityWithoutServer()
     {
         GameObject player = new GameObject("CPU authority test");

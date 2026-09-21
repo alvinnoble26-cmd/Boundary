@@ -7,20 +7,59 @@ public sealed class BullseyeAbilityTests
     public void UsesRequestedCooldownAndDamageBands()
     {
         Assert.That(BullseyeAbility.CooldownSeconds, Is.EqualTo(2f));
+        // Bands are normalized against BullseyeAbility.TargetRadius (the ring's own drawn
+        // radius) as of the fix that made hit detection match the on-screen reticle -
+        // CenterRadius=0.30, RingRadius=1.0 (previously 0.60/3.0 when this was normalized
+        // against whichever collider the shot happened to hit instead of a fixed target).
         Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(0f), Is.EqualTo(12f));
-        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(0.6f), Is.EqualTo(12f));
-        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(0.61f), Is.EqualTo(7f));
-        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(3f), Is.EqualTo(7f));
-        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(3.01f), Is.Zero);
+        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(0.30f), Is.EqualTo(12f));
+        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(0.31f), Is.EqualTo(7f));
+        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(1f), Is.EqualTo(7f));
+        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(1.01f), Is.Zero);
     }
 
     [Test]
-    public void TargetOffsetNormalizesAgainstColliderBounds()
+    public void TargetOffsetNormalizesAgainstFixedTargetRadius()
     {
-        Bounds bounds = new Bounds(Vector3.zero, new Vector3(2f, 4f, 2f));
+        // NormalizedTargetOffset now scores against a caller-supplied centre/radius (the
+        // ring's own centre and drawn radius) instead of the struck collider's bounds, so
+        // the result depends on the shot alone, not on which of the player's several
+        // overlapping colliders happened to be hit.
+        Vector3 targetCenter = Vector3.zero;
+        const float targetRadius = 2f;
         Assert.That(BullseyeAbility.NormalizedTargetOffset(
-                new Vector3(0f, 1f, -1f), bounds, Vector3.forward),
+                new Vector3(0f, 1f, -1f), targetCenter, targetRadius, Vector3.forward),
             Is.EqualTo(0.5f).Within(0.001f));
+    }
+
+    [Test]
+    public void TargetCenterTracksScaledPlayerGeometry()
+    {
+        Vector3 playerPosition = new Vector3(2f, 3f, 4f);
+        Assert.That(BullseyeAbility.TargetCenter(playerPosition), Is.EqualTo(
+            playerPosition + Vector3.up *
+            PlayerMovement.ScaleDistance(BullseyeAbility.TargetCenterHeight)));
+    }
+
+    [Test]
+    public void ReticleCancelsPlayerRootScaleSoWorldRadiusMatchesHitRadius()
+    {
+        float localCompensation = BullseyeTargetPresentation.SafeReciprocal(
+            PlayerMovement.CharacterScale);
+        float renderedWorldRadius = BullseyeTargetPresentation.OuterRingRadius *
+            localCompensation * PlayerMovement.CharacterScale;
+        Assert.That(renderedWorldRadius, Is.EqualTo(BullseyeAbility.TargetRadius).Within(0.001f));
+    }
+
+    [Test]
+    public void InnerRingMatchesCenterDamageBoundary()
+    {
+        Assert.That(BullseyeTargetPresentation.InnerRingRadius,
+            Is.EqualTo(BullseyeAbility.TargetRadius * BullseyeAbility.CenterRadius)
+                .Within(0.001f));
+        Assert.That(BullseyeAbility.DamageForNormalizedTargetOffset(
+            BullseyeTargetPresentation.InnerRingRadius / BullseyeAbility.TargetRadius),
+            Is.EqualTo(BullseyeAbility.CenterDamage));
     }
 
     [Test]

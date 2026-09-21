@@ -20,6 +20,21 @@ public static class MenuUIStyler
     private const string ThemePath = ResourcesRoot + "/UITheme.asset";
     private const string ExistingFontPath = "Assets/Items/Models & Prefabs/GameElements/Button/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF.asset";
 
+    [MenuItem("Entropy Zero/UI/Apply Complete Redesign")]
+    public static void ApplyCompleteRedesign()
+    {
+        ApplySharedFoundation();
+        ApplyCorePanels();
+        ApplyExtendedPanels();
+        ApplyLobbyAndResults();
+    }
+
+    public static void BatchApplyCompleteRedesign()
+    {
+        ApplyCompleteRedesign();
+        EditorApplication.Exit(0);
+    }
+
     [MenuItem("Entropy Zero/UI/Build Style Kit")]
     public static void BuildStyleKit()
     {
@@ -92,6 +107,12 @@ public static class MenuUIStyler
         {
             Transform root = canvas.transform.Find(rootName);
             if (root != null) EnsureSafeArea(root);
+        }
+        foreach (Button button in canvas.GetComponentsInChildren<Button>(true))
+        {
+            RectTransform rect = button.transform as RectTransform;
+            if (rect != null && rect.sizeDelta.y > 0f && rect.sizeDelta.y < theme.minimumTouchHeight)
+                rect.sizeDelta = new Vector2(rect.sizeDelta.x, theme.minimumTouchHeight);
         }
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
@@ -493,11 +514,6 @@ public static class MenuUIStyler
         if (oldDecoration != null)
             UnityEngine.Object.DestroyImmediate(oldDecoration.gameObject);
         Transform decoration = panel.Find("SpaceBackground");
-        if (decoration != null)
-        {
-            UnityEngine.Object.DestroyImmediate(decoration.gameObject);
-            decoration = null;
-        }
         if (decoration == null)
         {
             GameObject root = NewUiObject("SpaceBackground", typeof(SpaceBackground));
@@ -535,6 +551,21 @@ public static class MenuUIStyler
             glow.color = new Color(theme.accent.r, theme.accent.g, theme.accent.b, 0.32f);
             glow.raycastTarget = false;
             root.GetComponent<SpaceBackground>().Configure((RectTransform)stars.transform, horizonRect, glow);
+        }
+        else
+        {
+            Transform stars = decoration.Find("StarField");
+            Transform horizon = decoration.Find("HorizonGlow");
+            Image glow = horizon != null ? horizon.GetComponent<Image>() : null;
+            if (glow != null)
+            {
+                glow.sprite = theme.spaceHorizon;
+                glow.type = Image.Type.Simple;
+                glow.color = new Color(theme.accent.r, theme.accent.g, theme.accent.b, 0.32f);
+            }
+            SpaceBackground space = decoration.GetComponent<SpaceBackground>();
+            if (space != null && stars != null && horizon != null && glow != null)
+                space.Configure((RectTransform)stars, (RectTransform)horizon, glow);
         }
     }
 

@@ -391,12 +391,16 @@ internal sealed class BoundaryWorldHealthBar : MonoBehaviour
         if (canvas == null || playerState == null)
             return;
 
-        bool visible = !playerState.isOwner && playerState.CurrentHealth > 0f;
+        // Host-created CPU objects briefly inherit local ownership before it is removed.
+        // CPU identity wins over that transient state; normal multiplayer still hides only
+        // the local player's own world bar and shows the replicated remote player's bar.
+        bool visible = (playerState.IsCpu || !playerState.isOwner) &&
+            playerState.CurrentHealth > 0f;
         canvas.enabled = visible;
         if (!visible)
             return;
 
-        fill.fillAmount = playerState.Health01;
+        SetFillWidth(fill.rectTransform, playerState.Health01);
         Camera targetCamera = Camera.main;
         if (targetCamera != null)
             canvas.transform.rotation = Quaternion.LookRotation(canvas.transform.position - targetCamera.transform.position);
@@ -421,10 +425,11 @@ internal sealed class BoundaryWorldHealthBar : MonoBehaviour
         Image background = CreateImage(root.transform, "Background", new Color(0.25f, 0.25f, 0.25f, 0.95f));
         Stretch(background.rectTransform);
         fill = CreateImage(background.transform, "Health", Color.white);
-        fill.type = Image.Type.Filled;
-        fill.fillMethod = Image.FillMethod.Horizontal;
-        fill.fillOrigin = 0;
+        // Runtime Images have no source sprite. Driving RectTransform width is reliable on
+        // every client, whereas Image.fillAmount can remain visually full without a sprite.
+        fill.type = Image.Type.Simple;
         Stretch(fill.rectTransform, 2f);
+        SetFillWidth(fill.rectTransform, playerState != null ? playerState.Health01 : 1f);
     }
 
     private static Image CreateImage(Transform parent, string name, Color color)
@@ -444,5 +449,16 @@ internal sealed class BoundaryWorldHealthBar : MonoBehaviour
         rect.anchorMax = Vector2.one;
         rect.offsetMin = Vector2.one * inset;
         rect.offsetMax = Vector2.one * -inset;
+    }
+
+    internal static void SetFillWidth(RectTransform rect, float health01)
+    {
+        if (rect == null)
+            return;
+
+        Vector2 anchorMax = rect.anchorMax;
+        anchorMax.x = Mathf.Clamp01(health01);
+        rect.anchorMax = anchorMax;
+        rect.offsetMax = new Vector2(-2f, rect.offsetMax.y);
     }
 }

@@ -11,14 +11,10 @@ public class BlackHoleKill : MonoBehaviour
     // The visual weight is capped below, so this richer darkening never becomes
     // a full-screen blackout when a player is close to the singularity.
     public const float DarknessExposureStops = -3.3f;
-    [Header("Owner Immunity")]
-    [SerializeField] private float ownerImmunitySeconds = 0.75f;
-
     [Header("Lifetime")]
     [SerializeField] private float lifetimeSeconds = 5f;
 
     private PlayerMovement ownerPm;
-    private float armedTime;
     private float destroyTime;
     private Material blackHoleVfxMaterial;
     private Material eventHorizonMaterial;
@@ -41,14 +37,12 @@ public class BlackHoleKill : MonoBehaviour
 
     /// <summary>
     /// Call this right after spawning the black hole.
-    /// This resets immunity and lifetime every time.
+    /// This resets ownership and lifetime every time.
     /// </summary>
-    public void Init(PlayerMovement owner, float immunitySeconds = 0.75f)
+    public void Init(PlayerMovement owner)
     {
         ownerPm = owner;
-        ownerImmunitySeconds = immunitySeconds;
 
-        armedTime = Time.time;
         destroyTime = Time.time + lifetimeSeconds;
 
         Debug.Log("[BlackHoleKill] Init owner=" + (ownerPm != null ? ownerPm.name : "NULL"));
@@ -59,9 +53,6 @@ public class BlackHoleKill : MonoBehaviour
         // Every client receives the same networked projectile, making its spawn
         // sound universal without changing the multiplayer RPC layout.
         SfxManager.PlayBlackHoleThrow(transform.position);
-
-        if (armedTime <= 0f)
-            armedTime = Time.time;
 
         if (destroyTime <= 0f)
             destroyTime = Time.time + lifetimeSeconds;
@@ -93,8 +84,7 @@ public class BlackHoleKill : MonoBehaviour
     private void RegisterServerContact(Collider other)
     {
         NetworkManager net = NetworkManager.main;
-        if (net == null || !net.isServer || other == null ||
-            Time.time - armedTime < ownerImmunitySeconds)
+        if (net == null || !net.isServer || other == null)
             return;
 
         BoundaryPlayerState state = other.GetComponentInParent<BoundaryPlayerState>();

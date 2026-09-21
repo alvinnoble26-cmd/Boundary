@@ -43,6 +43,7 @@ public class LoadoutManager : MonoBehaviour
             EnsureBullseyeSelector();
             EnsureChargeSelector();
             EnsureSliceSelector();
+            EnsureBaseSelector();
             DisableSlideSelector();
             EnsureAbilityInformationUI();
         }
@@ -59,6 +60,7 @@ public class LoadoutManager : MonoBehaviour
         EnsureBullseyeSelector();
         EnsureChargeSelector();
         EnsureSliceSelector();
+        EnsureBaseSelector();
         DisableSlideSelector();
         EnsureAbilityInformationUI();
     }
@@ -251,6 +253,34 @@ public class LoadoutManager : MonoBehaviour
     private void EnsureSliceAbilityButtonInEditor()
     {
         EnsureSliceSelector();
+    }
+
+    public static AbilitiesSelectUI EnsureBaseSelector()
+    {
+        AbilitiesSelectUI[] selectors = FindObjectsByType<AbilitiesSelectUI>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (AbilitiesSelectUI selector in selectors)
+            if (selector.AbilityId == AbilityId.Base)
+                return selector;
+        AbilitiesSelectUI template = EnsureSliceSelector();
+        if (template == null) return null;
+        AbilitiesSelectUI baseSelector = Instantiate(template, template.transform.parent);
+        baseSelector.gameObject.name = "Base";
+        RectTransform rect = baseSelector.transform as RectTransform;
+        RectTransform templateRect = template.transform as RectTransform;
+        if (rect != null && templateRect != null)
+            rect.anchoredPosition = templateRect.anchoredPosition + new Vector2(0f, 46f);
+        baseSelector.transform.SetAsLastSibling();
+        // Display name is "BASE"; EZLayouts' grid re-flows every ability card by discovery,
+        // so the anchored position above only matters before that first layout pass runs.
+        baseSelector.Configure(AbilityId.Base, "Base");
+        return baseSelector;
+    }
+
+    [ContextMenu("Ensure Base Ability Button")]
+    private void EnsureBaseAbilityButtonInEditor()
+    {
+        EnsureBaseSelector();
     }
 
     private static void DisableSlideSelector()

@@ -16,6 +16,24 @@ public sealed class HollowAbilityTests
     }
 
     [Test]
+    public void RecoilIsOppositeBlastAtOneAndAHalfTimesJumpForce()
+    {
+        Vector3 recoil = HollowAbility.GetRecoilImpulse(new Vector3(3f, 0f, 4f), 14f);
+
+        Assert.AreEqual(-12.6f, recoil.x, 0.001f);
+        Assert.AreEqual(0f, recoil.y, 0.001f);
+        Assert.AreEqual(-16.8f, recoil.z, 0.001f);
+        Assert.AreEqual(21f, recoil.magnitude, 0.001f);
+    }
+
+    [Test]
+    public void RecoilCannotBecomeForwardForceFromNegativeJumpForce()
+    {
+        Assert.AreEqual(Vector3.zero,
+            HollowAbility.GetRecoilImpulse(Vector3.forward, -1f));
+    }
+
+    [Test]
     public void BlastUsesTheLatestValidAimAfterCharging()
     {
         Assert.AreEqual(Vector3.right,

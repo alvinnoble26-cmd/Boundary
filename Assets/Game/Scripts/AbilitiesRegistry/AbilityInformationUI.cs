@@ -14,15 +14,16 @@ public sealed class AbilityInformationUI : MonoBehaviour
         "<b>TELEPORT</b>  •  4s cooldown\nAim where you want to go, then activate. After a 0.5s wind-up, you teleport to a valid open destination. A failed destination still uses the cooldown.",
         // Slide is currently disabled and intentionally omitted from the guide.
         "<b>DASH</b>  •  2.5s cooldown\nUse on the ground or in the air. Dash immediately in your movement/aim direction for a short burst while preserving useful sideways momentum.",
-        "<b>BLACK HOLE</b>  •  3.5s cooldown\nThrow a five-second black hole along your aim. It damages players after brief owner immunity and can consume movable arena cubes. Each loadout spawn carries five throws.",
+        "<b>BLACK HOLE</b>  •  3.5s cooldown\nThrow a five-second black hole along your aim. It damages players immediately on contact and can consume movable arena cubes. Each loadout spawn carries five throws.",
         "<b>ATTRACT</b>  •  3s cooldown\nThrow a gravity field along your aim. It pulls players, hazards, and movable objects toward its center; lighter and closer objects move the most.",
         "<b>REPEL</b>  •  3s cooldown\nThrow a force field along your aim. It pushes players, hazards, and movable objects away from its center; lighter and closer objects move the most.",
         "<b>GRAPPLE</b>  •  3s cooldown\nAim at a valid surface or movable target within 50m. Surfaces pull you in; movable targets are pulled toward you. Jump to release while keeping your momentum.",
         "<b>HOLLOW</b>  •  5s cooldown\nAim and fire a widening 70m void blast after a 0.75s charge. The blast lasts 2s and deals continuous damage to opponents caught inside it.",
         "<b>VOID</b>  •  45s cooldown\nAvailable when your health is higher than your opponent's (always available in Practice). For 15s you become immune and faster while the opponent slows and is pulled strongly toward the domain black hole. Only you see the enemy highlighted with a bright cyan glow.",
         "<b>BULLSEYE</b>  •  2s cooldown\nHold to mark your opponent, aim with the crosshair, then release to throw a very fast knife with unlimited reach. Hit the center for 12 damage or the surrounding ring for 7 damage; hits outside the ring deal no damage.",
-        "<b>CHARGE</b>  •  7s cooldown\nHold the electrified Frost Sword, aim, then release. A blue magic ball charges for 1s and travels for 2s before exploding in a 10m radius for 5 damage. Two seconds later it destabilizes for a second 7-damage tick. Both players, including the caster, can be damaged.",
-        "<b>SLICE</b>  •  1s cooldown\nHold the black Electricity Sword at a 30-degree angle, aim, then release to sweep a purple-blue 120° slash across a 10m radius. Enemies caught in the forward arc take 7 damage."
+        "<b>CHARGE</b>  •  7s cooldown\nHold the electrified Frost Sword, aim, then release. A blue magic ball charges for 1s and travels for 2s before exploding in a 15m radius for 5 damage. Two seconds later it destabilizes for a second 7-damage tick. Both players, including the caster, can be damaged.",
+        "<b>SLICE</b>  •  1s cooldown\nHold the black Electricity Sword at a 30-degree angle, aim, then release to sweep a purple-blue 120° slash across a 10m radius. Enemies caught in the forward arc take 7 damage.",
+        "<b>BASE</b>  •  4s cooldown per charge (2 charges)\nSummons a wide platform beneath you, marked by a glowing snowflake circle, that you can stand on or jump off of. It lasts 1s before dissolving. You hold two charges and can use them back-to-back; each one starts its own 4s cooldown the moment it's used."
     };
 
     private Button informationButton;
@@ -73,7 +74,26 @@ public sealed class AbilityInformationUI : MonoBehaviour
             existingPanel = null;
         }
         informationPanel = existingPanel != null ? existingPanel.gameObject : CreateInformationPanel(canvas.transform);
+        SyncAbilityDescriptions();
         ApplyInformationStyling();
+    }
+
+    private void SyncAbilityDescriptions()
+    {
+        Transform content = informationPanel?.transform.Find("Ability Guide Viewport/Content");
+        if (content == null)
+            return;
+
+        foreach (string description in AbilityDescriptions)
+        {
+            int titleEnd = description.IndexOf("</b>", System.StringComparison.Ordinal);
+            if (titleEnd < 3)
+                continue;
+            TMP_Text text = content.Find(
+                description.Substring(3, titleEnd - 3) + " Card/Description")?.GetComponent<TMP_Text>();
+            if (text != null)
+                text.text = description;
+        }
     }
 
     public void ShowInformation()

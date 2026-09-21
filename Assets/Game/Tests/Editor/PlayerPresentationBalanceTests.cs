@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine;
 
 public sealed class PlayerPresentationBalanceTests
 {
@@ -17,9 +18,18 @@ public sealed class PlayerPresentationBalanceTests
     }
 
     [Test]
+    public void BlackHoleGrowthDoublesRateAndStopsAtOneAndAHalfTimesOldMaximum()
+    {
+        Assert.AreEqual(Vector3.one * 10f,
+            Grow.ResolveScale(Vector3.one * 2f, 8f, 1f, 31.5f));
+        Assert.AreEqual(Vector3.one * 31.5f,
+            Grow.ResolveScale(Vector3.one * 30f, 8f, 1f, 31.5f));
+    }
+
+    [Test]
     public void RequestedMovementAndKnifeSpeedMultipliersAreApplied()
     {
-        Assert.AreEqual(285f, BullseyeAbility.ProjectileSpeed, 0.001f);
+        Assert.AreEqual(570f, BullseyeAbility.ProjectileSpeed, 0.001f);
         Assert.AreEqual(10.92f, PlayerMovement.DefaultMaxSpeed, 0.001f);
     }
 

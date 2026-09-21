@@ -13,6 +13,35 @@ using UnityEngine.Rendering;
 public sealed class BoundaryMathTests
 {
     [Test]
+    public void WorldHealthBarClampsAndUpdatesItsVisibleWidth()
+    {
+        GameObject root = new GameObject("World health fill", typeof(RectTransform));
+        try
+        {
+            RectTransform rect = root.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+
+            MethodInfo setFillWidth = typeof(BoundaryPlayerState).Assembly
+                .GetType("BoundaryWorldHealthBar")
+                ?.GetMethod("SetFillWidth", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(setFillWidth, Is.Not.Null);
+
+            setFillWidth.Invoke(null, new object[] { rect, 0.37f });
+            Assert.That(rect.anchorMax.x, Is.EqualTo(0.37f).Within(0.001f));
+
+            setFillWidth.Invoke(null, new object[] { rect, -1f });
+            Assert.That(rect.anchorMax.x, Is.Zero);
+            setFillWidth.Invoke(null, new object[] { rect, 2f });
+            Assert.That(rect.anchorMax.x, Is.EqualTo(1f));
+        }
+        finally
+        {
+            Object.DestroyImmediate(root);
+        }
+    }
+
+    [Test]
     public void PlayerAbilities_ReconstructsActivePresentationsForNewObservers()
     {
         MethodInfo observerHook = typeof(PlayerAbilities)
@@ -64,22 +93,22 @@ public sealed class BoundaryMathTests
             Assert.That(informationRect.anchoredPosition.y, Is.EqualTo(backRect.anchoredPosition.y));
             Assert.That(informationRect.anchoredPosition.x, Is.GreaterThan(backRect.anchoredPosition.x));
             Assert.That(button.GetComponent<Image>().enabled, Is.True);
-            Assert.That(button.GetComponent<Image>().color.a, Is.Zero);
+            Assert.That(button.GetComponent<Image>().color.a, Is.GreaterThan(0.9f));
             Assert.That(button.GetComponent<Image>().raycastTarget, Is.True);
             TMP_Text informationText = button.GetComponentInChildren<TMP_Text>(true);
             Assert.That(informationButton.targetGraphic, Is.SameAs(informationText));
             Assert.That(informationText.font, Is.SameAs(backText.font));
-            Assert.That(informationText.fontSize, Is.EqualTo(backText.fontSize));
-            Assert.That(informationText.color, Is.EqualTo(backText.color));
+            Assert.That(informationText.fontSize, Is.GreaterThanOrEqualTo(backText.fontSize));
+            Assert.That(informationText.color.a, Is.GreaterThan(0.9f));
             Assert.That(informationButton.colors.pressedColor, Is.Not.EqualTo(Color.white));
             Assert.That(panel, Is.Not.Null);
-            Assert.That(panel.GetComponent<Image>().color, Is.EqualTo(Color.black));
+            Assert.That(panel.GetComponent<Image>().color.a, Is.GreaterThan(0.9f));
             Assert.That(panel.Find("Header/Back Button")?.GetComponent<Button>(), Is.Not.Null);
             Transform viewport = panel.Find("Ability Guide Viewport");
             Assert.That(viewport?.GetComponent<RectMask2D>(), Is.Not.Null);
             Assert.That(viewport?.GetComponent<Mask>(), Is.Null);
             Assert.That(panel.GetComponentsInChildren<TMP_Text>(true)
-                .Count(text => text.name == "Description"), Is.EqualTo(11));
+                .Count(text => text.name == "Description"), Is.EqualTo(12));
 
             information.ShowInformation();
             Assert.That(panel.gameObject.activeSelf, Is.True);
@@ -160,6 +189,7 @@ public sealed class BoundaryMathTests
         Assert.That((int)AbilityId.Bullseye, Is.EqualTo(9));
         Assert.That((int)AbilityId.Charge, Is.EqualTo(10));
         Assert.That((int)AbilityId.Slice, Is.EqualTo(11));
+        Assert.That((int)AbilityId.Base, Is.EqualTo(12));
     }
 
     [Test]
@@ -302,14 +332,14 @@ public sealed class BoundaryMathTests
     [Test]
     public void ArenaMassPopulation_IncludesRequestedFloorAndFloatingHazards()
     {
-        Assert.That(BoundaryMatchController.GroundArenaMassesPerKind, Is.EqualTo(22));
-        Assert.That(BoundaryMatchController.FloatingArenaMassesPerKind, Is.EqualTo(18));
-        Assert.That(BoundaryMatchController.ArenaMassPopulation, Is.EqualTo(80));
-        Assert.That(BoundaryMatchController.IsArenaBlackHole(21), Is.False);
-        Assert.That(BoundaryMatchController.IsArenaBlackHole(22), Is.True);
-        Assert.That(BoundaryMatchController.IsFloatingArenaMass(43), Is.False);
-        Assert.That(BoundaryMatchController.IsFloatingArenaMass(44), Is.True);
-        Assert.That(BoundaryMatchController.IsArenaBlackHole(62), Is.True);
+        Assert.That(BoundaryMatchController.GroundArenaMassesPerKind, Is.EqualTo(17));
+        Assert.That(BoundaryMatchController.FloatingArenaMassesPerKind, Is.EqualTo(13));
+        Assert.That(BoundaryMatchController.ArenaMassPopulation, Is.EqualTo(60));
+        Assert.That(BoundaryMatchController.IsArenaBlackHole(16), Is.False);
+        Assert.That(BoundaryMatchController.IsArenaBlackHole(17), Is.True);
+        Assert.That(BoundaryMatchController.IsFloatingArenaMass(33), Is.False);
+        Assert.That(BoundaryMatchController.IsFloatingArenaMass(34), Is.True);
+        Assert.That(BoundaryMatchController.IsArenaBlackHole(47), Is.True);
         Assert.That(BoundaryMatchController.PlatformHitsToCollapse, Is.EqualTo(6));
     }
 
@@ -346,9 +376,9 @@ public sealed class BoundaryMathTests
             previous = current;
         }
 
-        Assert.That(previous.r, Is.EqualTo(0.042f).Within(0.001f));
-        Assert.That(previous.g, Is.EqualTo(0.045f).Within(0.001f));
-        Assert.That(previous.b, Is.EqualTo(0.055f).Within(0.001f));
+        Assert.That(previous.r, Is.EqualTo(0.018f).Within(0.001f));
+        Assert.That(previous.g, Is.EqualTo(0.022f).Within(0.001f));
+        Assert.That(previous.b, Is.EqualTo(0.035f).Within(0.001f));
     }
 
     [Test]

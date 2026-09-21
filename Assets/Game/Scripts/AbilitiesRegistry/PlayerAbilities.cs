@@ -22,6 +22,7 @@ public class PlayerAbilities : NetworkBehaviour
         EnsureBullseyeAbility();
         EnsureChargeAbility();
         EnsureSliceAbility();
+        EnsureBaseAbility();
         if (!TryApplyAuthoritativeLoadout(selected)) return false;
         serverHasAuthoritativeLoadout = true;
         ApplySkinVisual("beard");
@@ -33,6 +34,8 @@ public class PlayerAbilities : NetworkBehaviour
         if (!IsLocalCpu || !IsAbilityEquipped(id)) return false;
         switch (id)
         {
+            case AbilityId.Base: return BaseAbility.FindReadyCharge(
+                Time.time, serverBaseChargeCooldownEnds) >= 0;
             case AbilityId.Grapple: return serverGrappleRoutine == null && Time.time >= serverGrappleCooldownUntil;
             case AbilityId.Hollow: return serverHollowRoutine == null && Time.time >= serverHollowCooldownUntil;
             case AbilityId.Void: return serverVoidRoutine == null && Time.time >= serverVoidCooldownUntil;
@@ -55,6 +58,10 @@ public class PlayerAbilities : NetworkBehaviour
         direction.Normalize();
         switch (id)
         {
+            case AbilityId.Base:
+                ServerBase(transform.position, slot,
+                    BaseAbility.FindReadyCharge(Time.time, serverBaseChargeCooldownEnds));
+                break;
             case AbilityId.Bullseye: ServerBullseye(origin, direction, slot); break;
             case AbilityId.Charge: ServerCharge(origin, direction, slot); break;
             case AbilityId.Slice: ServerSlice(direction, slot); break;
@@ -126,6 +133,13 @@ public class PlayerAbilities : NetworkBehaviour
         public float expiresAt;
     }
 
+    private sealed class ServerBasePlatformState
+    {
+        public Vector3 position;
+        public float startedAt;
+        public float expiresAt;
+    }
+
     [Header("Game UI Names")]
     [SerializeField] private string btn1Name = "AbilityButton1";
     [SerializeField] private string btn2Name = "AbilityButton2";
@@ -137,6 +151,7 @@ public class PlayerAbilities : NetworkBehaviour
     [SerializeField] private GameObject bullseyeHitEffectPrefab;
     [SerializeField] private AudioClip bullseyeThrowClip;
     [SerializeField] private Sprite bullseyeDragonOverlay;
+    [SerializeField] private AudioClip bullseyeRingHitClip;
     [Header("Charge Ability Assets")]
     [SerializeField] private GameObject chargeSwordPrefab;
     [SerializeField] private GameObject chargeLightningAuraPrefab;
@@ -164,6 +179,9 @@ public class PlayerAbilities : NetworkBehaviour
     private readonly float[] slotCooldownEnds = new float[3];
     private readonly Dictionary<AbilityId, float> serverAbilityCooldownEnds = new Dictionary<AbilityId, float>();
     private readonly AbilityCooldownButton[] cooldownVisuals = new AbilityCooldownButton[3];
+    private readonly DualChargeCooldownButton[] dualCooldownVisuals = new DualChargeCooldownButton[3];
+    private readonly float[] localBaseChargeCooldownEnds = new float[BaseAbility.ChargeCount];
+    private readonly float[] serverBaseChargeCooldownEnds = new float[BaseAbility.ChargeCount];
     private bool hasStartedSkinLoad;
     private Cam localCameraController;
     private Coroutine serverTeleportWindup;
@@ -175,6 +193,7 @@ public class PlayerAbilities : NetworkBehaviour
     private ChargeBallPresentation chargePresentation;
     private SliceAbility sliceAbility;
     private SlicePresentation slicePresentation;
+    private BaseAbility baseAbility;
     private Coroutine serverGrappleRoutine;
     private Coroutine serverHollowRoutine;
     private Coroutine serverVoidRoutine;
@@ -223,6 +242,11 @@ public class PlayerAbilities : NetworkBehaviour
     private bool serverSlicePresentationHit;
     private readonly List<ServerSliceFractureState> serverSliceFractures =
         new List<ServerSliceFractureState>();
+    private int nextBasePlatformId;
+    private readonly Dictionary<int, ServerBasePlatformState> serverBasePlatforms =
+        new Dictionary<int, ServerBasePlatformState>();
+    private readonly Dictionary<int, GameObject> localBasePlatforms =
+        new Dictionary<int, GameObject>();
 
 
     protected override void OnSpawned()
@@ -309,6 +333,26 @@ protected override void OnObserverAdded(PlayerID player)
             fracture.start, fracture.end, null, false,
             Mathf.Max(0f, now - (fracture.expiresAt - SliceAirFracture.LifetimeSeconds)));
     }
+    List<int> expiredBasePlatforms = null;
+    foreach (KeyValuePair<int, ServerBasePlatformState> pair in serverBasePlatforms)
+    {
+        float remaining = pair.Value.expiresAt - now;
+        if (remaining <= 0f)
+        {
+            if (expiredBasePlatforms == null)
+                expiredBasePlatforms = new List<int>();
+            expiredBasePlatforms.Add(pair.Key);
+            continue;
+        }
+        ReconstructAbilityPresentation(player, AbilityId.Base, pair.Key, 0,
+            pair.Value.position, Vector3.zero, null, false,
+            Mathf.Max(0f, now - pair.Value.startedAt));
+    }
+    if (expiredBasePlatforms != null)
+    {
+        foreach (int platformId in expiredBasePlatforms)
+            serverBasePlatforms.Remove(platformId);
+    }
 }
 
 protected override void OnOwnerChanged(PlayerID? oldOwner, PlayerID? newOwner, bool asServer)
@@ -330,6 +374,7 @@ private void SetupLocalPlayer()
     EnsureBullseyeAbility();
     EnsureChargeAbility();
     EnsureSliceAbility();
+    EnsureBaseAbility();
     localCameraController = GetComponentInChildren<Cam>(true);
 
     // Cam owns the Camera and AudioListener lifecycle. Enabling either one
@@ -426,6 +471,15 @@ private void EnsureSliceAbility()
     SliceSwordFlames.ConfigureVisualAssets(sliceEnergyTexture);
     SliceAirFracture.ConfigureShader(sliceFractureShader);
     registry?.Register(sliceAbility);
+}
+
+private void EnsureBaseAbility()
+{
+    if (baseAbility == null)
+        baseAbility = GetComponent<BaseAbility>();
+    if (baseAbility == null)
+        baseAbility = gameObject.AddComponent<BaseAbility>();
+    registry?.Register(baseAbility);
 }
 
 private async void LoadAndSyncSelectedSkin()
@@ -625,6 +679,7 @@ private static void RemovePreviouslyEquippedSkins(Transform tilt)
         EnsureBullseyeAbility();
         EnsureChargeAbility();
         EnsureSliceAbility();
+        EnsureBaseAbility();
         if (serverHasAuthoritativeLoadout && !MatchesAuthoritativeLoadout(selectedIds))
         {
             Debug.LogWarning("[PlayerAbilities] Rejected an attempt to replace the active match loadout.");
@@ -754,61 +809,77 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
         StartCoroutine(ServerRunBullseye(projectileId, submittedOrigin, direction));
     }
 
+    /// <summary>
+    /// Decides hit/miss and inner-vs-outer-ring the instant the throw is released, from
+    /// where the crosshair (submitted origin/direction) was aimed at that exact moment and
+    /// where the opponent was standing at that exact moment - not from simulating the
+    /// knife's physical flight and seeing what it happens to collide with later. That old
+    /// approach meant a perfectly-aimed throw could still whiff if the target so much as
+    /// stepped during the knife's travel time, or if the raycast happened to clip one of
+    /// the player's several overlapping colliders oddly. Locking the outcome to the release
+    /// moment removes both of those failure modes. The knife you see still visually flies
+    /// (at BullseyeAbility.ProjectileSpeed, toward wherever this resolves to) purely for
+    /// presentation/feel and for the CPU's dodge logic below - it can no longer change the
+    /// outcome once this method returns.
+    /// </summary>
     private IEnumerator ServerRunBullseye(int projectileId, Vector3 origin, Vector3 direction)
     {
-        Vector3 position = origin;
-        float expiresAt = Time.time + BullseyeAbility.MaximumLifetime;
-        RaycastHit[] hits = new RaycastHit[16];
-        while (Time.time < expiresAt)
-        {
-            yield return new WaitForFixedUpdate();
-            float distance = BullseyeAbility.ProjectileSpeed * Time.fixedDeltaTime;
-            int hitCount = Physics.SphereCastNonAlloc(position, BullseyeAbility.ProjectileRadius,
-                direction, hits, distance, ~0, QueryTriggerInteraction.Ignore);
-            RaycastHit? nearest = null;
-            for (int index = 0; index < hitCount; index++)
-            {
-                Collider candidate = hits[index].collider;
-                if (candidate == null || candidate.transform.root == transform.root)
-                    continue;
-                if (!nearest.HasValue || hits[index].distance < nearest.Value.distance)
-                    nearest = hits[index];
-            }
+        float damage = 0f;
+        bool centerHit = false;
+        BoundaryPlayerState target = null;
+        Vector3 endpoint = origin + direction * (BullseyeAbility.ProjectileSpeed * BullseyeAbility.MaximumLifetime);
+        Vector3 endpointNormal = -direction;
 
-            if (nearest.HasValue)
+        BoundaryPlayerState self = GetComponent<BoundaryPlayerState>();
+        if (self != null && BoundaryPlayerState.TryGetOpponent(self, out BoundaryPlayerState opponent) &&
+            opponent != null && opponent.transform.root != transform.root)
+        {
+            Vector3 targetCenter = BullseyeAbility.TargetCenter(opponent.transform.position);
+            float alongRay = Vector3.Dot(targetCenter - origin, direction);
+            if (alongRay > 0f)
             {
-                RaycastHit hit = nearest.Value;
-                BoundaryPlayerState target = hit.collider.GetComponentInParent<BoundaryPlayerState>();
-                float damage = 0f;
-                if (target != null && target.transform.root != transform.root)
+                Vector3 closestPointOnAim = origin + direction * alongRay;
+                float normalizedOffset = BullseyeAbility.NormalizedTargetOffset(
+                    closestPointOnAim, targetCenter, BullseyeAbility.TargetRadius, direction);
+                float candidateDamage = BullseyeAbility.DamageForNormalizedTargetOffset(normalizedOffset);
+                if (candidateDamage > 0f)
                 {
-                    damage = BullseyeAbility.DamageForNormalizedTargetOffset(
-                        BullseyeAbility.NormalizedTargetOffset(hit.point, hit.collider.bounds, direction));
-                    if (damage > 0f && CanReceiveServerAbilityDamage(target))
-                    {
-                        target.ServerApplyAbilityDamage(damage);
-                        PlayerAbilities victimAbilities = target.GetComponent<PlayerAbilities>();
-                        victimAbilities?.ServerNotifyBullseyeVictim();
-                        if (owner.HasValue)
-                            NotifyBullseyeAttacker(owner.Value);
-                        damage = Mathf.Max(damage, 0f);
-                    }
-                    else
-                    {
-                        damage = 0f;
-                    }
+                    damage = candidateDamage;
+                    centerHit = BullseyeAbility.IsCenterHit(normalizedOffset);
+                    target = opponent;
+                    endpoint = targetCenter;
+                    endpointNormal = (origin - targetCenter).normalized;
                 }
-                serverBullseyePresentations.Remove(projectileId);
-                ObserversEndBullseye(projectileId, hit.point, hit.normal, damage > 0f);
-                yield break;
             }
-            position += direction * distance;
+        }
+
+        float travelDistance = Vector3.Distance(origin, endpoint);
+        float travelTime = travelDistance / BullseyeAbility.ProjectileSpeed;
+        float startedAt = Time.time;
+        while (Time.time - startedAt < travelTime)
+        {
+            yield return null;
             if (serverBullseyePresentations.TryGetValue(projectileId,
                     out ServerBullseyePresentationState presentationState))
-                presentationState.position = position;
+            {
+                float progress = travelTime > 0f ? Mathf.Clamp01((Time.time - startedAt) / travelTime) : 1f;
+                presentationState.position = Vector3.Lerp(origin, endpoint, progress);
+            }
         }
+
+        bool applied = false;
+        if (damage > 0f && target != null && CanReceiveServerAbilityDamage(target))
+        {
+            target.ServerApplyAbilityDamage(damage);
+            PlayerAbilities victimAbilities = target.GetComponent<PlayerAbilities>();
+            victimAbilities?.ServerNotifyBullseyeVictim();
+            if (owner.HasValue)
+                NotifyBullseyeAttacker(owner.Value, centerHit);
+            applied = true;
+        }
+
         serverBullseyePresentations.Remove(projectileId);
-        ObserversEndBullseye(projectileId, position, -direction, false);
+        ObserversEndBullseye(projectileId, endpoint, endpointNormal, applied);
     }
 
     [ServerRpc]
@@ -1105,10 +1176,23 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     }
 
     [TargetRpc]
-    private void NotifyBullseyeAttacker(PlayerID target)
+    private void NotifyBullseyeAttacker(PlayerID target, bool centerHit)
     {
-        if (isOwner)
+        if (!isOwner)
+            return;
+        if (centerHit)
+        {
             BullseyeScreenFeedback.Show(bullseyeDragonOverlay);
+        }
+        else
+        {
+            // A ring hit is a real hit, but a lesser one - give it its own, snappier payoff
+            // (a screen-edge vignette pulse + a metallic clang) instead of silently reusing
+            // the center hit's dragon overlay, so it doesn't feel like nothing happened.
+            BullseyeRingHitFeedback.Show();
+            if (bullseyeRingHitClip != null)
+                SfxManager.PlayWorldClip(bullseyeRingHitClip, transform.position, 0.8f);
+        }
     }
 
     [ObserversRpc]
@@ -1241,6 +1325,10 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
         Vector3 direction = serverHollowDirection;
         Vector3 origin = HollowAbility.GetBlastOrigin(transform.position, direction);
         serverHollowBlastOrigin = origin;
+        PlayerMovement movement = GetComponent<PlayerMovement>();
+        BoundaryPlayerState caster = GetComponent<BoundaryPlayerState>();
+        if (movement != null && caster != null)
+            caster.ServerPushOwner(HollowAbility.GetRecoilImpulse(direction, movement.jumpForce));
         BoundaryPlayerState[] targets = FindObjectsByType<BoundaryPlayerState>(FindObjectsSortMode.None);
         float startedAt = Time.time;
         float lastTickAt = startedAt;
@@ -1657,19 +1745,55 @@ private void ActivateAbility(AbilityId id)
             transferTarget = btn.gameObject.AddComponent<AbilityTouchTransferTarget>();
         transferTarget.Configure(null);
 
-        AbilityCooldownButton cooldownVisual = btn.GetComponent<AbilityCooldownButton>();
-        if (cooldownVisual == null)
-            cooldownVisual = btn.gameObject.AddComponent<AbilityCooldownButton>();
-
-        cooldownVisual.Initialize(btn);
-        cooldownVisual.SetReadinessHighlight(false);
-        cooldownVisuals[slotIndex] = cooldownVisual;
-
         var id = slots[slotIndex];
         if (id == null)
         {
             btn.interactable = false;
             return;
+        }
+
+        if (id.Value == AbilityId.Base)
+        {
+            AbilityCooldownButton singleCooldown = btn.GetComponent<AbilityCooldownButton>();
+            if (singleCooldown != null)
+                singleCooldown.enabled = false;
+            SetCooldownChildActive(btn.transform, "CooldownFill", false);
+            SetCooldownChildActive(btn.transform, "ReadinessGlow", false);
+
+            DualChargeCooldownButton dualCooldown = btn.GetComponent<DualChargeCooldownButton>();
+            if (dualCooldown == null)
+                dualCooldown = btn.gameObject.AddComponent<DualChargeCooldownButton>();
+            dualCooldown.enabled = true;
+            dualCooldown.Initialize(btn);
+            SetCooldownChildActive(btn.transform, "ChargeDivider", true);
+            SetCooldownChildActive(btn.transform, "LeftCooldownShade", true);
+            SetCooldownChildActive(btn.transform, "RightCooldownShade", true);
+            SetCooldownChildActive(btn.transform, "LeftRechargeFill", true);
+            SetCooldownChildActive(btn.transform, "RightRechargeFill", true);
+            dualCooldown.ShowReadyState(DualChargeCooldownButton.LeftCharge);
+            dualCooldown.ShowReadyState(DualChargeCooldownButton.RightCharge);
+            dualCooldownVisuals[slotIndex] = dualCooldown;
+            cooldownVisuals[slotIndex] = null;
+        }
+        else
+        {
+            DualChargeCooldownButton dualCooldown = btn.GetComponent<DualChargeCooldownButton>();
+            if (dualCooldown != null)
+                dualCooldown.enabled = false;
+            SetCooldownChildActive(btn.transform, "ChargeDivider", false);
+            SetCooldownChildActive(btn.transform, "LeftCooldownShade", false);
+            SetCooldownChildActive(btn.transform, "RightCooldownShade", false);
+            SetCooldownChildActive(btn.transform, "LeftRechargeFill", false);
+            SetCooldownChildActive(btn.transform, "RightRechargeFill", false);
+
+            AbilityCooldownButton cooldownVisual = btn.GetComponent<AbilityCooldownButton>();
+            if (cooldownVisual == null)
+                cooldownVisual = btn.gameObject.AddComponent<AbilityCooldownButton>();
+            cooldownVisual.enabled = true;
+            cooldownVisual.Initialize(btn);
+            cooldownVisual.SetReadinessHighlight(false);
+            cooldownVisuals[slotIndex] = cooldownVisual;
+            dualCooldownVisuals[slotIndex] = null;
         }
 
         btn.interactable = true;
@@ -1704,6 +1828,13 @@ private void ActivateAbility(AbilityId id)
         {
             btn.onClick.AddListener(() => UseSlot(slotIndex));
         }
+    }
+
+    private static void SetCooldownChildActive(Transform button, string childName, bool active)
+    {
+        Transform child = button != null ? button.Find(childName) : null;
+        if (child != null)
+            child.gameObject.SetActive(active);
     }
 
     private static bool RequiresReleaseActivation(AbilityId id)
@@ -1756,8 +1887,7 @@ private void CancelGrappleHold()
 
 private void BeginBullseyeHold(int slotIndex)
 {
-    if (slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Bullseye ||
-        Time.time < slotCooldownEnds[slotIndex])
+    if (slotIndex < 0 || slotIndex >= slots.Length || slots[slotIndex] != AbilityId.Bullseye)
         return;
     bullseyeHeldSlot = slotIndex;
     GetLocalCameraController()?.SetBullseyeKnifeActive(true, bullseyeKnifePrefab);
@@ -1831,8 +1961,12 @@ void UseSlot(int slotIndex)
         return;
     }
 
-    if (Time.time < slotCooldownEnds[slotIndex])
+    if (id != AbilityId.Base && Time.time < slotCooldownEnds[slotIndex])
+    {
+        if (id == AbilityId.Bullseye)
+            CancelBullseyeHold();
         return;
+    }
 
     // Slide support is owner-local. Validate it before starting the UI cooldown
     // or relaying presentation to observers.
@@ -1844,7 +1978,7 @@ void UseSlot(int slotIndex)
     Debug.Log($"[PlayerAbilities] UseSlot {slotIndex} id={id}");
 
     float cooldownDuration = 0f;
-    if (id != AbilityId.Grapple && id != AbilityId.Void)
+    if (id != AbilityId.Grapple && id != AbilityId.Void && id != AbilityId.Base)
     {
         cooldownDuration = GetCooldownDuration(id.Value);
         BoundaryMatchController match = BoundaryMatchController.Instance;
@@ -1873,6 +2007,12 @@ void UseSlot(int slotIndex)
     Vector3 aimDirection = cameraDirection.sqrMagnitude > 0.0001f
         ? cameraDirection.normalized
         : transform.forward;
+
+    if (id == AbilityId.Base)
+    {
+        UseBaseSlot(slotIndex);
+        return;
+    }
 
     if (id == AbilityId.Dash && registry != null &&
         registry.TryGet(AbilityId.Dash, out IAbility dashNetworkAbility) &&
@@ -1969,6 +2109,36 @@ private void Update()
     UpdateGrappleButtonAvailability();
     UpdateVoidButtonAvailability();
     UpdateBullseyeTarget();
+    UpdateBaseButtonAvailability();
+}
+
+private void UseBaseSlot(int slotIndex)
+{
+    int charge = BaseAbility.FindReadyCharge(Time.time, localBaseChargeCooldownEnds);
+    if (charge < 0)
+        return;
+
+    localBaseChargeCooldownEnds[charge] = Time.time + BaseAbility.CooldownSeconds;
+    dualCooldownVisuals[slotIndex]?.BeginCooldown(charge, BaseAbility.CooldownSeconds);
+    Button button = GetAbilityButton(slotIndex);
+    if (button != null)
+        button.interactable = BaseAbility.FindReadyCharge(
+            Time.time, localBaseChargeCooldownEnds) >= 0;
+    RequestBase(transform.position, slotIndex, charge);
+}
+
+private void UpdateBaseButtonAvailability()
+{
+    bool hasReadyCharge = BaseAbility.FindReadyCharge(
+        Time.time, localBaseChargeCooldownEnds) >= 0;
+    for (int slotIndex = 0; slotIndex < slots.Length; slotIndex++)
+    {
+        if (slots[slotIndex] != AbilityId.Base)
+            continue;
+        Button button = GetAbilityButton(slotIndex);
+        if (button != null)
+            button.interactable = hasReadyCharge;
+    }
 }
 
 private void UpdateBullseyeTarget()
@@ -1996,7 +2166,7 @@ private void SetBullseyeTargetVisible(bool visible)
     Camera ownerCamera = GetComponentInChildren<Camera>(true);
     bullseyeTargetReticle = new GameObject("Bullseye Target");
     bullseyeTargetReticle.transform.SetParent(opponent.transform, false);
-    bullseyeTargetReticle.transform.localPosition = Vector3.up * BullseyeAbility.TargetCenterHeight;
+    bullseyeTargetReticle.transform.position = BullseyeAbility.TargetCenter(opponent.transform.position);
     bullseyeTargetReticle.AddComponent<BullseyeTargetPresentation>().Initialize(ownerCamera);
 }
 
@@ -2365,6 +2535,10 @@ private void ReconstructAbilityPresentation(PlayerID target, AbilityId abilityId
                 SliceAirFracture.Create(position, direction, sliceEnergyTexture, sequenceId, elapsed);
             }
             break;
+        case AbilityId.Base:
+            SpawnLocalBasePlatform(sequenceId, position,
+                Mathf.Max(0f, BaseAbility.PlatformLifetime - elapsed), false);
+            break;
     }
 }
 
@@ -2392,6 +2566,118 @@ private void ObserversRetargetHollow(Vector3 direction)
     hollowAbility.SetPresentationDirection(direction);
 }
 
+// Base RPCs are appended after every previously released PlayerAbilities RPC.
+// PurrNet assigns instance RPC IDs in declaration order, so existing IDs stay stable.
+[ServerRpc]
+private void RequestBase(Vector3 submittedPlayerPosition, int slotIndex, int charge)
+{
+    ServerBase(submittedPlayerPosition, slotIndex, charge);
+}
+
+private void ServerBase(Vector3 submittedPlayerPosition, int slotIndex, int charge)
+{
+    EnsureBaseAbility();
+    bool valid = slotIndex >= 0 && slotIndex < slots.Length &&
+        slots[slotIndex] == AbilityId.Base &&
+        charge >= 0 && charge < BaseAbility.ChargeCount &&
+        IsFiniteVector(submittedPlayerPosition) &&
+        Vector3.Distance(submittedPlayerPosition, transform.position) <= MaximumSubmittedAbilityOriginOffset &&
+        Time.time >= serverBaseChargeCooldownEnds[charge];
+    Collider playerCollider = GetComponent<Collider>();
+    if (!valid || playerCollider == null)
+    {
+        RejectBaseRequest(slotIndex, charge);
+        return;
+    }
+
+    serverBaseChargeCooldownEnds[charge] = Time.time + BaseAbility.CooldownSeconds;
+    Vector3 platformCenter = BaseAbility.PlatformCenterForPlayer(
+        submittedPlayerPosition, transform.position, playerCollider.bounds);
+    int platformId = ++nextBasePlatformId;
+    serverBasePlatforms[platformId] = new ServerBasePlatformState
+    {
+        position = platformCenter,
+        startedAt = Time.time,
+        expiresAt = Time.time + BaseAbility.PlatformLifetime
+    };
+
+    ObserversBeginBase(platformId, platformCenter, BaseAbility.PlatformLifetime, true);
+    if (owner != null)
+        ResolveBaseCooldown(owner.Value, slotIndex, charge, true, BaseAbility.CooldownSeconds);
+    StartCoroutine(ExpireServerBasePlatform(platformId));
+}
+
+private void RejectBaseRequest(int slotIndex, int charge)
+{
+    if (owner != null)
+    {
+        float remaining = charge >= 0 && charge < BaseAbility.ChargeCount
+            ? Mathf.Max(0f, serverBaseChargeCooldownEnds[charge] - Time.time)
+            : 0f;
+        ResolveBaseCooldown(owner.Value, slotIndex, charge, false, remaining);
+    }
+}
+
+private IEnumerator ExpireServerBasePlatform(int platformId)
+{
+    yield return new WaitForSeconds(BaseAbility.PlatformLifetime);
+    serverBasePlatforms.Remove(platformId);
+}
+
+[TargetRpc]
+private void ResolveBaseCooldown(PlayerID target, int slotIndex, int charge,
+    bool accepted, float remainingCooldown)
+{
+    if (!isOwner || slotIndex < 0 || slotIndex >= slots.Length ||
+        slots[slotIndex] != AbilityId.Base || charge < 0 || charge >= BaseAbility.ChargeCount)
+        return;
+
+    if (!accepted)
+    {
+        float duration = Mathf.Max(0f, remainingCooldown);
+        localBaseChargeCooldownEnds[charge] = Time.time + duration;
+        if (duration > 0f)
+            dualCooldownVisuals[slotIndex]?.BeginCooldown(charge, duration);
+        else
+            dualCooldownVisuals[slotIndex]?.ShowReadyState(charge);
+    }
+    else if (localBaseChargeCooldownEnds[charge] <= Time.time)
+    {
+        // Normal owner input already started this timer at the instant of activation.
+        // Only rebuild it if local state was lost before the server confirmation arrived.
+        float duration = Mathf.Max(0f, remainingCooldown);
+        localBaseChargeCooldownEnds[charge] = Time.time + duration;
+        dualCooldownVisuals[slotIndex]?.BeginCooldown(charge, duration);
+    }
+    UpdateBaseButtonAvailability();
+}
+
+[ObserversRpc(runLocally: true)]
+private void ObserversBeginBase(int platformId, Vector3 position, float remainingLifetime,
+    bool playCastSound)
+{
+    SpawnLocalBasePlatform(platformId, position, remainingLifetime, playCastSound);
+}
+
+private void SpawnLocalBasePlatform(int platformId, Vector3 position, float remainingLifetime,
+    bool playCastSound)
+{
+    if (remainingLifetime <= 0f)
+        return;
+    if (localBasePlatforms.TryGetValue(platformId, out GameObject existing) && existing != null)
+        return;
+
+    localBasePlatforms[platformId] = BaseAbility.SpawnPlatform(
+        position, remainingLifetime, playCastSound);
+    StartCoroutine(ForgetLocalBasePlatform(platformId, remainingLifetime));
+}
+
+private IEnumerator ForgetLocalBasePlatform(int platformId, float lifetime)
+{
+    yield return new WaitForSeconds(lifetime);
+    localBasePlatforms.Remove(platformId);
+}
+
 private void OnDisable()
 {
     StopAllCoroutines();
@@ -2410,6 +2696,9 @@ private void OnDisable()
     serverChargePresentationActive = false;
     serverSlicePresentationEndsAt = 0f;
     serverSliceFractures.Clear();
+    serverBasePlatforms.Clear();
+    System.Array.Clear(serverBaseChargeCooldownEnds, 0, serverBaseChargeCooldownEnds.Length);
+    System.Array.Clear(localBaseChargeCooldownEnds, 0, localBaseChargeCooldownEnds.Length);
     hollowHeldSlot = -1;
     grappleHeldSlot = -1;
     bullseyeHeldSlot = -1;
@@ -2438,6 +2727,12 @@ private void OnDisable()
             UnityProxy.DestroyDirectly(visual);
     }
     bullseyeProjectileVisuals.Clear();
+    foreach (GameObject platform in localBasePlatforms.Values)
+    {
+        if (platform != null)
+            Destroy(platform);
+    }
+    localBasePlatforms.Clear();
 }
 }
 

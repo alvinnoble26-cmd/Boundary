@@ -377,6 +377,12 @@ public sealed class BoundaryCpuController : MonoBehaviour
             float score = 0f;
             switch (id)
             {
+                case AbilityId.Base:
+                    bool hasFloorAhead = TryFloor(
+                        transform.position + selectedDirection * 4f, out _);
+                    score = BoundaryCpuRules.ShouldUseBase(
+                        emergency, movement.IsGrounded, hasFloorAhead) ? 130f : 0f;
+                    break;
                 case AbilityId.Bullseye:
                     aimPoint = BoundaryCpuRules.LeadTarget(origin, target, enemyVelocity, BullseyeAbility.ProjectileSpeed);
                     score = distance < 85f ? 70f : 0f;
@@ -437,7 +443,8 @@ public sealed class BoundaryCpuController : MonoBehaviour
                     }
                     break;
             }
-            bool attack = id != AbilityId.Dash && id != AbilityId.Teleport && id != AbilityId.Grapple && id != AbilityId.Void;
+            bool attack = id != AbilityId.Base && id != AbilityId.Dash && id != AbilityId.Teleport &&
+                id != AbilityId.Grapple && id != AbilityId.Void;
             Vector3 direction = (aimPoint - origin).normalized;
             if (attack && (opponent.IsServerInvulnerable || !ClearShot(origin, direction, Vector3.Distance(origin, aimPoint)))) score = 0f;
             if (score <= bestScore) continue;

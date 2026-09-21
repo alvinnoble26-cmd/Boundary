@@ -76,7 +76,7 @@ public class BlackThrow : MonoBehaviour, IAbility
 
         var kill = projectile.GetComponentInChildren<BlackHoleKill>();
         if (kill != null && ownerPm != null)
-            kill.Init(ownerPm, 0.75f);
+            kill.Init(ownerPm);
 
 
   

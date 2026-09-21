@@ -12,7 +12,7 @@ public sealed class ChargeAbilityTests
         Assert.That(ChargeAbility.SecondTickDelay, Is.EqualTo(2f));
         Assert.That(ChargeAbility.FirstTickDamage, Is.EqualTo(5f));
         Assert.That(ChargeAbility.SecondTickDamage, Is.EqualTo(7f));
-        Assert.That(ChargeAbility.ExplosionRadius, Is.EqualTo(10f));
+        Assert.That(ChargeAbility.ExplosionRadius, Is.EqualTo(15f));
         Assert.That(ChargeAbility.HitEffectDuration, Is.EqualTo(2f));
         Assert.That(ChargeAbility.ProjectileSpeed, Is.EqualTo(54f));
     }
@@ -42,8 +42,8 @@ public sealed class ChargeAbilityTests
     [Test]
     public void ExplosionIncludesBoundaryAndRejectsOutsidePoint()
     {
-        Assert.That(ChargeAbility.IsInsideExplosion(new Vector3(10f, 0f, 0f), Vector3.zero), Is.True);
-        Assert.That(ChargeAbility.IsInsideExplosion(new Vector3(10.01f, 0f, 0f), Vector3.zero), Is.False);
+        Assert.That(ChargeAbility.IsInsideExplosion(new Vector3(15f, 0f, 0f), Vector3.zero), Is.True);
+        Assert.That(ChargeAbility.IsInsideExplosion(new Vector3(15.01f, 0f, 0f), Vector3.zero), Is.False);
     }
 
     [Test]

@@ -230,12 +230,12 @@ public static class BoundaryFeatureValidator
             Vector3.zero, new Vector3(0f, 32f, 0f), Vector3.zero, -1f, 106f, 5.5f, true);
         Require(grounded.magnitude < airborne.magnitude * 0.2f,
             "Stable footing must meaningfully reduce singularity pull.");
-        Require(BoundaryMatchController.ArenaMassPopulation == 80 &&
-                BoundaryMatchController.GroundArenaMassesPerKind == 22 &&
-                BoundaryMatchController.FloatingArenaMassesPerKind == 18,
-            "The arena must begin with 22 floor and 18 floating masses of each kind.");
-        Require(BoundaryMatchController.PlatformHitsToCollapse == 5,
-            "Arena platforms must withstand five cube or black-hole hits.");
+        Require(BoundaryMatchController.ArenaMassPopulation == 60 &&
+                BoundaryMatchController.GroundArenaMassesPerKind == 17 &&
+                BoundaryMatchController.FloatingArenaMassesPerKind == 13,
+            "The arena must begin with 17 floor and 13 floating masses of each kind.");
+        Require(BoundaryMatchController.PlatformHitsToCollapse == 6,
+            "Arena platforms must withstand six cube or black-hole hits.");
         Require(Mathf.Approximately(BoundaryMatchController.HazardSizeMultiplier, 1.6f) &&
                 Mathf.Approximately(BoundaryMatchController.ArenaMassCubeScale, 4.48f) &&
                 Mathf.Approximately(BoundaryMatchController.ArenaMassBlackHoleScale, 2.8f) &&

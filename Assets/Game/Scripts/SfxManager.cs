@@ -32,6 +32,8 @@ public class SfxManager : MonoBehaviour
     [SerializeField] private AudioClip voidLoop;
     [SerializeField] private AudioClip voidSlash;
     [SerializeField] private AudioClip voidEnd;
+    [SerializeField] private AudioClip baseCast;
+    [SerializeField] private AudioClip baseDissolve;
 
     private AudioSource source;
     private AudioSource voidLoopSource;
@@ -183,6 +185,10 @@ public class SfxManager : MonoBehaviour
         I?.PlayWorld(I.voidSlash, position, 0.9f, -1f, AbilitySoundMaxDistance);
     public static void PlayVoidEnd(Vector3 position) =>
         I?.PlayWorld(I.voidEnd, position, 1f, -1f, AbilitySoundMaxDistance);
+    public static void PlayBaseCast(Vector3 position) =>
+        I?.PlayWorld(I.baseCast, position, 0.5f, -1f, AbilitySoundMaxDistance);
+    public static void PlayBaseDissolve(Vector3 position) =>
+        I?.PlayWorld(I.baseDissolve, position, 0.45f, -1f, AbilitySoundMaxDistance);
 
     public static void StartVoidLoop(Vector3 position)
     {

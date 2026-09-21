@@ -13,6 +13,8 @@
         Bullseye = 9,
         Charge = 10,
         Slice = 11,
+        // Small temporary platform with two independently-cooling charges.
+        Base = 12,
         // Repulse,
         // Attract,
         // BlackHoleProjectile,

@@ -3,6 +3,10 @@
 This document records the known-good multiplayer deployment and the checks
 required before changing production.
 
+For the reusable, fully automated release procedure and a copy/paste prompt,
+see [Docs/FULL_RELEASE_RUNBOOK.md](Docs/FULL_RELEASE_RUNBOOK.md) and
+[Docs/FULL_RELEASE_PROMPT.md](Docs/FULL_RELEASE_PROMPT.md).
+
 ## Known-good baseline
 
 - Unity build scenes, in order: `Boot`, `Menu`, `Game`

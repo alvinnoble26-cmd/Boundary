@@ -50,6 +50,10 @@ public class AbilitiesSelectUI : MonoBehaviour
         bool selected = (LoadoutManager.I != null && LoadoutManager.I.IsSelected(abilityId));
         if (label != null)
             label.color = selected ? selectedColor : normalColor;
+
+        // Give the card itself a clear highlight (border/glow), not just the label text,
+        // via the EZ UI kit's selection helper (Assets/Game/Scripts/UI/EZKit/EZRestyle.cs).
+        EZRestyle.SetSelected(button, selected);
     }
 
     public AbilityId AbilityId => abilityId;

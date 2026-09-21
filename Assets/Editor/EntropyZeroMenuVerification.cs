@@ -163,8 +163,18 @@ public static class EntropyZeroMenuVerification
             serializedLobby.FindProperty("hostLobbyPanel").objectReferenceValue != null &&
             serializedLobby.FindProperty("hostCodeText").objectReferenceValue != null;
         if (!lobbyWired) failures.Add("MenuLobbyUI serialized fields are not fully wired.");
+        MenuUIController controller = canvas.GetComponent<MenuUIController>();
+        SerializedObject serializedController = controller != null ? new SerializedObject(controller) : null;
+        bool resultReasonsWired = serializedController != null &&
+            serializedController.FindProperty("loseReasonText").objectReferenceValue is TMP_Text &&
+            serializedController.FindProperty("winReasonText").objectReferenceValue is TMP_Text;
+        if (!resultReasonsWired) failures.Add("MenuUIController TMP result reason fields are not fully wired.");
+        int backgroundGraphics = canvas.transform.Find("Panel/SpaceBackground")?.GetComponentsInChildren<Graphic>(true).Length ?? 0;
+        if (backgroundGraphics > 150) failures.Add("Space background exceeds 150 Graphics: " + backgroundGraphics);
+        bool oldBackgroundAbsent = canvas.transform.Find("Panel/ContainedInstability") == null;
+        if (!oldBackgroundAbsent) failures.Add("Legacy ContainedInstability background remains active.");
 
-        string text = $"Entropy Zero Menu UI Audit\nScene: {ScenePath}\nPanels captured: {Panels.Length}\nActive legacy Text: {activeLegacyText}\nTMP overflow: {overflow}\nUndersized active buttons: {undersizedButtons}\nMenuLobbyUI wired: {lobbyWired}\nFailures: {failures.Count}\n" +
+        string text = $"Entropy Zero Menu UI Audit\nScene: {ScenePath}\nPanels captured: {Panels.Length}\nActive legacy Text: {activeLegacyText}\nTMP overflow: {overflow}\nUndersized active buttons: {undersizedButtons}\nMenuLobbyUI wired: {lobbyWired}\nResult TMP fields wired: {resultReasonsWired}\nSpace background Graphics: {backgroundGraphics}\nOld background absent: {oldBackgroundAbsent}\nFailures: {failures.Count}\n" +
                       string.Join("\n", failures.Select(value => "- " + value)) + "\n";
         File.WriteAllText(Path.Combine(root, "audit.txt"), text);
         string json = JsonUtility.ToJson(new AuditData
@@ -175,6 +185,9 @@ public static class EntropyZeroMenuVerification
             tmpOverflow = overflow,
             undersizedButtons = undersizedButtons,
             menuLobbyUiWired = lobbyWired,
+            resultReasonsWired = resultReasonsWired,
+            backgroundGraphics = backgroundGraphics,
+            oldBackgroundAbsent = oldBackgroundAbsent,
             failures = failures.ToArray(),
             warnings = warnings.ToArray()
         }, true);
@@ -210,6 +223,9 @@ public static class EntropyZeroMenuVerification
         public int tmpOverflow;
         public int undersizedButtons;
         public bool menuLobbyUiWired;
+        public bool resultReasonsWired;
+        public int backgroundGraphics;
+        public bool oldBackgroundAbsent;
         public string[] failures;
         public string[] warnings;
     }

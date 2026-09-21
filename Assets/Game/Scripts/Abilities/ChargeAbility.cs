@@ -10,7 +10,7 @@ public sealed class ChargeAbility : MonoBehaviour, IAbility
     public const float ChargeSeconds = 0.35f;
     public const float FirstTickDelay = 2f;
     public const float SecondTickDelay = 2f;
-    public const float ExplosionRadius = 10f;
+    public const float ExplosionRadius = 15f;
     public const float FirstTickDamage = 5f;
     public const float SecondTickDamage = 7f;
     public const float ProjectileSpeed = 54f;
