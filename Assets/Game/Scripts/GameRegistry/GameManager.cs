@@ -41,6 +41,7 @@ public class GameManager : MonoBehaviour
 
     [Header("Networking")]
     [SerializeField] private NetworkManager net;
+    [SerializeField] private float playerRegistrationTimeoutSeconds = 20f;
 
     [Header("Transport")]
     [Tooltip("Optional. If empty, GameManager will auto-find the UDPTransport in the scene.")]
@@ -68,6 +69,7 @@ public class GameManager : MonoBehaviour
     private bool isPracticeMode;
     private bool returnToServerSelector;
     private Coroutine roundStartGateRoutine;
+    private bool networkEventsSubscribed;
 
     public bool IsPracticeMode => isPracticeMode;
     public bool IsCpuPractice { get; private set; }
@@ -87,6 +89,7 @@ public class GameManager : MonoBehaviour
         DontDestroyOnLoad(gameObject);
 
         ResolveNetworkManager();
+        SubscribeToNetworkEvents();
         ResolveUdpTransport();
 
         SceneManager.sceneLoaded += OnSceneLoaded;
@@ -120,6 +123,7 @@ public class GameManager : MonoBehaviour
         if (I == this)
         {
             SceneManager.sceneLoaded -= OnSceneLoaded;
+            UnsubscribeFromNetworkEvents();
             StopListeningForMatchResult();
             StopListeningForRematch();
         }
@@ -133,6 +137,29 @@ public class GameManager : MonoBehaviour
         net = NetworkManager.main != null
             ? NetworkManager.main
             : FindObjectOfType<NetworkManager>(true);
+    }
+
+    private void SubscribeToNetworkEvents()
+    {
+        if (net == null || networkEventsSubscribed)
+            return;
+
+        net.onLocalPlayerReceivedID += OnLocalPlayerReceivedID;
+        networkEventsSubscribed = true;
+    }
+
+    private void UnsubscribeFromNetworkEvents()
+    {
+        if (net == null || !networkEventsSubscribed)
+            return;
+
+        net.onLocalPlayerReceivedID -= OnLocalPlayerReceivedID;
+        networkEventsSubscribed = false;
+    }
+
+    private void OnLocalPlayerReceivedID(PlayerID player)
+    {
+        Debug.Log("[GameManager] PurrNet registered local player ID " + player + ".");
     }
 
     private void ResolveUdpTransport()
@@ -556,6 +583,7 @@ private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         isEndingGame = false;
 
         ResolveNetworkManager();
+        SubscribeToNetworkEvents();
         ResolveUdpTransport();
         return;
     }
@@ -645,10 +673,12 @@ private bool IsConnectedToServer()
         SetState(GameState.Connecting);
 
         ResolveNetworkManager();
+        SubscribeToNetworkEvents();
 
         if (net == null)
         {
             Debug.LogError("[GameManager] NetworkManager not found.");
+            ReportConnectionFailure("Game networking is unavailable. Please restart the app.");
             SetState(GameState.Menu);
             isBusy = false;
             yield break;
@@ -677,46 +707,68 @@ private bool IsConnectedToServer()
         if (!(net.clientState.ToString() == "Connected" || net.isClient))
         {
             Debug.LogError("[GameManager] Failed to connect to server.");
+            try { net.StopClient(); } catch (Exception e) { Debug.LogWarning("[GameManager] StopClient failed: " + e.Message); }
+            ReportConnectionFailure("Could not connect to the game server. Please try again.");
             SetState(GameState.Menu);
             isBusy = false;
             yield break;
         }
 
-       Debug.Log("[GameManager] UDP transport connected. Waiting for PurrNet player registration and Game scene.");
-SetState(GameState.Loading);
+        Debug.Log("[GameManager] UDP transport connected. Waiting for PurrNet player registration and Game scene.");
+        SetState(GameState.Loading);
 
-float sceneWait = 0f;
-while (sceneWait < 20f)
-{
-    string activeScene = SceneManager.GetActiveScene().name;
+        float sceneWait = 0f;
+        float timeout = Mathf.Max(5f, playerRegistrationTimeoutSeconds);
+        while (sceneWait < timeout)
+        {
+            string activeScene = SceneManager.GetActiveScene().name;
 
-    if (!net.isClient || net.clientState.ToString() == "Disconnected")
-    {
-        Debug.LogError("[GameManager] Server connection ended before the Game scene was assigned.");
+            if (!net.isClient || net.clientState.ToString() == "Disconnected")
+            {
+                Debug.LogError("[GameManager] Server connection ended before the Game scene was assigned.");
+                ReportConnectionFailure("The game server ended the connection. Please try again.");
+                SetState(GameState.Menu);
+                isBusy = false;
+                yield break;
+            }
+
+            if (hasLoadedGameScene || activeScene == gameSceneName)
+            {
+                Debug.Log("[GameManager] Game scene confirmed loaded.");
+                hasLoadedGameScene = true;
+                SetState(GameState.Playing);
+                isBusy = false;
+                yield break;
+            }
+
+            Debug.Log("[GameManager] Waiting for Game scene. Active scene=" + activeScene +
+                      " ClientPlayers=" + net.playerCount +
+                      " ConnectionState=" + net.clientState);
+
+            sceneWait += 0.5f;
+            yield return new WaitForSecondsRealtime(0.5f);
+        }
+
+        Debug.LogError("[GameManager] UDP connected, but PurrNet did not register the player or assign the Game scene within " +
+                       timeout + " seconds. Disconnecting to avoid a stuck lobby.");
+        try { net.StopClient(); } catch (Exception e) { Debug.LogWarning("[GameManager] StopClient failed: " + e.Message); }
+
+        float disconnectWait = 0f;
+        while (net.clientState.ToString() != "Disconnected" && disconnectWait < 5f)
+        {
+            disconnectWait += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        ReportConnectionFailure("The game server is incompatible or failed to register this player. Please try again.");
         SetState(GameState.Menu);
         isBusy = false;
-        yield break;
     }
 
-    if (hasLoadedGameScene || activeScene == gameSceneName)
+    private static void ReportConnectionFailure(string message)
     {
-        Debug.Log("[GameManager] Game scene confirmed loaded.");
-        hasLoadedGameScene = true;
-        SetState(GameState.Playing);
-        isBusy = false;
-        yield break;
-    }
-
-    Debug.Log("[GameManager] Waiting for Game scene. Active scene=" + activeScene +
-              " ClientPlayers=" + net.playerCount +
-              " ConnectionState=" + net.clientState);
-
-    sceneWait += 0.5f;
-    yield return new WaitForSeconds(0.5f);
-}
-
-Debug.LogWarning("[GameManager] Connected, but Game scene was not confirmed within timeout. Staying connected.");
-isBusy = false;
+        if (FirebaseLobbyManager.I != null)
+            FirebaseLobbyManager.I.ReportConnectionFailure(message);
     }
 
     public void PlayPractice()

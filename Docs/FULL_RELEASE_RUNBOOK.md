@@ -265,6 +265,10 @@ docker buildx build \
   --load .
 ```
 
+`SERVER_BUILD_PATH` is required by the Dockerfile. A container build without
+the exact versioned path must fail; do not restore a default path or copy from
+the unversioned `Builds/EdgegapServer` directory.
+
 Inspect the image OS, architecture, size, and digest. Tag and push it as:
 
 ```text

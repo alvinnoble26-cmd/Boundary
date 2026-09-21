@@ -1,7 +1,9 @@
 FROM ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG SERVER_BUILD_PATH=Builds/EdgegapServer
+# Required: always select the exact versioned Unity server output being released.
+# Leaving this unset intentionally makes COPY fail instead of packaging a stale build.
+ARG SERVER_BUILD_PATH
 
 RUN apt-get update && \
     apt-get install -y ca-certificates libsecret-1-0 && \

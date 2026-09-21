@@ -14,11 +14,11 @@ public class MenuButtons : MonoBehaviour
 
     public void PlayOffline()
     {
-        PracticeModePanel.Show();
+        PracticeModePanel.Show(gameObject);
     }
 
     public void PlayPractice()
     {
-        PracticeModePanel.Show();
+        PracticeModePanel.Show(gameObject);
     }
 }

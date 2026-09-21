@@ -5,7 +5,10 @@ using TMPro;
 /// <summary>Runtime menu extension, preserving existing scene button bindings.</summary>
 public sealed class PracticeModePanel : MonoBehaviour
 {
-    public static void Show()
+    private bool selectionInProgress;
+    private GameObject sourcePanel;
+
+    public static void Show(GameObject sourcePanel = null)
     {
         bool verification = System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "--ez-ui-capture") >= 0;
         if (!verification && (GameManager.I == null || GameManager.I.State != GameManager.GameState.Menu)) return;
@@ -22,7 +25,17 @@ public sealed class PracticeModePanel : MonoBehaviour
         scaler.referenceResolution = new Vector2(1280f, 720f);
         scaler.matchWidthOrHeight = 1f;
         root.AddComponent<SafeAreaFitter>();
-        root.GetComponent<PracticeModePanel>().Build();
+        PracticeModePanel panel = root.GetComponent<PracticeModePanel>();
+        panel.sourcePanel = sourcePanel;
+        panel.Build();
+        Canvas.ForceUpdateCanvases();
+        EZRestyle.All(canvas);
+
+        // The Practice screen owns the menu while it is open. Hiding the
+        // source after the overlay is fully built prevents the Multiplayer
+        // selector from rendering through the first transition frames.
+        if (sourcePanel != null)
+            sourcePanel.SetActive(false);
     }
 
     private void Build()
@@ -38,7 +51,7 @@ public sealed class PracticeModePanel : MonoBehaviour
         AddButton("Playground", "Free play in the arena", 65f, false);
         AddButton("CPU", "A full match against a strong opponent", -45f, true);
         Button back = MakeButton("Back", -190f);
-        back.onClick.AddListener(() => Destroy(gameObject));
+        back.onClick.AddListener(CloseAndRestoreSource);
     }
 
     private void AddButton(string title, string subtitle, float y, bool cpu)
@@ -47,10 +60,47 @@ public sealed class PracticeModePanel : MonoBehaviour
         AddText(button.transform, subtitle, 17, new Vector2(0f, -22f));
         button.onClick.AddListener(() =>
         {
-            if (cpu) GameManager.I.PlayCpuPractice();
-            else GameManager.I.PlayPractice();
-            Destroy(gameObject);
+            if (selectionInProgress || GameManager.I == null)
+                return;
+
+            selectionInProgress = true;
+            SetButtonsInteractable(false);
+
+            if (cpu)
+                GameManager.I.PlayCpuPractice();
+            else
+                GameManager.I.PlayPractice();
+
+            // Keep this full-screen panel visible while the local host starts.
+            // Loading Game destroys it with the Menu scene; a failed startup
+            // returns to Menu and closes it from this coroutine.
+            StartCoroutine(CloseIfPracticeStartupFails());
         });
+    }
+
+    private System.Collections.IEnumerator CloseIfPracticeStartupFails()
+    {
+        yield return null;
+
+        while (GameManager.I != null && GameManager.I.State != GameManager.GameState.Menu)
+            yield return null;
+
+        if (this != null)
+            CloseAndRestoreSource();
+    }
+
+    private void CloseAndRestoreSource()
+    {
+        if (sourcePanel != null)
+            sourcePanel.SetActive(true);
+
+        Destroy(gameObject);
+    }
+
+    private void SetButtonsInteractable(bool interactable)
+    {
+        foreach (Button button in GetComponentsInChildren<Button>(true))
+            button.interactable = interactable;
     }
 
     private Button MakeButton(string label, float y)

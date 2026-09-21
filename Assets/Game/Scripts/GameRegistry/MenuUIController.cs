@@ -145,7 +145,7 @@ public class MenuUIController : MonoBehaviour
         if (wasCpu)
         {
             ShowServerSelector();
-            PracticeModePanel.Show();
+            PracticeModePanel.Show(serverSelectorPanel);
             return;
         }
 

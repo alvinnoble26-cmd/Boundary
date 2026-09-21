@@ -40,6 +40,6 @@ public class MainMenu : MonoBehaviour
             return;
         }
 
-        PracticeModePanel.Show();
+        PracticeModePanel.Show(gameObject);
     }
 }

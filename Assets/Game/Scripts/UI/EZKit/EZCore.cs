@@ -395,6 +395,11 @@ public sealed class EZRunner : MonoBehaviour
 
     static void AttachFX(Canvas c)
     {
+        // PracticeModePanel is built and styled synchronously before its
+        // source panel is hidden. Applying the generic per-child entrance FX
+        // afterward makes its buttons reappear one at a time as blank cards.
+        if (c.GetComponent<PracticeModePanel>() != null) return;
+
         foreach (Transform ch in c.transform)
         {
             if (ch.name == "Panel" || ch.name.StartsWith("EZ", System.StringComparison.Ordinal)) continue;

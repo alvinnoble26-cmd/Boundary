@@ -564,6 +564,13 @@ catch (System.InvalidOperationException)
         errorText.gameObject.SetActive(true);
     }
 
+    public void ReportConnectionFailure(string message)
+    {
+        joinInProgress = false;
+        matchStarted = false;
+        ShowError(message);
+    }
+
     private void HideError()
     {
         if (errorText != null)
