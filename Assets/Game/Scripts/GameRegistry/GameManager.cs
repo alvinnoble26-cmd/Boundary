@@ -75,7 +75,7 @@ public class GameManager : MonoBehaviour
     public bool IsCpuPractice { get; private set; }
     public bool IsPlayground => isPracticeMode && !IsCpuPractice;
     public bool LastMatchWasCpu { get; private set; }
-    public int RequiredPlayerObjects => IsPlayground ? 1 : 2;
+    public int RequiredPlayerObjects => 2;
 
     private void Awake()
     {
@@ -278,6 +278,15 @@ public class GameManager : MonoBehaviour
     {
         if (receivedMatchResult || isEndingGame)
             return;
+
+        // Playground is an open-ended local sandbox. A consumed player can
+        // remain in the scene, but only leaving through the normal menu flow
+        // ends the session.
+        if (IsPlayground)
+        {
+            Debug.Log("[GameManager] Ignoring Playground death: " + reason);
+            return;
+        }
 
         if (isPracticeMode)
         {
@@ -612,21 +621,32 @@ private IEnumerator WaitForBothLoadedPlayers()
         ResolveNetworkManager();
         int connectedPlayers = net != null ? net.playerCount : 0;
         PlayerMovement[] players = FindObjectsByType<PlayerMovement>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        bool cpuReady = !IsCpuPractice;
+        bool opponentReady = !isPracticeMode;
         if (IsCpuPractice)
         {
             foreach (PlayerMovement player in players)
             {
                 if (player.isOwner && !player.IsCpuControlled)
                 {
-                    cpuReady = BoundaryCpuController.TrySpawn(player);
+                    opponentReady = BoundaryCpuController.TrySpawn(player);
+                    break;
+                }
+            }
+        }
+        else if (IsPlayground)
+        {
+            foreach (PlayerMovement player in players)
+            {
+                if (player.isOwner && !player.IsCpuControlled)
+                {
+                    opponentReady = BoundaryPracticeDummy.TrySpawn(player);
                     break;
                 }
             }
         }
         int loadedPlayers = players.Length;
 
-        if (cpuReady && connectedPlayers >= (isPracticeMode ? 1 : 2) && loadedPlayers >= requiredPlayers)
+        if (opponentReady && connectedPlayers >= (isPracticeMode ? 1 : 2) && loadedPlayers >= requiredPlayers)
             break;
 
         if (IsCpuPractice && Time.realtimeSinceStartup > cpuDeadline)

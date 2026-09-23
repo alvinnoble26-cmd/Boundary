@@ -197,6 +197,8 @@ public sealed class BoundaryMathTests
     {
         Assert.That(BoundaryMath.BlackHoleDamage(1f), Is.EqualTo(60f).Within(0.001f));
         Assert.That(BoundaryMath.BlackHoleDamage(0.1f), Is.EqualTo(6f).Within(0.001f));
+        Assert.That(BoundaryMath.BlackHoleDamage(1f) * BlackHoleKill.AbilityContactDamageMultiplier,
+            Is.EqualTo(90f).Within(0.001f));
     }
 
     [Test]
@@ -332,14 +334,14 @@ public sealed class BoundaryMathTests
     [Test]
     public void ArenaMassPopulation_IncludesRequestedFloorAndFloatingHazards()
     {
-        Assert.That(BoundaryMatchController.GroundArenaMassesPerKind, Is.EqualTo(17));
-        Assert.That(BoundaryMatchController.FloatingArenaMassesPerKind, Is.EqualTo(13));
-        Assert.That(BoundaryMatchController.ArenaMassPopulation, Is.EqualTo(60));
-        Assert.That(BoundaryMatchController.IsArenaBlackHole(16), Is.False);
-        Assert.That(BoundaryMatchController.IsArenaBlackHole(17), Is.True);
-        Assert.That(BoundaryMatchController.IsFloatingArenaMass(33), Is.False);
-        Assert.That(BoundaryMatchController.IsFloatingArenaMass(34), Is.True);
-        Assert.That(BoundaryMatchController.IsArenaBlackHole(47), Is.True);
+        Assert.That(BoundaryMatchController.GroundArenaMassesPerKind, Is.EqualTo(14));
+        Assert.That(BoundaryMatchController.FloatingArenaMassesPerKind, Is.EqualTo(10));
+        Assert.That(BoundaryMatchController.ArenaMassPopulation, Is.EqualTo(48));
+        Assert.That(BoundaryMatchController.IsArenaBlackHole(13), Is.False);
+        Assert.That(BoundaryMatchController.IsArenaBlackHole(14), Is.True);
+        Assert.That(BoundaryMatchController.IsFloatingArenaMass(27), Is.False);
+        Assert.That(BoundaryMatchController.IsFloatingArenaMass(28), Is.True);
+        Assert.That(BoundaryMatchController.IsArenaBlackHole(38), Is.True);
         Assert.That(BoundaryMatchController.PlatformHitsToCollapse, Is.EqualTo(6));
     }
 

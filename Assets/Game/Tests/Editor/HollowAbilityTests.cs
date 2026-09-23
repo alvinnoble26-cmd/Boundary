@@ -16,14 +16,14 @@ public sealed class HollowAbilityTests
     }
 
     [Test]
-    public void RecoilIsOppositeBlastAtOneAndAHalfTimesJumpForce()
+    public void RecoilIsOppositeBlastAtThreeTimesJumpForce()
     {
         Vector3 recoil = HollowAbility.GetRecoilImpulse(new Vector3(3f, 0f, 4f), 14f);
 
-        Assert.AreEqual(-12.6f, recoil.x, 0.001f);
+        Assert.AreEqual(-25.2f, recoil.x, 0.001f);
         Assert.AreEqual(0f, recoil.y, 0.001f);
-        Assert.AreEqual(-16.8f, recoil.z, 0.001f);
-        Assert.AreEqual(21f, recoil.magnitude, 0.001f);
+        Assert.AreEqual(-33.6f, recoil.z, 0.001f);
+        Assert.AreEqual(42f, recoil.magnitude, 0.001f);
     }
 
     [Test]
@@ -58,26 +58,28 @@ public sealed class HollowAbilityTests
     }
 
     [Test]
-    public void BlastRadiusIsTripledFromOriginalSize()
+    public void BlastRadiusIsFixedAtTheRequestedReducedSize()
     {
-        Assert.AreEqual(HollowAbility.InitialBlastRadius * 3f, HollowAbility.BlastRadius, 0.001f);
+        Assert.AreEqual(3.24f, HollowAbility.BlastRadius, 0.001f);
     }
 
     [Test]
-    public void BlastRadiusWidensLinearlyAcrossSeventyUnitRange()
+    public void MagicCirclesAreOnePointSixTimesTheDamageRadius()
     {
-        Assert.AreEqual(2.4f, HollowAbility.GetBlastRadius(0f), 0.001f);
-        Assert.AreEqual(4.8f, HollowAbility.GetBlastRadius(35f), 0.001f);
-        Assert.AreEqual(7.2f, HollowAbility.GetBlastRadius(70f), 0.001f);
+        Assert.AreEqual(HollowAbility.BlastRadius * 1.6f,
+            HollowAbility.MagicCircleRadius, 0.001f);
     }
 
     [Test]
-    public void BlastRejectsWidePointNearOriginButIncludesItAtMaximumRange()
+    public void BlastRadiusDoesNotIncreaseWithDistance()
     {
-        Assert.IsFalse(HollowAbility.IsPointInsideBlast(
-            new Vector3(6f, 0f, 1f), Vector3.zero, Vector3.forward));
+        Assert.AreEqual(HollowAbility.BlastRadius, HollowAbility.GetBlastRadius(0f), 0.001f);
+        Assert.AreEqual(HollowAbility.BlastRadius, HollowAbility.GetBlastRadius(35f), 0.001f);
+        Assert.AreEqual(HollowAbility.BlastRadius, HollowAbility.GetBlastRadius(70f), 0.001f);
         Assert.IsTrue(HollowAbility.IsPointInsideBlast(
-            new Vector3(6f, 0f, 70f), Vector3.zero, Vector3.forward));
+            new Vector3(3.2f, 0f, 1f), Vector3.zero, Vector3.forward));
+        Assert.IsTrue(HollowAbility.IsPointInsideBlast(
+            new Vector3(3.2f, 0f, 69f), Vector3.zero, Vector3.forward));
     }
 
     [Test]
@@ -200,7 +202,7 @@ public sealed class PlayerWindPresentationTests
 public sealed class BoundaryCubePresentationTests
 {
     [Test]
-    public void CubeUsesStrongBlueEmissionInEveryPresentationState()
+    public void CubeKeepsBlueEmissionWhenDarknessIsActive()
     {
         Color normal = BoundaryHazard.CubeGlowColor(false, false);
         Color hollow = BoundaryHazard.CubeGlowColor(true, false);
@@ -212,7 +214,7 @@ public sealed class BoundaryCubePresentationTests
         Assert.That(darkness.b, Is.GreaterThan(darkness.r));
         Assert.That(BoundaryHazard.CubeGlowIntensity(false, false), Is.GreaterThanOrEqualTo(18f));
         Assert.That(BoundaryHazard.CubeGlowIntensity(true, false), Is.GreaterThan(18f));
-        Assert.That(BoundaryHazard.CubeGlowIntensity(false, true), Is.GreaterThan(18f));
+        Assert.That(BoundaryHazard.CubeGlowIntensity(false, true), Is.EqualTo(18f));
     }
 }
 

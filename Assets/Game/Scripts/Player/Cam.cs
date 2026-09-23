@@ -342,10 +342,56 @@ public class Cam : NetworkBehaviour
         StartScreenShake(3f, 0.18f);
     }
 
+    /// <summary>
+    /// Finds the camera belonging to whichever player THIS CLIENT controls,
+    /// regardless of which networked object's script is asking. An
+    /// ObserversRpc runs the same code on both clients, but only the local
+    /// player's own camera should ever shake - "am I the owner of the object
+    /// this script happens to live on" is the wrong question when that
+    /// object is the caster's and the answer needs to work out for the
+    /// victim too. Every Cam on a client is checked for isOwner rather than
+    /// assumed, since only one - the local player's - is ever true.
+    /// </summary>
+    public static Cam FindLocalOwner()
+    {
+        Camera mainCamera = Camera.main;
+        Cam localCameraController = mainCamera != null
+            ? mainCamera.GetComponentInParent<Cam>()
+            : null;
+        if (localCameraController != null && localCameraController.isOwner)
+            return localCameraController;
+
+        Cam[] cameraControllers = FindObjectsByType<Cam>(FindObjectsInactive.Exclude,
+            FindObjectsSortMode.None);
+        for (int index = 0; index < cameraControllers.Length; index++)
+            if (cameraControllers[index].isOwner)
+                return cameraControllers[index];
+
+        return null;
+    }
+
+    /// <summary>
+    /// A weaker shake must not cut off a stronger one that is still decaying
+    /// - Hollow's sustained 2.75s beam-landing shake would otherwise get
+    /// stomped within a fraction of a second by the small, frequent, generic
+    /// per-tick damage shake the same beam's own damage triggers. Only a
+    /// request at least as strong as what is left of the current shake is
+    /// allowed to restart the timer; anything already finished is always
+    /// replaced.
+    /// </summary>
     private void StartScreenShake(float duration, float strength)
     {
-        damageShakeStartedAt = Time.unscaledTime;
-        damageShakeEndsAt = damageShakeStartedAt + duration;
+        float now = Time.unscaledTime;
+        if (now < damageShakeEndsAt)
+        {
+            float remainingFraction = 1f - Mathf.Clamp01((now - damageShakeStartedAt) /
+                Mathf.Max(0.01f, damageShakeEndsAt - damageShakeStartedAt));
+            if (strength < screenShakeStrength * remainingFraction)
+                return;
+        }
+
+        damageShakeStartedAt = now;
+        damageShakeEndsAt = now + duration;
         screenShakeStrength = strength;
     }
 

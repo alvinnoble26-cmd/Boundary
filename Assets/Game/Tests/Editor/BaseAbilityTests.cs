@@ -4,12 +4,22 @@ using UnityEngine;
 public sealed class BaseAbilityTests
 {
     [Test]
+    public void SliceHazardRepelIsBoundedAndFallsOffWithDistance()
+    {
+        float nearby = SliceAbility.HazardRepelVelocityChange(1f, 2.5f);
+        float distant = SliceAbility.HazardRepelVelocityChange(0.25f, 2.5f);
+
+        Assert.That(nearby, Is.EqualTo(SliceAbility.HazardRepelMaxVelocityChange).Within(0.001f));
+        Assert.That(distant, Is.GreaterThan(0f).And.LessThan(nearby));
+    }
+
+    [Test]
     public void UsesRequestedChargesTimingAndSize()
     {
         Assert.That(BaseAbility.ChargeCount, Is.EqualTo(2));
         Assert.That(BaseAbility.CooldownSeconds, Is.EqualTo(4f));
         Assert.That(BaseAbility.PlatformLifetime, Is.EqualTo(1f));
-        Assert.That(BaseAbility.PlatformRadius, Is.EqualTo(5.5f));
+        Assert.That(BaseAbility.PlatformRadius, Is.EqualTo(8.25f));
     }
 
     [Test]

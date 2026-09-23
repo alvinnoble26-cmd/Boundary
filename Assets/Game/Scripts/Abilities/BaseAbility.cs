@@ -9,7 +9,7 @@ public sealed class BaseAbility : MonoBehaviour, IAbility
     public const int ChargeCount = 2;
     public const float CooldownSeconds = 4f;
     public const float PlatformLifetime = 1f;
-    public const float PlatformRadius = 5.5f;
+    public const float PlatformRadius = 8.25f;
     public const float PlatformThickness = 0.16f;
     public const float SurfaceGap = 0.025f;
 

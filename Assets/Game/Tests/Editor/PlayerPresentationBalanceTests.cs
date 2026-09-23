@@ -38,6 +38,10 @@ public sealed class PlayerPresentationBalanceTests
     {
         Assert.AreEqual(1.74f * 1.3f, BullseyeTargetPresentation.OuterRingRadius, 0.001f);
         Assert.IsTrue(BullseyeTargetPresentation.InnerTargetUsesOpponentBody);
+        Assert.Greater(PlayerOutlinePresentation.BullseyeWidth,
+            PlayerOutlinePresentation.NormalWidth);
+        Assert.Greater(PlayerOutlinePresentation.VoidWidth,
+            PlayerOutlinePresentation.BullseyeWidth);
     }
 
     [Test]
@@ -45,6 +49,6 @@ public sealed class PlayerPresentationBalanceTests
     {
         Assert.Less(SfxManager.JumpVolume, 0.5f);
         Assert.Greater(SfxManager.AbilitySoundMaxDistance, 10f);
-        Assert.Less(SfxManager.AbilitySoundMaxDistance, 60f);
+        Assert.LessOrEqual(SfxManager.AbilitySoundMaxDistance, 60f);
     }
 }

@@ -22,7 +22,8 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
 
     private readonly SyncVar<BoundaryKnockoutState> state = new(BoundaryKnockoutState.Grounded, ownerAuth: true);
     private readonly SyncVar<float> health = new(BoundaryMath.MaximumHealth, 0.01f, ownerAuth: false);
-    private readonly Dictionary<int, float> serverBlackHoleContacts = new Dictionary<int, float>();
+    private readonly Dictionary<int, BlackHoleContact> serverBlackHoleContacts =
+        new Dictionary<int, BlackHoleContact>();
     private readonly List<int> staleContactIds = new List<int>();
 
     private PlayerMovement movement;
@@ -34,6 +35,8 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
     private bool serverDeathSent;
     private float nextHealthTickAt;
     private float serverInvulnerableUntil;
+    private float lastObservedHealth;
+    private bool healthFeedbackPrimed;
 
     public bool IsCpu => movement != null && movement.IsCpuControlled;
     public BoundaryKnockoutState State => state.value;
@@ -96,6 +99,9 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
     protected override void OnSpawned()
     {
         spawnRecoveryEndsAt = Time.unscaledTime + SpawnRecoveryDurationSeconds;
+        healthFeedbackPrimed = false;
+        if (isOwner)
+            AbilityFeedback.Reset();
         if (isServer)
         {
             health.value = BoundaryMath.MaximumHealth;
@@ -113,6 +119,8 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
     {
         if (isServer)
             ServerUpdateHealth();
+
+        WatchHealthForAbilityFeedback();
 
         if (movement == null || !movement.HasSimulationAuthority)
             return;
@@ -220,12 +228,22 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
             PushOwner(owner.Value, velocityChange);
     }
 
-    public void ServerRegisterBlackHoleContact(int sourceInstanceId)
+    private struct BlackHoleContact
+    {
+        public float observedAt;
+        public float damageMultiplier;
+    }
+
+    public void ServerRegisterBlackHoleContact(int sourceInstanceId, float damageMultiplier = 1f)
     {
         if (!isServer || sourceInstanceId == 0 || health.value <= 0f)
             return;
 
-        serverBlackHoleContacts[sourceInstanceId] = Time.time;
+        serverBlackHoleContacts[sourceInstanceId] = new BlackHoleContact
+        {
+            observedAt = Time.time,
+            damageMultiplier = Mathf.Max(0f, damageMultiplier)
+        };
     }
 
     public void ServerApplyAbilityDamage(float damage)
@@ -251,26 +269,26 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
         if (now < nextHealthTickAt)
             return;
 
-        int activeContacts = 0;
+        float activeContactDamageMultiplier = 0f;
         staleContactIds.Clear();
-        foreach (KeyValuePair<int, float> contact in serverBlackHoleContacts)
+        foreach (KeyValuePair<int, BlackHoleContact> pair in serverBlackHoleContacts)
         {
-            if (now - contact.Value <= ContactGraceSeconds)
-                activeContacts++;
+            if (now - pair.Value.observedAt <= ContactGraceSeconds)
+                activeContactDamageMultiplier += pair.Value.damageMultiplier;
             else
-                staleContactIds.Add(contact.Key);
+                staleContactIds.Add(pair.Key);
         }
         foreach (int sourceId in staleContactIds)
             serverBlackHoleContacts.Remove(sourceId);
 
         float elapsed = Mathf.Min(0.25f, Mathf.Max(HealthTickSeconds, now - nextHealthTickAt + HealthTickSeconds));
         nextHealthTickAt = now + HealthTickSeconds;
-        if (activeContacts <= 0 || health.value <= 0f || IsServerInvulnerable)
+        if (activeContactDamageMultiplier <= 0f || health.value <= 0f || IsServerInvulnerable)
             return;
 
         health.value = BoundaryMath.ApplyDamage(
             health.value,
-            BoundaryMath.BlackHoleDamage(elapsed) * activeContacts);
+            BoundaryMath.BlackHoleDamage(elapsed) * activeContactDamageMultiplier);
         ServerNotifyDeathIfNeeded();
     }
 
@@ -301,6 +319,39 @@ public sealed class BoundaryPlayerState : NetworkBehaviour
             return;
 
         movement.ApplyAbilityImpulse(velocityChange);
+        // Repel and Attract land without dealing damage. Only an opposing
+        // ability on record produces feedback, so a player's own recoil is
+        // never reported as a hit against them.
+        AbilityFeedback.ReportKnockback(true, transform.position);
+    }
+
+    /// <summary>
+    /// Watches the replicated health of every player on this client and
+    /// reports drops to <see cref="AbilityFeedback"/>, which decides whether
+    /// the local player was the victim or the attacker. This is presentation
+    /// only: it sends nothing and changes no networked state.
+    /// </summary>
+    private void WatchHealthForAbilityFeedback()
+    {
+        if (Application.isBatchMode)
+            return;
+
+        float current = health.value;
+        if (!healthFeedbackPrimed)
+        {
+            healthFeedbackPrimed = true;
+            lastObservedHealth = current;
+            return;
+        }
+
+        float drop = lastObservedHealth - current;
+        lastObservedHealth = current;
+        if (drop <= 0f)
+            return;
+
+        AbilityFeedback.ReportHealthDrop(isOwner, drop, transform.position);
+        if (!isOwner)
+            BoundaryDamageNumber.Show(transform, drop);
     }
 
     private void SetState(BoundaryKnockoutState next)
@@ -460,5 +511,142 @@ internal sealed class BoundaryWorldHealthBar : MonoBehaviour
         anchorMax.x = Mathf.Clamp01(health01);
         rect.anchorMax = anchorMax;
         rect.offsetMax = new Vector2(-2f, rect.offsetMax.y);
+    }
+}
+
+/// <summary>
+/// A local-only world-space damage number for the opponent. Health is already
+/// replicated to both clients, so this intentionally sends no additional RPC.
+/// </summary>
+internal sealed class BoundaryDamageNumber : MonoBehaviour
+{
+    private const float ConsecutiveDamageGapSeconds = 1f;
+    private const float LifetimeSeconds = 1.8f;
+    private const float RiseDistance = 2.25f;
+    private const float WorldScale = 0.025f;
+
+    private static readonly Dictionary<int, BoundaryDamageNumber> ActiveNumbers =
+        new Dictionary<int, BoundaryDamageNumber>();
+
+    private Canvas canvas;
+    private Text label;
+    private float startedAt;
+    private float lastHitAt;
+    private float totalDamage;
+    private int targetId;
+    private Vector3 startPosition;
+    private Vector3 drift;
+
+    public static void Show(Transform target, float damage)
+    {
+        if (target == null || damage <= 0f || Application.isBatchMode)
+            return;
+
+        int key = target.GetInstanceID();
+        float now = Time.unscaledTime;
+        if (ActiveNumbers.TryGetValue(key, out BoundaryDamageNumber active) && active != null)
+        {
+            if (now - active.lastHitAt <= ConsecutiveDamageGapSeconds)
+            {
+                active.AddDamage(damage, now);
+                return;
+            }
+
+            Destroy(active.gameObject);
+        }
+
+        GameObject root = new GameObject("Opponent Damage Number", typeof(RectTransform),
+            typeof(Canvas));
+        BoundaryDamageNumber number = root.AddComponent<BoundaryDamageNumber>();
+        number.Initialize(target.position, damage, key, now);
+    }
+
+    private void Initialize(Vector3 targetPosition, float damage, int key, float now)
+    {
+        targetId = key;
+        totalDamage = damage;
+        startPosition = targetPosition + Vector3.up * 2.15f;
+        drift = new Vector3(Random.Range(-0.28f, 0.28f), 0f, Random.Range(-0.08f, 0.08f));
+        transform.position = startPosition;
+        transform.localScale = Vector3.one * WorldScale;
+
+        canvas = GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 300;
+
+        RectTransform rootRect = (RectTransform)transform;
+        rootRect.sizeDelta = new Vector2(360f, 150f);
+        GameObject textObject = new GameObject("Damage", typeof(RectTransform),
+            typeof(CanvasRenderer), typeof(Text), typeof(Outline));
+        textObject.transform.SetParent(transform, false);
+        label = textObject.GetComponent<Text>();
+        label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        SetDamageText();
+        label.fontSize = 76;
+        label.fontStyle = FontStyle.Bold;
+        label.alignment = TextAnchor.MiddleCenter;
+        label.color = Color.white;
+        label.raycastTarget = false;
+        Outline outline = textObject.GetComponent<Outline>();
+        outline.effectColor = new Color(0f, 0f, 0f, 0.9f);
+        outline.effectDistance = new Vector2(7f, -7f);
+
+        RectTransform textRect = (RectTransform)textObject.transform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+        startedAt = now;
+        lastHitAt = now;
+        ActiveNumbers[targetId] = this;
+    }
+
+    private void AddDamage(float damage, float now)
+    {
+        totalDamage += damage;
+        lastHitAt = now;
+        SetDamageText();
+    }
+
+    private void SetDamageText()
+    {
+        if (label != null)
+            label.text = "-" + Mathf.CeilToInt(totalDamage);
+    }
+
+    private void LateUpdate()
+    {
+        float now = Time.unscaledTime;
+        float elapsed = now - startedAt;
+        float progress = Mathf.Clamp01(elapsed / LifetimeSeconds);
+        float idleTime = now - lastHitAt;
+        transform.position = startPosition + drift * progress + Vector3.up * (RiseDistance * progress);
+
+        Camera camera = Camera.main;
+        if (camera != null)
+            transform.rotation = Quaternion.LookRotation(transform.position - camera.transform.position);
+
+        if (label != null)
+        {
+            Color color = Color.white;
+            color.a = 1f - Mathf.SmoothStep(0.7f, LifetimeSeconds, idleTime);
+            label.color = color;
+            float hitProgress = Mathf.Clamp01((now - lastHitAt) / 0.20f);
+            float punch = 1f + Mathf.Sin(hitProgress * Mathf.PI) * 0.48f;
+            transform.localScale = Vector3.one * (WorldScale * punch);
+        }
+
+        if (idleTime >= LifetimeSeconds)
+            Destroy(gameObject);
+    }
+
+    private void OnDestroy()
+    {
+        if (targetId != 0 && ActiveNumbers.TryGetValue(targetId, out BoundaryDamageNumber active) &&
+            active == this)
+        {
+            ActiveNumbers.Remove(targetId);
+        }
     }
 }

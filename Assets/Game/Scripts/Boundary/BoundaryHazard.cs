@@ -267,8 +267,6 @@ public sealed class BoundaryHazard : NetworkBehaviour
             new Color(0.08f, 0.72f, 1f), new Vector3(24f, 0f, -12f), 48f);
         CreateBlackHoleRing("Polar Lens", 2.18f, 0.055f,
             new Color(0.82f, 0.32f, 1f), new Vector3(76f, 0f, 0f), -31f);
-        CreateBlackHoleRing("Crimson Outer Lens", 3.12f, 0.045f,
-            new Color(1f, 0.045f, 0.14f), new Vector3(-19f, 0f, -8f), 27f);
         CreateBlackHoleJet("North Micro Jet", 1f);
         CreateBlackHoleJet("South Micro Jet", -1f);
         CreateBlackHoleParticles();
@@ -1170,14 +1168,14 @@ public sealed class BoundaryHazard : NetworkBehaviour
 
     public static Color CubeGlowColor(bool hollowActive, bool darknessActive)
     {
-        if (darknessActive)
-            return new Color(0.12f, 0.72f, 1f);
+        // Void's turquoise cube glow has been removed; darknessActive no
+        // longer recolors the cubes.
         return hollowActive ? new Color(0.035f, 0.55f, 1f) : TesseractBlue;
     }
 
     public static float CubeGlowIntensity(bool hollowActive, bool darknessActive)
     {
-        return darknessActive ? 32f : hollowActive ? 30f : 18f;
+        return hollowActive ? 30f : 18f;
     }
 
     private static Material CreateMaterial(Color baseColor, Color emission, float intensity)

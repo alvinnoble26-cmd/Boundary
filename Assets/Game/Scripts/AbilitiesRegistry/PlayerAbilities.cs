@@ -29,6 +29,12 @@ public class PlayerAbilities : NetworkBehaviour
         return true;
     }
 
+    /// <summary>Applies the locally hosted Playground dummy's cosmetic skin.</summary>
+    public void ConfigurePracticeDummySkin(string skinId)
+    {
+        ApplySkinVisual(skinId);
+    }
+
     public bool CpuAbilityReady(AbilityId id)
     {
         if (!IsLocalCpu || !IsAbilityEquipped(id)) return false;
@@ -584,6 +590,19 @@ private void RefreshLocalFirstPersonVisuals(string skinId)
         cameraController.RefreshLocalFirstPersonVisuals(skinId);
 }
 
+/// <summary>
+/// The other player's position, used to point the hit arrow at whoever
+/// landed the blow. Falls back to this player when no opponent is present.
+/// </summary>
+private Vector3 GetOpponentFeedbackPosition()
+{
+    BoundaryPlayerState self = GetComponent<BoundaryPlayerState>();
+    if (self != null && BoundaryPlayerState.TryGetOpponent(self, out BoundaryPlayerState opponent) &&
+        opponent != null)
+        return opponent.transform.position;
+    return transform.position;
+}
+
 private Cam GetLocalCameraController()
 {
     if (localCameraController == null)
@@ -937,6 +956,17 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
             player.GetComponent<PlayerAbilities>()?.ServerNotifySliceVictim();
             hit = true;
         }
+
+        // Arena cubes and black holes are server-simulated. Apply the same
+        // authoritative field mechanism used by Repel Throw, so every client
+        // receives the resulting movement through the existing transforms.
+        BoundaryHazard.ServerApplyArenaMassField(
+            transform.position,
+            SliceAbility.Radius,
+            true,
+            SliceAbility.HazardRepelForce,
+            SliceAbility.HazardRepelMaxVelocityChange,
+            null);
         serverSlicePresentationOrigin = transform.position;
         serverSlicePresentationDirection = direction;
         serverSlicePresentationHit = hit;
@@ -1015,6 +1045,11 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     {
         EnsureSliceAbility();
         slicePresentation.Play(origin, direction, hit, isOwner);
+        AbilityFeedback.NoteCast(AbilityId.Slice, isOwner, origin);
+        // This RPC runs on the swinging player's object, so the owner here
+        // is the attacker; the victim is served by NotifySliceVictim.
+        if (hit && isOwner)
+            AbilityFeedback.ReportDealt(AbilityId.Slice, GetOpponentFeedbackPosition());
     }
 
     private void ServerNotifySliceVictim()
@@ -1026,8 +1061,11 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     [TargetRpc]
     private void NotifySliceVictim(PlayerID target)
     {
-        if (isOwner)
-            GetLocalCameraController()?.RequestSliceHitShake();
+        if (!isOwner)
+            return;
+
+        GetLocalCameraController()?.RequestSliceHitShake();
+        AbilityFeedback.ReportTaken(AbilityId.Slice, GetOpponentFeedbackPosition());
     }
 
     private IEnumerator ServerRunCharge(int projectileId, Vector3 origin, Vector3 direction)
@@ -1137,8 +1175,11 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     [TargetRpc]
     private void NotifyChargeVictim(PlayerID target)
     {
-        if (isOwner)
-            GetLocalCameraController()?.RequestChargeHitShake();
+        if (!isOwner)
+            return;
+
+        GetLocalCameraController()?.RequestChargeHitShake();
+        AbilityFeedback.ReportTaken(AbilityId.Charge, GetOpponentFeedbackPosition());
     }
 
     [ObserversRpc]
@@ -1146,6 +1187,7 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     {
         EnsureChargeAbility();
         chargePresentation.Begin(projectileId, origin, direction);
+        AbilityFeedback.NoteCast(AbilityId.Charge, isOwner, origin);
     }
 
     [ObserversRpc]
@@ -1171,8 +1213,11 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     [TargetRpc]
     private void NotifyBullseyeVictim(PlayerID target)
     {
-        if (isOwner)
-            GetLocalCameraController()?.RequestBullseyeHitShake();
+        if (!isOwner)
+            return;
+
+        GetLocalCameraController()?.RequestBullseyeHitShake();
+        AbilityFeedback.ReportTaken(AbilityId.Bullseye, GetOpponentFeedbackPosition());
     }
 
     [TargetRpc]
@@ -1180,6 +1225,8 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     {
         if (!isOwner)
             return;
+
+        AbilityFeedback.ReportDealt(AbilityId.Bullseye, GetOpponentFeedbackPosition());
         if (centerHit)
         {
             BullseyeScreenFeedback.Show(bullseyeDragonOverlay);
@@ -1199,6 +1246,7 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     private void ObserversBeginBullseye(int projectileId, Vector3 origin, Vector3 direction)
     {
         BeginBullseyePresentation(projectileId, origin, direction);
+        AbilityFeedback.NoteCast(AbilityId.Bullseye, isOwner, origin);
     }
 
     private void BeginBullseyePresentation(int projectileId, Vector3 origin, Vector3 direction)
@@ -1439,6 +1487,7 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
         bool hasOpponent = caster != null && BoundaryPlayerState.TryGetOpponent(caster, out _);
         voidAbility.BeginPresentation(groundPosition, seed,
             VoidAbility.ShouldShowEnemyHighlight(isOwner, hasOpponent));
+        AbilityFeedback.NoteCast(AbilityId.Void, isOwner, groundPosition);
     }
 
     [ObserversRpc]
@@ -1446,8 +1495,12 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
     {
         EnsureHollowAbility();
         hollowAbility.BeginPresentation(direction, true);
-        if (isOwner)
-            GetLocalCameraController()?.RequestHollowShake();
+        AbilityFeedback.NoteCast(AbilityId.Hollow, isOwner, transform.position);
+        // Every observing client resolves and shakes its OWN local camera
+        // here, not "isOwner of this ability's object" - the blast should
+        // hit the victim's screen as hard as the caster's, matching
+        // RequestHollowShake's duration/strength on both sides.
+        Cam.FindLocalOwner()?.RequestHollowShake();
     }
 
     [ServerRpc]
@@ -1542,6 +1595,7 @@ private void SyncLoadoutToObservers(AbilityId[] selectedIds)
         EnsureGrappleAbility();
         grappleAbility.BeginPresentation(hitPoint,
             movable && targetIdentity != null ? targetIdentity.transform : null, movable);
+        AbilityFeedback.NoteCast(AbilityId.Grapple, isOwner, hitPoint);
         if (isOwner)
             GetLocalCameraController()?.ShowThrowArm((hitPoint - transform.position).normalized);
     }
@@ -1651,6 +1705,8 @@ private void ActivateNetworkThrow(AbilityId id, Vector3 spawnPosition, Vector3 a
 [ObserversRpc]
 private void ObserversActivateAbility(AbilityId id, Vector3 aimDirection)
 {
+    AbilityFeedback.NoteCast(id, isOwner, transform.position);
+
     // Dash and Slide movement remains owner-simulated. The server relays a
     // direction-only presentation to every observer so remote clients do not
     // need to run movement/collision logic merely to see the effects.
@@ -1850,6 +1906,7 @@ private void ActivateAbility(AbilityId id)
                id == AbilityId.Bullseye ||
                id == AbilityId.Charge ||
                id == AbilityId.Slice ||
+               id == AbilityId.Base ||
                id == AbilityId.Teleport;
     }
 

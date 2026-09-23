@@ -10,8 +10,9 @@ using UnityEngine.Rendering;
 [DisallowMultipleComponent]
 public sealed class PlayerOutlinePresentation : MonoBehaviour
 {
-    private const float NormalWidth = 0.0325f;
-    private const float VoidWidth = 0.10985f;
+    public const float NormalWidth = 0.05f;
+    public const float BullseyeWidth = 0.085f;
+    public const float VoidWidth = 0.12f;
     private const float DepthLessEqual = 4f;
     private const float DepthAlways = 8f;
 
@@ -19,6 +20,7 @@ public sealed class PlayerOutlinePresentation : MonoBehaviour
     private Material outlineMaterial;
     private bool voidReveal;
     private bool bullseyeTargetReveal;
+    private Color voidRevealColor = new Color(15.75f, 0.015f, 0.01f, 1f);
 
     private void Awake()
     {
@@ -36,8 +38,12 @@ public sealed class PlayerOutlinePresentation : MonoBehaviour
     {
         if (!voidReveal || outlineMaterial == null)
             return;
-        float pulse = 14.625f + Mathf.Sin(Time.unscaledTime * 8f) * 3.375f;
-        outlineMaterial.SetColor("_OutlineColor", new Color(pulse, 0.015f, 0.01f, 1f));
+        float pulse = 0.86f + Mathf.Sin(Time.unscaledTime * 8f) * 0.14f;
+        outlineMaterial.SetColor("_OutlineColor", new Color(
+            voidRevealColor.r * pulse,
+            voidRevealColor.g,
+            voidRevealColor.b,
+            voidRevealColor.a));
     }
 
     public void Refresh()
@@ -71,11 +77,17 @@ public sealed class PlayerOutlinePresentation : MonoBehaviour
 
     public void SetVoidRevealColor(Color color)
     {
-        if (!voidReveal || outlineMaterial == null)
+        if (!voidReveal)
             return;
-        outlineMaterial.SetColor("_OutlineColor",
-            new Color(Mathf.Max(3f, color.r * 2.55f), 0.01f, 0.005f,
-                Mathf.Max(0.675f, color.a)));
+        // Void heavily lowers exposure, so keep the silhouette emissive enough to
+        // remain readable while preserving the ability's intentional alpha fade.
+        voidRevealColor = new Color(
+            Mathf.Max(4.5f, color.r * 2.55f),
+            color.g,
+            color.b,
+            color.a);
+        if (outlineMaterial != null)
+            outlineMaterial.SetColor("_OutlineColor", voidRevealColor);
     }
 
     private bool EnsureMaterial()
@@ -165,7 +177,9 @@ public sealed class PlayerOutlinePresentation : MonoBehaviour
         if (outlineMaterial == null)
             return;
         outlineMaterial.SetFloat("_ZTest", voidReveal ? DepthAlways : DepthLessEqual);
-        outlineMaterial.SetFloat("_OutlineWidth", voidReveal ? VoidWidth : NormalWidth);
+        outlineMaterial.SetFloat("_OutlineWidth", voidReveal
+            ? VoidWidth
+            : bullseyeTargetReveal ? BullseyeWidth : NormalWidth);
         outlineMaterial.SetColor("_OutlineColor", voidReveal
             ? new Color(15.75f, 0.015f, 0.01f, 1f)
             : bullseyeTargetReveal

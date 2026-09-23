@@ -670,45 +670,8 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             return;
         }
 
-        if (voidWallGlowSnapshots.Count > 0)
-            return;
-
-        foreach (PlatformTile platform in platforms)
-        {
-            if (platform.renderer == null || platform.transform == null || !platform.transform.CompareTag("Wall"))
-                continue;
-
-            Material[] originals = platform.renderer.sharedMaterials;
-            Material[] glowing = new Material[originals.Length];
-            for (int index = 0; index < originals.Length; index++)
-            {
-                Material source = originals[index];
-                if (source == null)
-                    continue;
-                Material copy = new Material(source) { name = source.name + " (Void Wall Glow)" };
-                copy.EnableKeyword("_EMISSION");
-                if (copy.HasProperty("_EmissionColor"))
-                    copy.SetColor("_EmissionColor", new Color(0.12f, 0.72f, 1f) * VoidWallGlowIntensity);
-                glowing[index] = copy;
-            }
-            platform.renderer.sharedMaterials = glowing;
-
-            GameObject lightObject = new GameObject("Void Wall Light", typeof(Light));
-            lightObject.transform.SetParent(platform.transform, false);
-            Light light = lightObject.GetComponent<Light>();
-            light.type = LightType.Point;
-            light.color = new Color(0.12f, 0.72f, 1f);
-            light.range = 14f;
-            light.intensity = VoidWallGlowIntensity;
-            light.shadows = LightShadows.None;
-            voidWallGlowSnapshots.Add(new VoidWallGlowSnapshot
-            {
-                renderer = platform.renderer,
-                originalMaterials = originals,
-                glowMaterials = glowing,
-                lightObject = lightObject
-            });
-        }
+        // Void's turquoise wall/light glow has been removed; walls stay
+        // in their normal appearance while Void is active.
     }
 
     private static bool ShouldBuildVisuals()

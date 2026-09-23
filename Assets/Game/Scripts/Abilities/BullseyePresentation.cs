@@ -233,7 +233,6 @@ public sealed class BullseyeTargetPresentation : MonoBehaviour
     public const bool InnerTargetUsesOpponentBody = true;
 
     private LineRenderer outerRing;
-    private LineRenderer innerRing;
     private Camera viewer;
     private PlayerOutlinePresentation opponentOutline;
 
@@ -250,8 +249,6 @@ public sealed class BullseyeTargetPresentation : MonoBehaviour
             SafeReciprocal(parentScale.z));
         outerRing = CreateRing("Bullseye Outer Ring", OuterRingRadius,
             0.055f * TargetScaleMultiplier, Color.white);
-        innerRing = CreateRing("Bullseye Inner Ring", InnerRingRadius,
-            0.045f * TargetScaleMultiplier, new Color(1f, 0.18f, 0.18f, 1f));
         opponentOutline = GetComponentInParent<PlayerOutlinePresentation>();
         if (opponentOutline == null)
         {
@@ -319,8 +316,10 @@ public sealed class BullseyeScreenFeedback : MonoBehaviour
         Image dragonImage = CreateImage("Dragon", dragon, Color.white);
         dragonImage.preserveAspect = true;
         RectTransform dragonRect = dragonImage.rectTransform;
-        dragonRect.anchorMin = new Vector2(0.18f, 0.12f);
-        dragonRect.anchorMax = new Vector2(0.82f, 0.88f);
+        // Pulled in from the screen edges: this is the game's biggest hit
+        // callout, but it still has to be possible to keep fighting through it.
+        dragonRect.anchorMin = new Vector2(0.28f, 0.22f);
+        dragonRect.anchorMax = new Vector2(0.72f, 0.78f);
         dragonRect.offsetMin = dragonRect.offsetMax = Vector2.zero;
         StartCoroutine(Fade(group, flash));
     }
@@ -343,12 +342,14 @@ public sealed class BullseyeScreenFeedback : MonoBehaviour
     private IEnumerator Fade(CanvasGroup group, Image flash)
     {
         float startedAt = Time.unscaledTime;
-        const float duration = 1f;
+        const float duration = 0.8f;
+        const float peakAlpha = 0.78f;
         while (Time.unscaledTime - startedAt < duration)
         {
             float progress = (Time.unscaledTime - startedAt) / duration;
-            flash.color = new Color(1f, 1f, 1f, Mathf.Lerp(0.65f, 0f, Mathf.Min(1f, progress * 4f)));
-            group.alpha = 1f - Mathf.SmoothStep(0f, 1f, progress);
+            // A hint of a blink rather than a white-out.
+            flash.color = new Color(1f, 1f, 1f, Mathf.Lerp(0.28f, 0f, Mathf.Min(1f, progress * 5f)));
+            group.alpha = (1f - Mathf.SmoothStep(0f, 1f, progress)) * peakAlpha;
             yield return null;
         }
         Destroy(gameObject);
@@ -357,10 +358,11 @@ public sealed class BullseyeScreenFeedback : MonoBehaviour
 
 public sealed class BullseyeRingHitFeedback : MonoBehaviour
 {
-    // A cool icy blue - matches the project's existing accent colour used elsewhere in the
-    // UI, and reads as clearly distinct from the pink/magenta knife flames and the dragon
-    // overlay's warm flash, so a ring hit never looks like a re-run of the center hit.
-    private static readonly Color VignetteColor = new Color(0.35f, 0.82f, 1f, 1f);
+    // The knife's own flame pink, matching FlamePink above and Bullseye's accent in
+    // AbilityFeedbackCatalog: whatever hits you tints your screen its own colour, so the
+    // colour alone tells you what landed. A ring hit is told apart from a center hit by
+    // being a brief, low edge tint rather than the dragon's full callout.
+    private static readonly Color VignetteColor = new Color(1f, 0.10f, 0.52f, 1f);
 
     public static void Show()
     {
@@ -400,8 +402,12 @@ public sealed class BullseyeRingHitFeedback : MonoBehaviour
         // A quick punch-in followed by a gentle fade - deliberately much snappier than the
         // dragon overlay's 1s hold, so it reads as "confirmed, lesser hit" rather than a
         // weaker copy of the center-hit payoff.
-        const float duration = 0.45f;
+        const float duration = 0.42f;
         const float attackFraction = 0.15f;
+        // Capped well under full: AbilityHitFeedback draws its own vignette for the same
+        // hit, and two full-strength frames stacked was most of what made a landed knife
+        // feel like a screen takeover.
+        const float peakAlpha = 0.38f;
         float startedAt = Time.unscaledTime;
         while (Time.unscaledTime - startedAt < duration)
         {
@@ -409,7 +415,7 @@ public sealed class BullseyeRingHitFeedback : MonoBehaviour
             float envelope = progress < attackFraction
                 ? progress / attackFraction
                 : 1f - Mathf.SmoothStep(0f, 1f, (progress - attackFraction) / (1f - attackFraction));
-            group.alpha = envelope;
+            group.alpha = envelope * peakAlpha;
             yield return null;
         }
         Destroy(gameObject);
@@ -431,9 +437,9 @@ public sealed class BullseyeRingHitFeedback : MonoBehaviour
         {
             float normalizedDistance = Vector2.Distance(new Vector2(x, y), center) / maxDistance;
             // Transparent through the middle so gameplay stays readable, ramping up to a
-            // soft coloured frame at the screen edges.
-            float alpha = Mathf.Clamp01((normalizedDistance - 0.42f) / 0.58f);
-            alpha *= alpha;
+            // soft coloured frame that only reaches the screen edges.
+            float alpha = Mathf.Clamp01((normalizedDistance - 0.60f) / 0.40f);
+            alpha *= alpha * alpha;
             texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
         }
         texture.Apply(false, true);

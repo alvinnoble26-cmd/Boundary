@@ -5,7 +5,7 @@ using UnityEngine.UI;
 
 public class SfxManager : MonoBehaviour
 {
-    public const float AbilitySoundMaxDistance = 36f;
+    public const float AbilitySoundMaxDistance = 60f;
     public const float JumpVolume = 0.32f;
 
     public static SfxManager I { get; private set; }

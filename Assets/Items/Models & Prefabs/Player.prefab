@@ -752,7 +752,7 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   maxSlopeAngle: 75
-  acceleration: 120
+  acceleration: 90
   maxSpeed: 23.4
   deceleration: 50
   jumpForce: 14
@@ -1019,7 +1019,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   objectToThrow: {fileID: 5883653943848685551, guid: 0316e51d9f81b4e5b9df63b1ea59ac4e, type: 3}
-  throwForce: 1
+  throwForce: 0.25
   throwUpwardForce: 2
   cooldown: 3
   launchHeightAbovePlayerCenter: 1.35

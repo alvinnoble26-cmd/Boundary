@@ -11,6 +11,10 @@ public sealed class SliceAbility : MonoBehaviour, IAbility
     public const float ArcDegrees = 120f;
     public const float SwingDuration = 0.2f;
     public const float ScreenSliceDuration = 0.75f;
+    // Arena masses are deliberately heavy. This is strong enough to visibly
+    // displace a nearby cube or black hole without eclipsing Repel Throw.
+    public const float HazardRepelForce = 120f;
+    public const float HazardRepelMaxVelocityChange = 30f;
 
     public AbilityId Id => AbilityId.Slice;
     public float CooldownDuration => CooldownSeconds;
@@ -31,6 +35,12 @@ public sealed class SliceAbility : MonoBehaviour, IAbility
     public static bool ShouldShowScreenOverlay(bool hit, bool presentationOwnedByCaster)
     {
         return hit && presentationOwnedByCaster;
+    }
+
+    public static float HazardRepelVelocityChange(float distanceInfluence, float rigidbodyMass)
+    {
+        return BoundaryMath.FieldVelocityChange(HazardRepelForce,
+            HazardRepelMaxVelocityChange, distanceInfluence, rigidbodyMass);
     }
 }
 

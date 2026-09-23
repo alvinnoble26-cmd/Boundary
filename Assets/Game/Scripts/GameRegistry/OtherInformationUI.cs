@@ -106,7 +106,7 @@ public sealed class OtherInformationUI : MonoBehaviour
         RectTransform rect = gameObject.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0.5f, 0.5f);
         rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = new Vector2(0f, -174f);
+        rect.anchoredPosition = new Vector2(0f, -310f);
         rect.sizeDelta = new Vector2(560f, 88f);
 
         Image hitArea = gameObject.GetComponent<Image>();

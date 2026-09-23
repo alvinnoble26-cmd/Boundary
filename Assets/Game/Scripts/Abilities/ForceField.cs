@@ -37,6 +37,8 @@ public class  ForceField : MonoBehaviour
     [SerializeField] private float playerForceMultiplier = 1.5f;
     [SerializeField] private AnimationCurve falloff = AnimationCurve.EaseInOut(0, 1, 1, 0);
     [SerializeField] private bool affectOwner = true;
+
+    private bool thrownByLocalPlayer;
     [SerializeField] private Rigidbody ownerRb;
 
     [Header("Filtering")]
@@ -105,6 +107,9 @@ public class  ForceField : MonoBehaviour
             SfxManager.PlayAttractThrow(transform.position);
             CreateAttractProjectileVisual();
         }
+
+        thrownByLocalPlayer = AbilityFeedback.NoteWorldSource(FeedbackAbilityId, transform,
+            radius, delayBeforePulse + destroyAfterPulse + 0.5f);
     }
 
     void Update()
@@ -121,6 +126,35 @@ public class  ForceField : MonoBehaviour
         if (timer >= delayBeforePulse)
         {
             PulseOnce();
+        }
+    }
+
+    private AbilityId FeedbackAbilityId =>
+        mode == Mode.Repel ? AbilityId.RepelThrow : AbilityId.AttractThrow;
+
+    /// <summary>
+    /// The pushed player is told by the existing knockback TargetRpc, but that
+    /// message never reaches the thrower. This pulse exists on every client at
+    /// the same moment, so the thrower can confirm its own hit locally.
+    /// </summary>
+    private void ReportPulseHitToThrower()
+    {
+        if (!thrownByLocalPlayer)
+            return;
+
+        BoundaryPlayerState[] players =
+            FindObjectsByType<BoundaryPlayerState>(FindObjectsSortMode.None);
+        for (int index = 0; index < players.Length; index++)
+        {
+            BoundaryPlayerState player = players[index];
+            // Catching yourself in your own field is not a hit worth confirming.
+            if (player == null || player.isOwner)
+                continue;
+            if (Vector3.Distance(player.transform.position, transform.position) > radius)
+                continue;
+
+            AbilityFeedback.ReportDealtByWorldSource(FeedbackAbilityId, player.transform.position);
+            return;
         }
     }
 
@@ -148,6 +182,8 @@ public class  ForceField : MonoBehaviour
                 SpawnAttractCollapsePulse(transform.position);
             else
                 SpawnRepelShockwavePulse(transform.position);
+
+            ReportPulseHitToThrower();
         }
 
         Vector3 center = transform.position;

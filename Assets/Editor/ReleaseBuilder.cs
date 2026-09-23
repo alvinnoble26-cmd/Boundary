@@ -7,9 +7,9 @@ using UnityEditor.Build.Reporting;
 
 public static class ReleaseBuilder
 {
-    private const string MarketingVersion = "1.13";
-    private const string BuildNumber = "22";
-    private const string ReleaseFolder = "Builds/Release-1.13-22";
+    private const string MarketingVersion = "1.14";
+    private const string BuildNumber = "23";
+    private const string ReleaseFolder = "Builds/Release-1.14-23";
 
     public static void BuildLinuxServer()
     {

@@ -287,6 +287,13 @@ public static class EZLayouts
         Header(p);
         float h = p.rect.height;
         float col = Mathf.Min(760f, p.rect.width - 200f);
+        TMP_Text optionsTitle = p.Find("OptionsHeading/Title")?.GetComponent<TMP_Text>();
+        if (optionsTitle != null)
+        {
+            float titleY = p.InverseTransformPoint(optionsTitle.transform.position).y;
+            Place(p, optionsTitle, 0f, titleY, col + 100f, 84f);
+            FitLabel(optionsTitle, 28f, 64f, TextAlignmentOptions.Center);
+        }
 
         // background card first, so the controls placed afterwards sit on top of it
         Image card = null;
@@ -300,66 +307,47 @@ public static class EZLayouts
             if (area > bestArea) { bestArea = area; card = img; }
         }
 
-        TMP_Text volHead = FindText(p, "VOLUME");
-        TMP_Text accHead = FindText(p, "ACCESSIBILITY");
+        TMP_Text volHead = p.Find("VolumeLabel")?.GetComponent<TMP_Text>();
+        TMP_Text subtitle = p.Find("OptionsHeading/Subtitle")?.GetComponent<TMP_Text>();
+        TMP_Text accHead = p.Find("AccessibilityLabel")?.GetComponent<TMP_Text>();
         Slider slider = p.GetComponentInChildren<Slider>(false);
         Button shake = Find(p, "SHAKE", "DAMAGE");
-        Button edit = Find(p, "EDIT");
-        Button other = Find(p, "OTHER");
-        if (other == null)
+        Canvas ownerCanvas = p.GetComponentInParent<Canvas>();
+        Button edit = ownerCanvas?.transform.Find("Edit ControlsButton")?.GetComponent<Button>();
+        Button other = ownerCanvas?.transform.Find("OtherInformationButton")?.GetComponent<Button>();
+
+        // Lay out every row from one cursor. The subtitle includes the word
+        // "ACCESSIBILITY", so broad text searches must not select it as the heading.
+        float[] heights = { 44f, 48f, 32f, 40f, 88f, 96f, 96f };
+        float[] gaps = { 24f, 34f, 22f, 32f, 80f, 80f };
+        float totalHeight = 0f;
+        foreach (float rowHeight in heights) totalHeight += rowHeight;
+        foreach (float rowGap in gaps) totalHeight += rowGap;
+        float scale = Mathf.Min(1f, (h - 230f) / totalHeight);
+        float y = h * 0.5f - 180f * scale;
+        float[] centers = new float[heights.Length];
+        for (int i = 0; i < heights.Length; i++)
         {
-            // OtherInformationUI parents "OtherInformationButton" to the root Canvas itself
-            // (a sibling of OptionsMenu, not a child of it), so the panel-local search above
-            // can never see it. Fall back to an exact-name search across the whole canvas.
-            Canvas ownerCanvas = p.GetComponentInParent<Canvas>();
-            if (ownerCanvas != null)
-            {
-                foreach (var b in ownerCanvas.GetComponentsInChildren<Button>(true))
-                {
-                    if (b.name == "OtherInformationButton") { other = b; break; }
-                }
-            }
+            heights[i] *= scale;
+            y -= heights[i] * 0.5f;
+            centers[i] = y;
+            y -= heights[i] * 0.5f;
+            if (i < gaps.Length) y -= gaps[i] * scale;
         }
 
-        // Body rows are laid out below Header()'s title/subtitle instead of at fixed
-        // offsets from the panel's centre. Header() puts the subtitle's bottom edge at
-        // roughly (h*0.5 - 168); the old fixed cy=122 for accHead only cleared that on a
-        // tall panel, so on a shorter screen "ACCESSIBILITY" slid up on top of "AUDIO,
-        // CONTROLS, AND ACCESSIBILITY". Deriving the start point from h, then packing the
-        // rows down from there (shrinking gaps/row heights together if the panel is short
-        // rather than letting rows collide), keeps this correct at any panel height.
-        float headerBottom = (h * 0.5f - 48f - 100f) - 32f;
-        float bottomMargin = -h * 0.5f + 32f;
-        float bodyH = Mathf.Max(260f, headerBottom - bottomMargin);
-
-        float[] rowH = { 44f, 48f, 32f, 88f, 96f, 96f }; // volHead, slider, accHead, shake, edit, other
-        float sumRowH = 0f;
-        foreach (float rh in rowH) sumRowH += rh;
-        const float desiredGap = 22f;
-        float neededH = sumRowH + desiredGap * (rowH.Length - 1);
-        float scale = Mathf.Clamp(bodyH / neededH, 0.55f, 1f);
-        float gap = desiredGap * scale;
-
-        float y = headerBottom;
-        float[] cy = new float[rowH.Length];
-        float[] scaledH = new float[rowH.Length];
-        for (int i = 0; i < rowH.Length; i++)
-        {
-            scaledH[i] = rowH[i] * scale;
-            y -= scaledH[i] * 0.5f;
-            cy[i] = y;
-            y -= scaledH[i] * 0.5f + gap;
-        }
-
-        Place(p, card, 0f, (headerBottom + bottomMargin) * 0.5f, col + 100f, bodyH + 60f);
-        Place(p, volHead, 0f, cy[0], col, scaledH[0]);
+        Place(p, volHead, 0f, centers[0], col, heights[0]);
         FitLabel(volHead, 20f, 30f, TextAlignmentOptions.Left);
-        Place(p, slider, 0f, cy[1], col, scaledH[1]);
-        Place(p, accHead, 0f, cy[2], col, scaledH[2]);
+        Place(p, slider, 0f, centers[1], col, heights[1]);
+        Place(p, subtitle, 0f, centers[2], col, heights[2]);
+        FitLabel(subtitle, 18f, 28f, TextAlignmentOptions.Left);
+        Place(p, accHead, 0f, centers[3], col, heights[3]);
         FitLabel(accHead, 18f, 26f, TextAlignmentOptions.Left);
-        Place(p, shake, 0f, cy[3], col, scaledH[3]);
-        Place(p, edit, 0f, cy[4], col, scaledH[4]);
-        Place(p, other, 0f, cy[5], col, scaledH[5]);
+        Place(p, shake, 0f, centers[4], col, heights[4]);
+        Place(p, edit, 0f, centers[5], col, heights[5]);
+        Place(p, other, 0f, centers[6], col, heights[6]);
+        float cardTop = centers[0] + heights[0] * 0.5f + 48f * scale;
+        float cardBottom = centers[6] - heights[6] * 0.5f - 48f * scale;
+        Place(p, card, 0f, (cardTop + cardBottom) * 0.5f, col + 100f, cardTop - cardBottom);
         LayoutButtonTexts(edit);
         LayoutButtonTexts(other);
 
@@ -371,39 +359,20 @@ public static class EZLayouts
                 pill = shake.gameObject.AddComponent<EZTogglePill>();
                 pill.Build(shake);
             }
-            // This row carries a second, leftover TMP text reading "BACK" (a copy/paste artifact,
-            // unused by any script) alongside its real caption. Skip stray nav-label text so the
-            // real caption gets the stretch/resize treatment instead of the decoy.
-            TMP_Text label = null;
+            // The scene uses a legacy Text caption; its leftover TMP labels are stray.
             foreach (var t in shake.GetComponentsInChildren<TMP_Text>(true))
             {
-                if (EZ.IsEZ(t.transform)) continue;
-                string u = (t.text ?? "").Trim().ToUpperInvariant();
-                if (u == "BACK" || u == "CLOSE" || u.Length == 0) { t.gameObject.SetActive(false); continue; }
-                label = t;
+                if (!EZ.IsEZ(t.transform)) t.gameObject.SetActive(false);
+            }
+            // Size the legacy caption to match the other Options labels.
+            foreach (var l in shake.GetComponentsInChildren<Text>(true))
+            {
+                if (EZ.IsEZ(l.transform) || (l.text ?? "").Trim() != "DAMAGE SCREEN SHAKE") continue;
+                EZ.Stretch(l.rectTransform, 32f, 8f, 150f, 8f);
+                l.alignment = TextAnchor.MiddleLeft;
+                l.resizeTextForBestFit = false;
+                l.fontSize = 32;
                 break;
-            }
-            if (label != null)
-            {
-                EZ.Stretch(label.rectTransform, 32f, 8f, 150f, 8f);
-                FitLabel(label, 20f, 32f, TextAlignmentOptions.Left);
-            }
-            else
-            {
-                // The real caption here ("DAMAGE SCREEN SHAKE") is a legacy UnityEngine.UI.Text,
-                // which the TMP-only search above can't see.
-                foreach (var l in shake.GetComponentsInChildren<Text>(true))
-                {
-                    if (EZ.IsEZ(l.transform)) continue;
-                    string u = (l.text ?? "").Trim().ToUpperInvariant();
-                    if (u.Length == 0) continue;
-                    EZ.Stretch(l.rectTransform, 32f, 8f, 150f, 8f);
-                    l.alignment = TextAnchor.MiddleLeft;
-                    l.resizeTextForBestFit = true;
-                    l.resizeTextMinSize = 14;
-                    l.resizeTextMaxSize = 32;
-                    break;
-                }
             }
         }
     }

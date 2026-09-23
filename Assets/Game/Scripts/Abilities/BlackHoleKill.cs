@@ -5,6 +5,7 @@ using UnityEngine.Rendering.Universal;
 
 public class BlackHoleKill : MonoBehaviour
 {
+    public const float AbilityContactDamageMultiplier = 1.5f;
     // This is deliberately presentation-only. Black-hole damage still uses the
     // projectile's own contact collider and is not enlarged by this field.
     public const float DarknessRadius = 21f;
@@ -50,12 +51,16 @@ public class BlackHoleKill : MonoBehaviour
 
     private void Start()
     {
-        // Every client receives the same networked projectile, making its spawn
-        // sound universal without changing the multiplayer RPC layout.
-        SfxManager.PlayBlackHoleThrow(transform.position);
-
         if (destroyTime <= 0f)
             destroyTime = Time.time + lifetimeSeconds;
+
+        // Registered for the hole's whole life so contact damage is named
+        // correctly on both screens. Damage is only attributed to it while a
+        // player is within its own contact collider's reach.
+        Collider contact = GetComponent<Collider>();
+        float contactRadius = contact != null ? contact.bounds.extents.magnitude + 1.5f : 4f;
+        AbilityFeedback.NoteWorldSource(AbilityId.BlackThrow, transform, contactRadius,
+            Mathf.Max(0.5f, destroyTime - Time.time) + 0.5f);
 
         CreateBlackHoleVisual();
         CreateDarknessField();
@@ -89,7 +94,7 @@ public class BlackHoleKill : MonoBehaviour
 
         BoundaryPlayerState state = other.GetComponentInParent<BoundaryPlayerState>();
         if (state != null)
-            state.ServerRegisterBlackHoleContact(gameObject.GetInstanceID());
+            state.ServerRegisterBlackHoleContact(gameObject.GetInstanceID(), AbilityContactDamageMultiplier);
     }
 
     private void OnDestroy()
@@ -115,7 +120,7 @@ public class BlackHoleKill : MonoBehaviour
         eventHorizon = CreateEventHorizon();
         CreateCoreParticle("Black Hole Dark Halo", BlackGlow, 1.28f);
 
-        accretionRings = new LineRenderer[4];
+        accretionRings = new LineRenderer[2];
         for (int index = 0; index < accretionRings.Length; index++)
         {
             GameObject ringObject = new GameObject("Neon Accretion Ring", typeof(LineRenderer));

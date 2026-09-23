@@ -6,6 +6,17 @@ using UnityEngine;
 public sealed class BoundaryCpuTests
 {
     [Test]
+    public void PracticeDummySkinSelectionIsDeterministicAndUsesSupportedSkins()
+    {
+        string[] expected = { "beard", "turtle", "sun_ducker" };
+        for (int seed = 0; seed < 50; seed++)
+        {
+            Assert.Contains(BoundaryPracticeDummy.SkinForSeed(seed), expected);
+            Assert.AreEqual(BoundaryPracticeDummy.SkinForSeed(seed), BoundaryPracticeDummy.SkinForSeed(seed));
+        }
+    }
+
+    [Test]
     public void RandomLoadoutsAlwaysContainThreeDistinctEnabledAbilities()
     {
         HashSet<AbilityId> coverage = new HashSet<AbilityId>();

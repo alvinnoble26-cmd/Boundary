@@ -10,16 +10,22 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
     public const float BlastDuration = 2f;
     public const float DamagePerSecond = 20f;
     public const float MaximumRange = 70f;
-    public const float InitialBlastRadius = 2.4f;
-    public const float BlastRadius = 7.2f;
+    // Damage is a fixed cylinder for the entire beam. It deliberately does
+    // not widen with distance, so its rendered energy beam is the same area
+    // the server checks for damage.
+    public const float BlastRadius = 3.24f;
+    public const float MagicCircleRadiusMultiplier = 1.6f;
+    public const float MagicCircleRadius = BlastRadius * MagicCircleRadiusMultiplier;
     public const float EyeHeight = 1.1f;
     public const float TargetCenterHeight = 0.8f;
     public const float ChargePresentationVerticalOffset = -0.35f;
-    public const float RecoilJumpForceMultiplier = 1.5f;
+    public const float RecoilJumpForceMultiplier = 3f;
 
     private const float VisualPortalRadius = 2.35f;
     private const float VisualPortalSpacing = 12f;
-    private const float VisualBeamWidth = 1.35f;
+    // LineRenderer width is a diameter. The outer energy beam therefore ends
+    // exactly at the server damage radius on both sides of its centre line.
+    private const float VisualBeamWidth = BlastRadius * 2f;
 
     private static readonly Color Purple = new Color(0.7f, 0.08f, 1.8f, 0.9f);
     private static readonly Color BrightPurple = new Color(1.6f, 0.55f, 3f, 1f);
@@ -80,14 +86,12 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
         if (distanceAlong < 0f || distanceAlong > MaximumRange)
             return false;
         Vector3 closest = origin + normalized * distanceAlong;
-        float radius = GetBlastRadius(distanceAlong);
-        return (point - closest).sqrMagnitude <= radius * radius;
+        return (point - closest).sqrMagnitude <= BlastRadius * BlastRadius;
     }
 
     public static float GetBlastRadius(float distanceAlong)
     {
-        float distance01 = Mathf.Clamp01(distanceAlong / MaximumRange);
-        return Mathf.Lerp(InitialBlastRadius, BlastRadius, distance01);
+        return BlastRadius;
     }
 
     public void BeginPresentation(Vector3 direction, bool showCrispBlastEffect, float elapsed = 0f)
@@ -245,9 +249,9 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
                 float portalDistance = Vector3.Dot(circle.position - origin, direction);
                 float arrival = Mathf.SmoothStep(0f, 1f,
                     Mathf.InverseLerp(portalDistance - 3f, portalDistance, visibleLength));
-                float distanceScale = Mathf.Lerp(1f, 3f, Mathf.Clamp01(portalDistance / MaximumRange));
-                circle.localScale = Vector3.one * arrival * distanceScale *
-                    (0.9f + Mathf.Sin(Time.time * 10f + circle.GetSiblingIndex()) * 0.1f);
+                // Magic circles are decorative and deliberately remain 1.6x
+                // the fixed damage radius at every point along the beam.
+                circle.localScale = Vector3.one * arrival;
                 foreach (LineRenderer line in circle.GetComponentsInChildren<LineRenderer>())
                     line.startColor = line.endColor = WithAlpha(BrightPurple, fade * arrival);
             }
@@ -607,7 +611,7 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
                 magicCircle.name = "Dark Purple Ice Arrow Magic Circle";
                 magicCircle.transform.localPosition = Vector3.zero;
                 magicCircle.transform.localRotation = Quaternion.identity;
-                magicCircle.transform.localScale = Vector3.one * 1.6f;
+                magicCircle.transform.localScale = Vector3.one * MagicCircleRadius;
                 foreach (ParticleSystem particleSystem in magicCircle.GetComponentsInChildren<ParticleSystem>(true))
                 {
                     ParticleSystem.MainModule main = particleSystem.main;
@@ -617,7 +621,7 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
             }
             for (int ringIndex = 0; ringIndex < 4; ringIndex++)
             {
-                float radius = VisualPortalRadius * (0.72f + ringIndex * 0.11f);
+                float radius = MagicCircleRadius * (0.72f + ringIndex * (0.28f / 3f));
                 LineRenderer ring = CreateCircle(gate, "Portal Energy Ring " + ringIndex,
                     purpleMaterial, radius, 72, ringIndex == 1 ? 0.065f : 0.035f);
                 ring.transform.localPosition = Vector3.back * (0.06f + ringIndex * 0.015f);

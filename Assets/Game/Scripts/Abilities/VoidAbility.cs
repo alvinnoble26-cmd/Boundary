@@ -277,7 +277,7 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         Destroy(core.GetComponent<Collider>());
         core.GetComponent<Renderer>().sharedMaterial = darkMaterial;
 
-        rings = new LineRenderer[7];
+        rings = new LineRenderer[6];
         for (int index = 0; index < rings.Length; index++)
         {
             GameObject ringObject = new GameObject("Void Lensing Ring", typeof(LineRenderer));
@@ -649,26 +649,7 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
 
     private static void RequestLocalFeedback()
     {
-        Camera mainCamera = Camera.main;
-        Cam localCameraController = mainCamera != null
-            ? mainCamera.GetComponentInParent<Cam>()
-            : null;
-
-        if (localCameraController == null || !localCameraController.isOwner)
-        {
-            Cam[] cameraControllers = FindObjectsByType<Cam>(FindObjectsInactive.Exclude,
-                FindObjectsSortMode.None);
-            for (int index = 0; index < cameraControllers.Length; index++)
-            {
-                if (!cameraControllers[index].isOwner)
-                    continue;
-
-                localCameraController = cameraControllers[index];
-                break;
-            }
-        }
-
-        localCameraController?.RequestVoidShake();
+        Cam.FindLocalOwner()?.RequestVoidShake();
 #if UNITY_IOS || UNITY_ANDROID
         Handheld.Vibrate();
 #endif

@@ -343,7 +343,6 @@ public sealed class EZLogoFX : MonoBehaviour
 
 public sealed class EZTogglePill : MonoBehaviour
 {
-    Graphic check;
     Image track, knob;
     float pos;
     bool built;
@@ -352,15 +351,6 @@ public sealed class EZTogglePill : MonoBehaviour
     {
         if (built) return;
         built = true;
-
-        // the legacy checkmark: hide it, but keep reading it (SettingsMenu keeps updating it)
-        foreach (var g in button.GetComponentsInChildren<Graphic>(true))
-        {
-            if (EZ.IsEZ(g.transform) || g.gameObject == button.gameObject) continue;
-            if (g is Text) { check = g; break; }
-            if (g is Image && g.name.ToUpperInvariant().Contains("CHECK")) { check = g; break; }
-        }
-        if (check != null) check.transform.localScale = Vector3.zero;
 
         track = EZ.Img(button.transform, "EZ Pill", EZSprites.Rounded, new Color(1f, 1f, 1f, 0.16f), true);
         var tr = track.rectTransform;
@@ -372,22 +362,14 @@ public sealed class EZTogglePill : MonoBehaviour
 
         knob = EZ.Img(track.transform, "EZ Knob", EZSprites.Disc, EZTheme.Ink);
         EZ.Center(knob.rectTransform, new Vector2(36f, 36f), new Vector2(-24f, 0f));
-        pos = ReadState() ? 1f : 0f;
-    }
-
-    bool ReadState()
-    {
-        if (check == null) return true;
-        var tx = check as Text;
-        if (tx != null)
-            return tx.enabled && tx.gameObject.activeInHierarchy && !string.IsNullOrWhiteSpace(tx.text) && tx.color.a > 0.1f;
-        return check.enabled && check.gameObject.activeInHierarchy && check.color.a > 0.1f;
+        pos = SettingsMenu.ScreenShakeEnabled ? 1f : 0f;
+        knob.rectTransform.anchoredPosition = new Vector2(Mathf.Lerp(-24f, 24f, pos), 0f);
     }
 
     void Update()
     {
         if (track == null || knob == null) return;
-        bool on = ReadState();
+        bool on = SettingsMenu.ScreenShakeEnabled;
         pos = Mathf.Lerp(pos, on ? 1f : 0f, 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime));
         knob.rectTransform.anchoredPosition = new Vector2(Mathf.Lerp(-24f, 24f, pos), 0f);
         track.color = Color.Lerp(new Color(1f, 1f, 1f, 0.16f), EZTheme.WithAlpha(EZTheme.Accent, 0.85f), pos);

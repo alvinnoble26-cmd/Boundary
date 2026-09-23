@@ -61,12 +61,19 @@ public class PlayerMovement : NetworkBehaviour
 
     // Set only by the local practice spawner, never by a network payload.
     public bool IsCpuControlled { get; private set; }
+    public bool IsPracticeDummy { get; private set; }
     public bool HasSimulationAuthority => isOwner || (IsCpuControlled && isServer);
     private Vector2 cpuMoveInput;
 
     public void ConfigureCpuControl()
     {
         IsCpuControlled = true;
+    }
+
+    public void ConfigurePracticeDummy()
+    {
+        IsCpuControlled = true;
+        IsPracticeDummy = true;
     }
 
     public void SetCpuInput(Vector3 worldDirection, bool jump)
@@ -244,6 +251,20 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
     {
         
         if (!HasSimulationAuthority) return;
+        if (IsPracticeDummy)
+        {
+            // The dummy remains a normal physics target so ability hit detection and
+            // damage use the standard player path, but never acquires movement from
+            // input, recoil, hazards, or gravity.
+            if (rb != null)
+            {
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
+            UpdateGrounded();
+            ApplyMasterRotation();
+            return;
+        }
         slideJumpExecutedThisStep = false;
         if (slideJumpVerticalSpeedAllowance > 0f && rb != null && rb.linearVelocity.y <= 0f)
             slideJumpVerticalSpeedAllowance = -1f;

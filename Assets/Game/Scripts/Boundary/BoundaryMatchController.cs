@@ -6,9 +6,15 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public sealed class BoundaryMatchController : NetworkBehaviour
 {
+    private static readonly BoundaryDisaster[] MiddleRingDisasterPool =
+    {
+        BoundaryDisaster.BlackRain,
+        BoundaryDisaster.DarkMatterFog
+    };
+
     public static BoundaryMatchController Instance { get; private set; }
-    public const int GroundArenaMassesPerKind = 17;
-    public const int FloatingArenaMassesPerKind = 13;
+    public const int GroundArenaMassesPerKind = 14;
+    public const int FloatingArenaMassesPerKind = 10;
     public const int ArenaMassPopulation = (GroundArenaMassesPerKind + FloatingArenaMassesPerKind) * 2;
     public const int ArenaMassInnerSurvivors = 5;
     public const int PlatformHitsToCollapse = 6;
@@ -438,12 +444,11 @@ public sealed class BoundaryMatchController : NetworkBehaviour
 
     private BoundaryDisaster PickDisaster()
     {
-        Array values = Enum.GetValues(typeof(BoundaryDisaster));
-        BoundaryDisaster selected;
-        do
-        {
-            selected = (BoundaryDisaster)UnityEngine.Random.Range(1, values.Length);
-        } while (selected == previousDisaster && values.Length > 2);
+        BoundaryDisaster selected = MiddleRingDisasterPool[
+            UnityEngine.Random.Range(0, MiddleRingDisasterPool.Length)];
+        if (selected == previousDisaster)
+            selected = MiddleRingDisasterPool[(System.Array.IndexOf(MiddleRingDisasterPool, selected) + 1) %
+                MiddleRingDisasterPool.Length];
 
         previousDisaster = selected;
         return selected;
