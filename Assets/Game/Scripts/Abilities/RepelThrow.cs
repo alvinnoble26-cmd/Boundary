@@ -5,15 +5,16 @@ public class RepelThrow : MonoBehaviour, IAbility
 {
     public AbilityId Id => AbilityId.RepelThrow;
     public float CooldownDuration => cooldown;
+    public const float BuildUpSeconds = 0.5f;
+    public const float PreviousEffectRadius = 220f;
+    public const float EffectRadiusMultiplier = 0.6f;
+    public const float EffectRadius = PreviousEffectRadius * EffectRadiusMultiplier;
 
-    [Header("Projectile Prefab")]
+    [Header("Repel Field Prefab (spawned on the caster)")]
     [SerializeField] private GameObject objectToThrow;
 
-    [Header("Throw Power")]
-    [SerializeField] private float throwForce = 45f;
-    [SerializeField] private float throwUpwardForce = 4f;
+    [Header("Timing")]
     [SerializeField] private float cooldown = 3f;
-    [SerializeField, Min(0.5f)] private float launchHeightAbovePlayerCenter = 1.35f;
 
     [Header("Repulsion Field Tuning")]
     [SerializeField, Min(0f), Tooltip("Raw push force. Heavier objects receive less movement.")]
@@ -21,62 +22,22 @@ public class RepelThrow : MonoBehaviour, IAbility
     [SerializeField, Min(0f), Tooltip("Maximum response caused by the repulsion pulse.")]
     private float fieldAcceleration = 88f;
 
-    [Header("Projectile Physics Boost")]
-    [SerializeField] private float projectileMass = 3f;
-    [SerializeField] private float projectileDrag = 0f;
-    [SerializeField] private float projectileAngularDrag = 0.05f;
-    [SerializeField] private bool useVelocityChange = true;
 
     private float nextReadyTime;
-
-    private PlayerMovement pm;
-    private Transform aimTransform;
-    private ThrowPoint throwPoint;
-
-    private void Awake()
-    {
-        ResolveReferences();
-    }
 
     public void Activate()
     {
         if (Time.time < nextReadyTime)
             return;
 
-        ResolveReferences();
-
-        if (aimTransform == null || throwPoint == null || objectToThrow == null)
+        if (objectToThrow == null)
         {
-            Debug.LogError(
-                $"[{name}] RepelThrow FAILED. " +
-                $"aim={(aimTransform ? aimTransform.name : "NULL")} " +
-                $"throwPoint={(throwPoint ? throwPoint.name : "NULL")} " +
-                $"prefab={(objectToThrow ? objectToThrow.name : "NULL")}"
-            );
+            Debug.LogError($"[{name}] RepelThrow FAILED. prefab=NULL");
             return;
         }
 
         nextReadyTime = Time.time + cooldown;
         ThrowOnce();
-    }
-
-    private void ResolveReferences()
-    {
-        if (pm == null)
-            pm = GetComponentInParent<PlayerMovement>();
-
-        if (aimTransform == null && pm != null)
-            aimTransform = pm.orientation != null ? pm.orientation : pm.transform;
-
-        if (throwPoint == null)
-            throwPoint = transform.root.GetComponentInChildren<ThrowPoint>(true);
-    }
-
-    private void ThrowOnce()
-    {
-        Vector3 dir = GetAimDirection();
-        Vector3 spawnPos = throwPoint.transform.position;
-        ThrowOnce(spawnPos, dir);
     }
 
     public void ActivateFromNetwork(Vector3 spawnPos, Vector3 dir)
@@ -85,69 +46,36 @@ public class RepelThrow : MonoBehaviour, IAbility
             return;
 
         nextReadyTime = Time.time + cooldown;
-        ThrowOnce(spawnPos, dir);
+        ThrowOnce();
     }
 
-    private void ThrowOnce(Vector3 spawnPos, Vector3 dir)
+    // Repel no longer throws a ball: the field is spawned on the caster and
+    // follows them, pushing everything around them away when it pulses.
+    private void ThrowOnce()
     {
-        if (dir.sqrMagnitude < 0.0001f)
-            dir = transform.forward;
-        dir.Normalize();
         PlayerMovement ownerPm = GetComponentInParent<PlayerMovement>();
         Transform owner = ownerPm != null ? ownerPm.transform : transform.root;
-        GameObject projectile = ProjectileLaunchUtility.InstantiateSafely(
-            objectToThrow, owner, spawnPos, dir, launchHeightAbovePlayerCenter, true);
-        if (projectile == null)
+        Vector3 center = owner.position + Vector3.up * PlayerMovement.StandingCenterHeight;
+
+        GameObject field = Instantiate(objectToThrow, center, Quaternion.identity);
+        if (field == null)
             return;
 
-        projectile.GetComponent<NetworkProjectilePhysics>()?.PrepareForServerLaunch();
-
-        ForceField field = projectile.GetComponentInChildren<ForceField>();
-        if (field != null)
-            field.ConfigureField(repulsionForce, fieldAcceleration);
-
-        NetworkIdentity.Spawn(projectile, objectToThrow);
-
-        Rigidbody rb = projectile.GetComponent<Rigidbody>();
-
-        if (rb == null)
+        ForceField forceField = field.GetComponentInChildren<ForceField>();
+        if (forceField != null)
         {
-            Debug.LogWarning("[RepelThrow] Projectile has no Rigidbody.");
-            return;
+            forceField.ConfigureRepel(repulsionForce, fieldAcceleration, EffectRadius,
+                BuildUpSeconds);
+            forceField.AttachToCaster(owner, owner.GetComponent<Rigidbody>());
         }
 
-        SetupProjectileRigidbody(rb);
+        // The caster is immune to all damage while the red field builds up.
+        BoundaryPlayerState casterState = owner.GetComponent<BoundaryPlayerState>();
+        if (casterState != null)
+            casterState.ServerGrantInvulnerability(BuildUpSeconds);
 
-        Vector3 launchVelocity = dir * throwForce + Vector3.up * throwUpwardForce;
-
-        rb.linearVelocity = Vector3.zero;
-        rb.angularVelocity = Vector3.zero;
-
-        if (useVelocityChange)
-            rb.AddForce(launchVelocity, ForceMode.VelocityChange);
-        else
-            rb.AddForce(launchVelocity, ForceMode.Impulse);
-
-        Debug.Log("[RepelThrow] Fired repel projectile with force: " + launchVelocity);
+        NetworkIdentity.Spawn(field, objectToThrow);
+        Debug.Log("[RepelThrow] Repel field activated on caster " + owner.name);
     }
 
-    private Vector3 GetAimDirection()
-    {
-        Vector3 dir = aimTransform != null ? aimTransform.forward : transform.forward;
-
-        if (dir.sqrMagnitude < 0.0001f)
-            dir = transform.forward;
-
-        dir.Normalize();
-        return dir;
-    }
-
-    private void SetupProjectileRigidbody(Rigidbody rb)
-    {
-        rb.mass = projectileMass;
-        rb.linearDamping = projectileDrag;
-        rb.angularDamping = projectileAngularDrag;
-        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
-    }
 }

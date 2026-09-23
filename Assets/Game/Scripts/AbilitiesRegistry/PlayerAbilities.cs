@@ -2146,7 +2146,7 @@ void UseSlot(int slotIndex)
 
     RequestActivateAbility(id.Value, spawnPosition, aimDirection);
 
-    if (id == AbilityId.BlackThrow || id == AbilityId.AttractThrow || id == AbilityId.RepelThrow)
+    if (id == AbilityId.BlackThrow || id == AbilityId.AttractThrow)
     {
         GetLocalCameraController()?.ShowThrowArm(aimDirection);
     }

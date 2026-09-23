@@ -22,7 +22,7 @@ public class  ForceField : MonoBehaviour
     [SerializeField] private Mode mode = Mode.Repel;
 
     [Header("Timing")]
-    [SerializeField] private float delayBeforePulse = 1.5f;   
+    [SerializeField] private float delayBeforePulse = 1.5f;
     [SerializeField] private float destroyAfterPulse = 0.2f;   
 
     [Header("Force")]
@@ -70,6 +70,12 @@ public class  ForceField : MonoBehaviour
     private float nextFieldWindParticleTime;
     private int fieldWindSequence;
 
+    // Repel is a caster-centered burst. The server follows the authoritative
+    // caster; observers receive that position through NetworkTransform.
+    private bool casterCentered;
+    private Transform caster;
+    private Vector3 casterOffset;
+
     private static readonly Color AttractBlue = Brighten(new Color(0.08f, 0.48f, 1f, 0.95f));
     private static readonly Color AttractPurple = Brighten(new Color(0.24f, 0.015f, 0.42f, 0.9f));
     private static readonly Color AttractLilac = Brighten(new Color(0.64f, 0.26f, 1f, 0.9f));
@@ -88,6 +94,9 @@ public class  ForceField : MonoBehaviour
     void Awake()
     {
         hits = new Collider[Mathf.Max(8, maxHits)];
+
+        if (mode == Mode.Repel)
+            PrepareCasterCenteredCarrier();
 
         buildPresentation = !Application.isBatchMode &&
             SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null;
@@ -112,6 +121,75 @@ public class  ForceField : MonoBehaviour
             radius, delayBeforePulse + destroyAfterPulse + 0.5f);
     }
 
+    void Start()
+    {
+        if (casterCentered)
+            PrepareCasterCenteredCarrier();
+    }
+
+    void LateUpdate()
+    {
+        FollowCaster();
+    }
+
+    /// <summary>
+    /// Server-side: binds the field to the authoritative player who cast it.
+    /// </summary>
+    public void AttachToCaster(Transform casterRoot, Rigidbody casterBody)
+    {
+        caster = casterRoot;
+        ownerRb = casterBody;
+        affectOwner = false;
+        if (caster != null)
+            casterOffset = transform.position - caster.position;
+    }
+
+    private void PrepareCasterCenteredCarrier()
+    {
+        casterCentered = true;
+        affectOwner = false;
+
+        // Hide the old ball and remove its physical presence.
+        foreach (Renderer ballRenderer in GetComponentsInChildren<Renderer>(true))
+        {
+            if (ballRenderer is MeshRenderer || ballRenderer is SkinnedMeshRenderer)
+                ballRenderer.enabled = false;
+        }
+        foreach (Collider ballCollider in GetComponentsInChildren<Collider>(true))
+            ballCollider.enabled = false;
+
+        NetworkProjectilePhysics projectilePhysics = GetComponent<NetworkProjectilePhysics>();
+        if (projectilePhysics != null)
+            projectilePhysics.enabled = false;
+
+        Rigidbody body = GetComponent<Rigidbody>();
+        if (body != null)
+        {
+            if (!body.isKinematic)
+            {
+                body.linearVelocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+            }
+            body.useGravity = false;
+            body.isKinematic = true;
+        }
+    }
+
+    private void FollowCaster()
+    {
+        if (!casterCentered || caster == null)
+            return;
+
+        transform.position = caster.position + casterOffset;
+    }
+
+    private bool IsCasterBody(Rigidbody rb)
+    {
+        if (caster == null || rb == null)
+            return false;
+        return rb.transform == caster || rb.transform.IsChildOf(caster);
+    }
+
     void Update()
     {
         UpdateFieldWindVisual();
@@ -122,6 +200,8 @@ public class  ForceField : MonoBehaviour
 
         if (pulsed) return;
 
+        // Keep the pulse centered on the caster even if this runs before LateUpdate.
+        FollowCaster();
         timer += Time.deltaTime;
         if (timer >= delayBeforePulse)
         {
@@ -227,6 +307,10 @@ public class  ForceField : MonoBehaviour
             if (!affectOwner && ownerRb != null && rb == ownerRb)
                 continue;
 
+            // The caster is the source of Repel and is never pushed by it.
+            if (casterCentered && IsCasterBody(rb))
+                continue;
+
             if (rb.transform == transform || rb.transform.IsChildOf(transform))
                 continue;
 
@@ -286,6 +370,14 @@ public class  ForceField : MonoBehaviour
     {
         fieldForce = Mathf.Max(0f, force);
         fieldAcceleration = Mathf.Max(0f, acceleration);
+    }
+
+    public void ConfigureRepel(float force, float acceleration, float effectRadius,
+        float buildUpSeconds)
+    {
+        ConfigureField(force, acceleration);
+        radius = Mathf.Max(0f, effectRadius);
+        delayBeforePulse = Mathf.Max(0f, buildUpSeconds);
     }
 
     void OnDrawGizmosSelected()
@@ -368,15 +460,16 @@ public class  ForceField : MonoBehaviour
             return;
         CreateFieldWindVisual(repelVisualMaterial);
 
-        GameObject coreObject = new GameObject("Repel Red Core", typeof(ParticleSystem));
+        // Red highlight that envelops the casting player (replaces the red ball).
+        GameObject coreObject = new GameObject("Repel Player Red Aura", typeof(ParticleSystem));
         coreObject.transform.SetParent(transform, false);
         ParticleSystem core = coreObject.GetComponent<ParticleSystem>();
         ParticleSystem.MainModule main = core.main;
         main.loop = false;
         main.startLifetime = 8f;
         main.startSpeed = 0f;
-        main.startSize = 0.58f;
-        main.startColor = RepelRed;
+        main.startSize = RepelAuraSize;
+        main.startColor = new Color(RepelRed.r, RepelRed.g, RepelRed.b, 0.42f);
         main.maxParticles = 2;
         main.simulationSpace = ParticleSystemSimulationSpace.Local;
         ParticleSystem.EmissionModule emission = core.emission;
@@ -385,7 +478,7 @@ public class  ForceField : MonoBehaviour
         core.GetComponent<ParticleSystemRenderer>().sharedMaterial = repelVisualMaterial;
         core.Play();
 
-        GameObject sparksObject = new GameObject("Repel Core Embers", typeof(ParticleSystem));
+        GameObject sparksObject = new GameObject("Repel Player Embers", typeof(ParticleSystem));
         sparksObject.transform.SetParent(transform, false);
         repelOrbitSparks = sparksObject.GetComponent<ParticleSystem>();
         ParticleSystem.MainModule sparkMain = repelOrbitSparks.main;
@@ -393,7 +486,8 @@ public class  ForceField : MonoBehaviour
         sparkMain.startLifetime = 0.2f;
         sparkMain.startSpeed = 0f;
         sparkMain.startSize = new ParticleSystem.MinMaxCurve(0.03f, 0.07f);
-        sparkMain.maxParticles = 36;
+        sparkMain.maxParticles = 96;
+        // Local space so the embers stay wrapped around the caster while moving.
         sparkMain.simulationSpace = ParticleSystemSimulationSpace.Local;
         ParticleSystem.EmissionModule sparkEmission = repelOrbitSparks.emission;
         sparkEmission.enabled = false;
@@ -406,20 +500,29 @@ public class  ForceField : MonoBehaviour
         if (repelOrbitSparks == null || Time.time < nextRepelSparkTime)
             return;
 
-        nextRepelSparkTime = Time.time + 0.035f;
-        float angle = Time.time * 15f;
-        Vector3 position = new Vector3(Mathf.Cos(angle) * 0.68f,
-            Mathf.Sin(angle * 2f) * 0.16f, Mathf.Sin(angle) * 0.68f);
-        ParticleSystem.EmitParams spark = new ParticleSystem.EmitParams
+        nextRepelSparkTime = Time.time + 0.03f;
+        // Embers spiral around the player's body and shoot outward off them.
+        for (int index = 0; index < 3; index++)
         {
-            position = position,
-            velocity = position.normalized * 2.8f,
-            startColor = RepelOrange,
-            startSize = 0.055f,
-            startLifetime = 0.2f
-        };
-        repelOrbitSparks.Emit(spark, 1);
+            float angle = Time.time * 11f + index * Mathf.PI * 2f / 3f;
+            float height = Mathf.Sin(Time.time * 5f + index * 2.1f) * RepelAuraHalfHeight;
+            Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+            Vector3 offset = radial * RepelAuraRadius + Vector3.up * height;
+            ParticleSystem.EmitParams spark = new ParticleSystem.EmitParams
+            {
+                position = offset,
+                velocity = (radial + Vector3.up * height * 0.3f).normalized * 4.2f,
+                startColor = index == 0 ? RepelWhite : (index == 1 ? RepelOrange : RepelRed),
+                startSize = 0.07f,
+                startLifetime = 0.26f
+            };
+            repelOrbitSparks.Emit(spark, 1);
+        }
     }
+
+    private const float RepelAuraSize = 2.6f;
+    private const float RepelAuraRadius = 0.75f;
+    private const float RepelAuraHalfHeight = 0.95f;
 
     private void UpdateAttractSpirals()
     {
@@ -673,40 +776,62 @@ public class  ForceField : MonoBehaviour
             flash, AttractFlashPeakIntensity, AttractFlashDuration);
     }
 
+    public const float RepelImplosionSeconds = 0.1f;
+    public const float RepelBurstEffectMultiplier = 2f;
+
     private void SpawnRepelShockwavePulse(Vector3 center)
     {
         Material pulseMaterial = CreateMobileSafeVfxMaterial();
         if (pulseMaterial == null)
             return;
 
-        GameObject pulseRoot = new GameObject("Repel Shockwave Pulse");
+        GameObject pulseRoot = new GameObject("Repel Implosion + Shockwave");
         pulseRoot.transform.position = center;
-        CreateRepelLightFlash(pulseRoot);
-        CreateMiniStarburst(pulseRoot.transform, pulseMaterial, "Repel Mini Star", RepelWhite, 1.5f);
-        pulseRoot.AddComponent<RepelPulseVisual>().Configure(pulseMaterial, 0.58f);
-        EmitRadialPulse(pulseRoot.transform, pulseMaterial, 72, 0.12f, 14f, RepelRed);
-        EmitRadialPulse(pulseRoot.transform, pulseMaterial, 42, 0.05f, 18f, RepelWhite);
-        EmitRepelDebris(pulseRoot.transform, pulseMaterial);
-        Destroy(pulseRoot, RepelFlashDuration + 0.1f);
-        Destroy(pulseMaterial, RepelFlashDuration + 0.1f);
+        // Attach to the caster so every effect moves with them.
+        if (casterCentered && caster != null)
+            pulseRoot.transform.SetParent(caster, true);
+
+        // 1) Implosion during the 0.1s active window: energy collapses into the player.
+        EmitRadialPulse(pulseRoot.transform, pulseMaterial, 96, 3.4f, -3.4f / RepelImplosionSeconds,
+            RepelWhite, RepelImplosionSeconds, true, 0.09f);
+        EmitRadialPulse(pulseRoot.transform, pulseMaterial, 64, 2.2f, -2.2f / RepelImplosionSeconds,
+            RepelRed, RepelImplosionSeconds, true, 0.12f);
+
+        // 2) At the end of the implosion the blast fires with every effect doubled.
+        float m = RepelBurstEffectMultiplier;
+        pulseRoot.AddComponent<RepelDelayedAction>().Configure(RepelImplosionSeconds, () =>
+        {
+            CreateRepelLightFlash(pulseRoot, m);
+            CreateMiniStarburst(pulseRoot.transform, pulseMaterial, "Repel Mini Star", RepelWhite, 1.5f * m);
+            pulseRoot.AddComponent<RepelPulseVisual>().Configure(pulseMaterial, 0.58f, m);
+            EmitRadialPulse(pulseRoot.transform, pulseMaterial, Mathf.RoundToInt(72 * m), 0.12f, 14f * m,
+                RepelRed, 0.34f, true, 0.07f * m);
+            EmitRadialPulse(pulseRoot.transform, pulseMaterial, Mathf.RoundToInt(42 * m), 0.05f, 18f * m,
+                RepelWhite, 0.34f, true, 0.07f * m);
+            EmitRepelDebris(pulseRoot.transform, pulseMaterial, m);
+        });
+
+        float life = RepelImplosionSeconds + RepelFlashDuration + 0.1f;
+        Destroy(pulseRoot, life);
+        Destroy(pulseMaterial, life);
     }
 
-    private static void CreateRepelLightFlash(GameObject pulseRoot)
+    private static void CreateRepelLightFlash(GameObject pulseRoot, float multiplier = 1f)
     {
         Light flash = pulseRoot.AddComponent<Light>();
         flash.type = LightType.Point;
         flash.color = Brighten(new Color(1f, 0.025f, 0.015f));
-        flash.range = RepelFlashRadius;
-        flash.intensity = RepelFlashPeakIntensity;
+        flash.range = RepelFlashRadius * multiplier;
+        flash.intensity = RepelFlashPeakIntensity * multiplier;
         flash.shadows = LightShadows.None;
         flash.renderMode = LightRenderMode.ForcePixel;
         pulseRoot.AddComponent<FieldLightFlash>().Configure(
-            flash, RepelFlashPeakIntensity, RepelFlashDuration);
+            flash, RepelFlashPeakIntensity * multiplier, RepelFlashDuration);
     }
 
-    private static void EmitRepelDebris(Transform parent, Material material)
+    private static void EmitRepelDebris(Transform parent, Material material, float multiplier = 1f)
     {
-        const int count = 32;
+        int count = Mathf.RoundToInt(32 * multiplier);
         GameObject debrisObject = new GameObject("Repel Debris", typeof(ParticleSystem));
         debrisObject.transform.SetParent(parent, false);
         ParticleSystem debris = debrisObject.GetComponent<ParticleSystem>();
@@ -716,7 +841,7 @@ public class  ForceField : MonoBehaviour
         main.startSpeed = 0f;
         main.startSize = new ParticleSystem.MinMaxCurve(0.06f, 0.14f);
         main.maxParticles = count;
-        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
         ParticleSystem.EmissionModule emission = debris.emission;
         emission.enabled = false;
         debris.GetComponent<ParticleSystemRenderer>().sharedMaterial = material;
@@ -728,10 +853,10 @@ public class  ForceField : MonoBehaviour
                 Mathf.Sin(angle)).normalized;
             ParticleSystem.EmitParams particle = new ParticleSystem.EmitParams
             {
-                position = parent.position + radial * 0.18f,
-                velocity = radial * (7f + (index % 4) * 1.4f),
+                position = radial * 0.18f,
+                velocity = radial * (7f + (index % 4) * 1.4f) * multiplier,
                 startColor = index % 2 == 0 ? RepelOrange : RepelRed,
-                startSize = 0.1f,
+                startSize = 0.1f * multiplier,
                 startLifetime = 0.42f
             };
             debris.Emit(particle, 1);
@@ -784,7 +909,8 @@ public class  ForceField : MonoBehaviour
     }
 
     private static void EmitRadialPulse(Transform parent, Material material, int count,
-        float startRadius, float signedSpeed, Color color)
+        float startRadius, float signedSpeed, Color color, float lifetime = 0.34f,
+        bool localSpace = false, float size = 0.07f)
     {
         GameObject particlesObject = new GameObject("Attract Pulse Particles", typeof(ParticleSystem));
         particlesObject.transform.SetParent(parent, false);
@@ -795,7 +921,9 @@ public class  ForceField : MonoBehaviour
         main.startSpeed = 0f;
         main.startSize = new ParticleSystem.MinMaxCurve(0.035f, 0.09f);
         main.maxParticles = count;
-        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.simulationSpace = localSpace
+            ? ParticleSystemSimulationSpace.Local
+            : ParticleSystemSimulationSpace.World;
         ParticleSystem.EmissionModule emission = particles.emission;
         emission.enabled = false;
         particles.GetComponent<ParticleSystemRenderer>().sharedMaterial = material;
@@ -806,11 +934,11 @@ public class  ForceField : MonoBehaviour
             Vector3 radial = new Vector3(Mathf.Cos(angle), 0.08f, Mathf.Sin(angle)).normalized;
             ParticleSystem.EmitParams particle = new ParticleSystem.EmitParams
             {
-                position = parent.position + radial * startRadius,
+                position = (localSpace ? Vector3.zero : parent.position) + radial * startRadius,
                 velocity = radial * signedSpeed,
                 startColor = color,
-                startSize = 0.07f,
-                startLifetime = 0.34f
+                startSize = size,
+                startLifetime = lifetime
             };
             particles.Emit(particle, 1);
         }
@@ -884,5 +1012,27 @@ internal sealed class FieldStarburstVisual : MonoBehaviour
         Color faded = color;
         faded.a *= 1f - Mathf.SmoothStep(0f, 1f, progress);
         star.startColor = star.endColor = faded;
+    }
+}
+
+/// <summary>Runs one cosmetic callback after a short delay (used for the Repel implosion → blast).</summary>
+public sealed class RepelDelayedAction : MonoBehaviour
+{
+    private float fireAt;
+    private System.Action action;
+
+    public void Configure(float delay, System.Action callback)
+    {
+        fireAt = Time.time + delay;
+        action = callback;
+    }
+
+    private void Update()
+    {
+        if (action == null || Time.time < fireAt)
+            return;
+        System.Action callback = action;
+        action = null;
+        callback();
     }
 }

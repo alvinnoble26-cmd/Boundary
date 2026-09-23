@@ -39,6 +39,9 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
     private Material darkMaterial;
     private LineRenderer[] rings;
     private LineRenderer[] tendrils;
+    private Transform starfield;
+    private Material starMaterial;
+    public const int StarCount = 900;
     private readonly List<PlayerMovement> modifiedLocalMovements = new List<PlayerMovement>(2);
     private Transform enemyHighlight;
     private BoundaryPlayerState highlightedOpponent;
@@ -154,6 +157,7 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         CreateDomainVolume(presentationRoot.transform);
         CaptureAndDarkenWorld();
         CreateBlackHole(presentationRoot.transform, blackHolePosition);
+        CreateStarfield(presentationRoot.transform);
         if (showEnemyHighlight)
             CreateEnemyHighlight(presentationRoot.transform);
         ApplyLocalSpeedModifier();
@@ -172,6 +176,7 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
             float elapsed = Time.unscaledTime - startedAt;
             UpdateLighting(elapsed);
             UpdateBlackHole(elapsed);
+            UpdateStarfield(elapsed);
             UpdateEnemyHighlight(elapsed);
             if (Time.unscaledTime >= nextSlashAt)
             {
@@ -312,6 +317,79 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         CreateBlackParticles(blackHole, darkMaterial);
         CreateHaloLight(blackHole);
         UpdateBlackHole(0f);
+    }
+
+    // A dome of stars around the camera that fades in as the world goes dark,
+    // so the Void sky reads as deep space. Cosmetic and local to each client.
+    private void CreateStarfield(Transform parent)
+    {
+        Camera camera = Camera.main;
+        float distance = camera != null ? Mathf.Min(camera.farClipPlane * 0.85f, 800f) : 600f;
+
+        GameObject starObject = new GameObject("Void Starfield Sky", typeof(ParticleSystem));
+        starfield = starObject.transform;
+        starfield.SetParent(parent, false);
+        ParticleSystem stars = starObject.GetComponent<ParticleSystem>();
+        stars.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        ParticleSystem.MainModule main = stars.main;
+        main.loop = false;
+        main.playOnAwake = false;
+        main.startSpeed = 0f;
+        main.maxParticles = StarCount;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        ParticleSystem.EmissionModule emission = stars.emission;
+        emission.enabled = false;
+        ParticleSystemRenderer renderer = stars.GetComponent<ParticleSystemRenderer>();
+        starMaterial = CreateMaterial(new Color(1f, 1f, 1f, 0f), true);
+        renderer.sharedMaterial = starMaterial;
+        renderer.shadowCastingMode = ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+        renderer.sortingOrder = -100;
+
+        System.Random random = new System.Random(71993);
+        for (int index = 0; index < StarCount; index++)
+        {
+            // Uniform points on a sphere, biased to the upper sky.
+            float y = Mathf.Lerp(-0.25f, 1f, (float)random.NextDouble());
+            float angle = (float)random.NextDouble() * Mathf.PI * 2f;
+            float ring = Mathf.Sqrt(Mathf.Max(0f, 1f - y * y));
+            Vector3 direction = new Vector3(Mathf.Cos(angle) * ring, y, Mathf.Sin(angle) * ring);
+            float roll = (float)random.NextDouble();
+            float size = distance * (roll > 0.97f ? 0.0075f : Mathf.Lerp(0.0018f, 0.0042f, roll));
+            float brightness = roll > 0.97f ? 14f : Mathf.Lerp(3f, 9f, roll);
+            Color tint = roll > 0.85f
+                ? new Color(0.7f, 0.8f, 1f)
+                : roll < 0.08f ? new Color(1f, 0.85f, 0.7f) : Color.white;
+            ParticleSystem.EmitParams star = new ParticleSystem.EmitParams
+            {
+                position = direction * distance,
+                startSize = size,
+                startColor = new Color(tint.r * brightness, tint.g * brightness, tint.b * brightness, 1f),
+                startLifetime = DurationSeconds + 5f
+            };
+            stars.Emit(star, 1);
+        }
+        stars.Pause();
+        UpdateStarfield(0f);
+    }
+
+    private void UpdateStarfield(float elapsed)
+    {
+        if (starfield == null)
+            return;
+        Camera camera = Camera.main;
+        if (camera != null)
+            starfield.position = camera.transform.position;
+
+        float fadeIn = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / DarkTransitionSeconds));
+        float fadeOut = Mathf.Clamp01((DurationSeconds - elapsed) / 1f);
+        float twinkle = 0.85f + 0.15f * Mathf.Sin(Time.unscaledTime * 2.3f);
+        if (starMaterial != null)
+        {
+            Color color = new Color(1f, 1f, 1f, fadeIn * fadeOut * twinkle);
+            starMaterial.SetColor("_Color", color);
+            starMaterial.SetColor("_BaseColor", color);
+        }
     }
 
     private void CreateEnemyHighlight(Transform parent)
@@ -716,6 +794,10 @@ public sealed class VoidAbility : MonoBehaviour, IAbility
         darkMaterial = null;
         rings = null;
         tendrils = null;
+        if (starMaterial != null)
+            Destroy(starMaterial);
+        starMaterial = null;
+        starfield = null;
     }
 
     private void OnDisable()

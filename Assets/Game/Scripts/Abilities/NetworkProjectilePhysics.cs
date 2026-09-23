@@ -14,11 +14,13 @@ public class NetworkProjectilePhysics : MonoBehaviour
         new List<NetworkProjectilePhysics>();
     private Rigidbody body;
     private bool blackHoleProjectile;
+    private bool gravityFreeProjectile;
 
     private void Awake()
     {
         body = GetComponent<Rigidbody>();
-        blackHoleProjectile = GetComponentInChildren<BlackHoleKill>(true) != null ||
+        gravityFreeProjectile = GetComponentInChildren<BlackHoleKill>(true) != null;
+        blackHoleProjectile = gravityFreeProjectile ||
                               GetComponentInChildren<BlackCubeKill>(true) != null;
         if (body != null)
         {
@@ -141,6 +143,10 @@ public class NetworkProjectilePhysics : MonoBehaviour
         }
 
         body.isKinematic = !simulate;
+        // Black Hole is a straight, gravity-free projectile. This is applied
+        // on the server, which is its sole physics authority; client replicas
+        // stay kinematic and receive the server trajectory.
+        body.useGravity = !gravityFreeProjectile;
         body.collisionDetectionMode = simulate
             ? CollisionDetectionMode.ContinuousDynamic
             : CollisionDetectionMode.ContinuousSpeculative;

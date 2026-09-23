@@ -6,8 +6,8 @@ using UnityEngine;
 
 public static class IosBuildPostprocessor
 {
-    private const string MarketingVersion = "1.14";
-    private const string BuildNumber = "23";
+    private const string MarketingVersion = "1.15";
+    private const string BuildNumber = "24";
 
     [PostProcessBuild(999)]
     private static void ConfigureIosVersion(BuildTarget target, string buildPath)

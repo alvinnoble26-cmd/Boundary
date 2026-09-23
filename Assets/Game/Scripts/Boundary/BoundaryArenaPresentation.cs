@@ -670,8 +670,45 @@ public sealed class BoundaryArenaPresentation : MonoBehaviour
             return;
         }
 
-        // Void's turquoise wall/light glow has been removed; walls stay
-        // in their normal appearance while Void is active.
+        // Void: every wall-jump wall glows so players can see them in the dark.
+        if (voidWallGlowSnapshots.Count > 0)
+            return;
+
+        for (int i = 0; i < platforms.Count; i++)
+        {
+            PlatformTile tile = platforms[i];
+            if (tile == null || tile.renderer == null || !IsWallTile(tile.transform))
+                continue;
+
+            Material[] original = tile.renderer.sharedMaterials;
+            Material[] glow = new Material[original.Length];
+            for (int m = 0; m < original.Length; m++)
+            {
+                if (original[m] == null)
+                    continue;
+                glow[m] = new Material(original[m]);
+                glow[m].EnableKeyword("_EMISSION");
+                glow[m].globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                glow[m].SetColor("_EmissionColor", VoidWallGlowColor * VoidWallGlowIntensity);
+            }
+            tile.renderer.sharedMaterials = glow;
+            voidWallGlowSnapshots.Add(new VoidWallGlowSnapshot
+            {
+                renderer = tile.renderer,
+                originalMaterials = original,
+                glowMaterials = glow
+            });
+        }
+    }
+
+    public static readonly Color VoidWallGlowColor = new Color(0.1f, 0.55f, 1f);
+
+    private static bool IsWallTile(Transform tile)
+    {
+        for (Transform t = tile; t != null; t = t.parent)
+            if (t.name == "Wall Jump Structures")
+                return true;
+        return false;
     }
 
     private static bool ShouldBuildVisuals()

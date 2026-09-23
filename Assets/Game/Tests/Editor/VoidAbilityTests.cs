@@ -18,6 +18,21 @@ public sealed class VoidAbilityTests
     }
 
     [Test]
+    public void VoidAddsRestrainedVisibilityLightToCubesAndBlackHoles()
+    {
+        Assert.AreEqual(4.4f,
+            BoundaryHazard.VoidVisibilityLightIntensity(BoundaryHazardKind.Cube), 0.001f);
+        Assert.AreEqual(6f,
+            BoundaryHazard.VoidVisibilityLightIntensity(BoundaryHazardKind.ArenaBlackHole), 0.001f);
+        Assert.AreEqual(6f,
+            BoundaryHazard.VoidVisibilityLightIntensity(BoundaryHazardKind.BlackRainSingularity), 0.001f);
+        Assert.AreEqual(0f,
+            BoundaryHazard.VoidVisibilityLightIntensity(BoundaryHazardKind.Meteor), 0.001f);
+        Assert.Less(BoundaryHazard.VoidCubeLightRange,
+            BoundaryHazard.VoidBlackHoleLightRange);
+    }
+
+    [Test]
     public void OnlyActivatesWhenOpponentHasLessHealth()
     {
         Assert.IsTrue(VoidAbility.CanActivate(80f, 79f));

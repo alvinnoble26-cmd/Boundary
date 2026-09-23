@@ -1,3 +1,4 @@
+using System.IO;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -11,9 +12,9 @@ public sealed class PlayerPresentationBalanceTests
     }
 
     [Test]
-    public void BlackHoleThrowForceIsBoostedByHalf()
+    public void BlackHoleThrowForceIsReducedByThirtyPercent()
     {
-        Assert.AreEqual(30f,
+        Assert.AreEqual(21f,
             BlackThrow.EffectiveThrowForce(BlackThrow.DefaultThrowForce), 0.001f);
     }
 
@@ -42,6 +43,16 @@ public sealed class PlayerPresentationBalanceTests
             PlayerOutlinePresentation.NormalWidth);
         Assert.Greater(PlayerOutlinePresentation.VoidWidth,
             PlayerOutlinePresentation.BullseyeWidth);
+    }
+
+    [Test]
+    public void VoidEnemyOutlineShaderIsIncludedInPlayerBuilds()
+    {
+        Shader outlineShader = Shader.Find("Boundary/Void Enemy Outline");
+
+        Assert.IsNotNull(outlineShader);
+        StringAssert.Contains("d8de5b89e3d14202aa0ab657562e8032",
+            File.ReadAllText("ProjectSettings/GraphicsSettings.asset"));
     }
 
     [Test]

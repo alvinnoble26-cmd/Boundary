@@ -9,6 +9,10 @@ using UnityEngine.Rendering;
 public sealed class BoundaryHazard : NetworkBehaviour
 {
     public const float PlatformContactCooldownSeconds = 5f;
+    public const float VoidCubeLightIntensity = 4.4f;
+    public const float VoidBlackHoleLightIntensity = 6f;
+    public const float VoidCubeLightRange = 14f;
+    public const float VoidBlackHoleLightRange = 20f;
 
     private static readonly List<BoundaryHazard> ActiveHazards = new List<BoundaryHazard>();
     private static bool hollowGlowActive;
@@ -58,6 +62,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
     private Transform tesseractRig;
     private Transform tesseractInnerFrame;
     private Transform blackHoleRig;
+    private Light voidVisibilityLight;
     private readonly List<Transform> blackHoleRings = new List<Transform>();
     private readonly List<float> blackHoleRingSpeeds = new List<float>();
     private readonly List<Material> blackHoleMaterials = new List<Material>();
@@ -1086,6 +1091,7 @@ public sealed class BoundaryHazard : NetworkBehaviour
 
     private void ApplyArenaMassGlow()
     {
+        ApplyVoidVisibilityLight();
         if (!buildVisuals || !arenaMass.value || !ShouldGlowDuringHollow(variant.value))
             return;
 
@@ -1114,6 +1120,43 @@ public sealed class BoundaryHazard : NetworkBehaviour
                 SetMaterialColor(blackHoleMaterials[index], Color.black, glow);
             }
         }
+    }
+
+    private void ApplyVoidVisibilityLight()
+    {
+        bool supportsVoidLight = kind.value == BoundaryHazardKind.Cube ||
+            IsSingularityVisual(kind.value);
+        bool shouldEmit = buildVisuals && darknessGlowActive && supportsVoidLight;
+        if (!shouldEmit)
+        {
+            if (voidVisibilityLight != null)
+                voidVisibilityLight.enabled = false;
+            return;
+        }
+
+        if (voidVisibilityLight == null)
+        {
+            GameObject lightObject = new GameObject("Void Visibility Light", typeof(Light));
+            lightObject.transform.SetParent(transform, false);
+            voidVisibilityLight = lightObject.GetComponent<Light>();
+            voidVisibilityLight.type = LightType.Point;
+            voidVisibilityLight.shadows = LightShadows.None;
+        }
+
+        bool blackHole = IsSingularityVisual(kind.value);
+        voidVisibilityLight.enabled = true;
+        voidVisibilityLight.color = blackHole
+            ? new Color(0.34f, 0.48f, 1f)
+            : new Color(0.08f, 0.52f, 1f);
+        voidVisibilityLight.intensity = VoidVisibilityLightIntensity(kind.value);
+        voidVisibilityLight.range = blackHole ? VoidBlackHoleLightRange : VoidCubeLightRange;
+    }
+
+    public static float VoidVisibilityLightIntensity(BoundaryHazardKind hazardKind)
+    {
+        return IsSingularityVisual(hazardKind)
+            ? VoidBlackHoleLightIntensity
+            : hazardKind == BoundaryHazardKind.Cube ? VoidCubeLightIntensity : 0f;
     }
 
     private void SetArenaBlackHolePalette()
@@ -1175,7 +1218,9 @@ public sealed class BoundaryHazard : NetworkBehaviour
 
     public static float CubeGlowIntensity(bool hollowActive, bool darknessActive)
     {
-        return hollowActive ? 30f : 18f;
+        if (hollowActive) return 30f;
+        // Void: cubes glow twice as bright so they stay visible in the dark.
+        return darknessActive ? 36f : 18f;
     }
 
     private static Material CreateMaterial(Color baseColor, Color emission, float intensity)

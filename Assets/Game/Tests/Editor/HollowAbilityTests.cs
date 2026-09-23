@@ -214,7 +214,7 @@ public sealed class BoundaryCubePresentationTests
         Assert.That(darkness.b, Is.GreaterThan(darkness.r));
         Assert.That(BoundaryHazard.CubeGlowIntensity(false, false), Is.GreaterThanOrEqualTo(18f));
         Assert.That(BoundaryHazard.CubeGlowIntensity(true, false), Is.GreaterThan(18f));
-        Assert.That(BoundaryHazard.CubeGlowIntensity(false, true), Is.EqualTo(18f));
+        Assert.That(BoundaryHazard.CubeGlowIntensity(false, true), Is.EqualTo(36f));
     }
 }
 

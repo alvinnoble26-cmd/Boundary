@@ -14,9 +14,9 @@ public sealed class AbilityInformationUI : MonoBehaviour
         "<b>TELEPORT</b>  •  4s cooldown\nAim where you want to go, then activate. After a 0.5s wind-up, you teleport to a valid open destination. A failed destination still uses the cooldown.",
         // Slide is currently disabled and intentionally omitted from the guide.
         "<b>DASH</b>  •  2.5s cooldown\nUse on the ground or in the air. Dash immediately in your movement/aim direction for a short burst while preserving useful sideways momentum.",
-        "<b>BLACK HOLE</b>  •  3.5s cooldown\nThrow a five-second black hole along your aim. It damages players immediately on contact and can consume movable arena cubes. Each loadout spawn carries five throws.",
+        "<b>BLACK HOLE</b>  •  3.5s cooldown\nThrow a five-second black hole straight along your aim. It damages players immediately on contact and can consume movable arena cubes. Each loadout spawn carries five throws.",
         "<b>ATTRACT</b>  •  3s cooldown\nThrow a gravity field along your aim. It pulls players, hazards, and movable objects toward its center; lighter and closer objects move the most.",
-        "<b>REPEL</b>  •  3s cooldown\nThrow a force field along your aim. It pushes players, hazards, and movable objects away from its center; lighter and closer objects move the most.",
+        "<b>REPEL</b>  •  3s cooldown\nSurround yourself with a red repulsion field. It builds up for 0.5s, during which you are immune to all damage, then bursts, pushing players, hazards, and movable objects away from you; lighter and closer objects move the most.",
         "<b>GRAPPLE</b>  •  3s cooldown\nAim at a valid surface or movable target within 50m. Surfaces pull you in; movable targets are pulled toward you. Jump to release while keeping your momentum.",
         "<b>HOLLOW</b>  •  5s cooldown\nAim and fire a fixed-width 70m void beam after a 0.75s charge. Its 3.24m damage radius lasts 2s and deals continuous damage; the larger magic circles are visual only.",
         "<b>VOID</b>  •  45s cooldown\nAvailable when your health is higher than your opponent's (always available in Practice). For 15s you become immune and faster while the opponent slows and is pulled strongly toward the domain black hole. Only you see the enemy highlighted with a bright cyan glow.",

@@ -13,9 +13,11 @@ public sealed class RepelPulseVisual : MonoBehaviour
     private LineRenderer[] spokes;
     private float startedAt;
     private float lifetime;
+    private float scaleMultiplier = 1f;
 
-    public void Configure(Material material, float duration)
+    public void Configure(Material material, float duration, float sizeMultiplier = 1f)
     {
+        scaleMultiplier = Mathf.Max(0.1f, sizeMultiplier);
         lifetime = Mathf.Max(0.05f, duration);
         startedAt = Time.time;
         rings = new[]
@@ -34,7 +36,7 @@ public sealed class RepelPulseVisual : MonoBehaviour
             return;
 
         float progress = Mathf.Clamp01((Time.time - startedAt) / lifetime);
-        float scale = Mathf.Lerp(0.2f, 2.2f, progress);
+        float scale = Mathf.Lerp(0.2f, 2.2f, progress) * scaleMultiplier;
         transform.localScale = new Vector3(scale, 1f, scale);
         transform.Rotate(0f, 420f * Time.deltaTime, 0f, Space.World);
         float alpha = 1f - progress;

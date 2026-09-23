@@ -3,7 +3,9 @@ using PurrNet;
 
 public class BlackThrow : MonoBehaviour, IAbility
 {
-    public const float ThrowForceMultiplier = 1.5f;
+    // The black hole now travels flat and launches 30% softer than its prior
+    // 1.5x force boost, giving opponents more time to react.
+    public const float ThrowForceMultiplier = 1.05f;
     public const float DefaultThrowForce = 20f;
 
     public AbilityId Id => AbilityId.BlackThrow;

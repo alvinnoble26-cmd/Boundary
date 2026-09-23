@@ -13,6 +13,9 @@ public sealed class PlayerOutlinePresentation : MonoBehaviour
     public const float NormalWidth = 0.05f;
     public const float BullseyeWidth = 0.085f;
     public const float VoidWidth = 0.12f;
+    public const float VoidPulseMinimumWidth = 0.086f;
+    public const float VoidPulseMaximumWidth = 0.186f;
+    public const float VoidPulseFrequency = 8f;
     private const float DepthLessEqual = 4f;
     private const float DepthAlways = 8f;
 
@@ -38,12 +41,20 @@ public sealed class PlayerOutlinePresentation : MonoBehaviour
     {
         if (!voidReveal || outlineMaterial == null)
             return;
-        float pulse = 0.86f + Mathf.Sin(Time.unscaledTime * 8f) * 0.14f;
+        float elapsed = Time.unscaledTime;
+        float pulse = 0.76f + Mathf.Sin(elapsed * VoidPulseFrequency) * 0.24f;
         outlineMaterial.SetColor("_OutlineColor", new Color(
             voidRevealColor.r * pulse,
             voidRevealColor.g,
             voidRevealColor.b,
             voidRevealColor.a));
+        outlineMaterial.SetFloat("_OutlineWidth", VoidOutlineWidthAt(elapsed));
+    }
+
+    public static float VoidOutlineWidthAt(float elapsed)
+    {
+        float pulse01 = 0.5f + 0.5f * Mathf.Sin(Mathf.Max(0f, elapsed) * VoidPulseFrequency);
+        return Mathf.Lerp(VoidPulseMinimumWidth, VoidPulseMaximumWidth, pulse01);
     }
 
     public void Refresh()

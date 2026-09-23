@@ -153,10 +153,14 @@ public sealed class AbilityHitFeedback : MonoBehaviour
 
         Color arrowColor = profile.Accent;
         arrowColor.a = 0.95f;
-        arrowImage = CreateImage(canvas.transform, "Source Arrow", GetArrowTexture(), arrowColor);
-        arrow = arrowImage.rectTransform;
-        SetRect(arrow, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(56f, 56f) * sizeScale);
-        PointArrowAt(sourcePosition);
+        // Void hits never show the triangle pointer toward the attacker.
+        if (profile.DisplayName != "VOID")
+        {
+            arrowImage = CreateImage(canvas.transform, "Source Arrow", GetArrowTexture(), arrowColor);
+            arrow = arrowImage.rectTransform;
+            SetRect(arrow, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(56f, 56f) * sizeScale);
+            PointArrowAt(sourcePosition);
+        }
 
         accumulatedDamage = damage;
         startedAt = Time.unscaledTime;
@@ -266,7 +270,15 @@ public sealed class AbilityHitFeedback : MonoBehaviour
         }
 
         if (!isDealt)
-            PointArrowAt(sourcePosition);
+        {
+            if (profile.DisplayName == "VOID")
+            {
+                if (arrow != null)
+                    arrow.gameObject.SetActive(false);
+            }
+            else
+                PointArrowAt(sourcePosition);
+        }
     }
 
     private IEnumerator Run()
