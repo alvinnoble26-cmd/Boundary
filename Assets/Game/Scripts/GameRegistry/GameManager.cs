@@ -279,9 +279,6 @@ public class GameManager : MonoBehaviour
         if (receivedMatchResult || isEndingGame)
             return;
 
-        // Playground is an open-ended local sandbox. A consumed player can
-        // remain in the scene, but only leaving through the normal menu flow
-        // ends the session.
         if (IsPlayground)
         {
             Debug.Log("[GameManager] Ignoring Playground death: " + reason);
@@ -571,10 +568,6 @@ private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
             StopCoroutine(roundStartGateRoutine);
         roundStartGateRoutine = StartCoroutine(WaitForBothLoadedPlayers());
 
-        // Keep the dedicated server in one stable Game scene between rounds.
-        // Rematch clients reconnect through the same path as a code join. A
-        // server-side scene reload while empty prevents PurrNet from assigning
-        // that already-loaded scene to the later connections.
         return;
     }
 
@@ -799,7 +792,6 @@ private bool IsConnectedToServer()
         StartCoroutine(StartPracticeRoutine(false));
     }
 
-    // Retained for existing menu bindings and older callers.
     public void PlayOffline()
     {
         PlayPractice();
@@ -918,9 +910,6 @@ private bool IsConnectedToServer()
 
         bool wasPractice = isPracticeMode;
 
-        // A Practice match is a local host. Stop its server side while the
-        // client RPC module still exists so owner-auth SyncVars can despawn
-        // cleanly instead of attempting to flush through a removed module.
         if (wasPractice && net != null && net.isServer)
         {
             try { net.StopServer(); } catch { }
@@ -994,8 +983,6 @@ private bool IsConnectedToServer()
         LastMatchWasCpu = IsCpuPractice;
         if (IsPlayground)
         {
-            // Practice deaths return directly to the server selector rather
-            // than showing the competitive loss/rematch screen.
             lastMatchResult = MatchResult.None;
             lastEndReason = "";
             returnToServerSelector = true;
@@ -1034,8 +1021,6 @@ private bool IsConnectedToServer()
                 yield return null;
             }
 
-            // Keep the local client module alive throughout server-side
-            // despawning, then let the client finish its disconnect below.
             yield return null;
             yield return null;
         }
@@ -1052,8 +1037,6 @@ private bool IsConnectedToServer()
                 yield return null;
             }
 
-            // Give PurrNet's scene cleanup a chance to unload the networked
-            // Game scene and restore its original Boot scene first.
             yield return null;
             yield return null;
         }
@@ -1242,9 +1225,6 @@ private bool IsConnectedToServer()
 
     private IEnumerator ConnectRematchAfterServerReset(string serverHost, int serverPort)
     {
-        // The dedicated server reloads the arena after both round-one clients
-        // disconnect. Give that networked scene load time to finish before the
-        // rematch clients enter it.
         yield return new WaitForSecondsRealtime(1.25f);
 
         string lobbyCode = lastLobbyCode;

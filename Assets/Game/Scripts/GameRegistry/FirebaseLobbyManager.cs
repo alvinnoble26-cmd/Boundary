@@ -100,7 +100,6 @@ catch (System.InvalidOperationException)
             codeInput.onValueChanged.RemoveListener(OnCodeTyped);
     }
 
-    // Hook this to your Host button.
     public async void CreateLobby()
     {
         if (createInProgress)
@@ -157,10 +156,6 @@ catch (System.InvalidOperationException)
                 { "rematchRound", 0 }
             };
 
-            // Lobby reads are restricted to participants. This create is
-            // intentionally blind: if a randomly selected code is already in
-            // use, Firestore rejects it because the create rule cannot match
-            // an existing document. Retry with a new invitation code.
             bool created = false;
             for (int attempt = 0; attempt < 20; attempt++)
             {
@@ -262,9 +257,6 @@ catch (System.InvalidOperationException)
                 { "joinerUid", account.UserId }
             };
 
-            // A guest has no read permission until this succeeds. The Firestore
-            // update rule atomically verifies that the target is an open,
-            // single-player lobby and records this user as its joiner.
             await lobbyRef.UpdateAsync(updates);
 
             Debug.Log("[FirebaseLobby] Joined lobby successfully: " + code);
@@ -531,8 +523,6 @@ catch (System.InvalidOperationException)
                                request.responseCode + " Error=" + request.error +
                                " Body=" + request.downloadHandler.text);
 
-                // The backend may still have accepted the deployment before the
-                // request timed out, so Firestore remains the authoritative state.
                 if (request.responseCode > 0 && request.responseCode != 500)
                     ShowError("Could not request a game server.");
             }

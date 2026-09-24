@@ -56,8 +56,6 @@ public class FirebaseManager : MonoBehaviour
         I = this;
         DontDestroyOnLoad(gameObject);
 
-        // The last successfully chosen skin is available immediately when the
-        // game scene opens, even while Firebase is still loading.
         SelectedSkin = NormalizeSkinId(PlayerPrefs.GetString(
             SelectedSkinPreferenceKey, "beard"));
         hasPendingSkinSync = PlayerPrefs.GetInt(PendingSkinSyncPreferenceKey, 0) == 1;
@@ -237,8 +235,6 @@ public class FirebaseManager : MonoBehaviour
             hasPendingSkinSync = false;
         }
 
-        // If a previous equip worked locally while the network save failed,
-        // retry it before accepting an older remote selection.
         if (hasPendingSkinSync)
         {
             try
@@ -302,8 +298,6 @@ public class FirebaseManager : MonoBehaviour
 #endif
         if (!IsOwnedSkin(skinId)) return false;
 
-        // Equip immediately. A temporary Firestore problem must not silently
-        // cancel the player's choice and put the beard skin back on.
         SaveSelectedSkinLocally(skinId, true, true);
 
         try

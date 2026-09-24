@@ -10,9 +10,6 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
     public const float BlastDuration = 2f;
     public const float DamagePerSecond = 20f;
     public const float MaximumRange = 70f;
-    // Damage is a fixed cylinder for the entire beam. It deliberately does
-    // not widen with distance, so its rendered energy beam is the same area
-    // the server checks for damage.
     public const float BlastRadius = 3.24f;
     public const float MagicCircleRadiusMultiplier = 1.6f;
     public const float MagicCircleRadius = BlastRadius * MagicCircleRadiusMultiplier;
@@ -23,8 +20,6 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
 
     private const float VisualPortalRadius = 2.35f;
     private const float VisualPortalSpacing = 12f;
-    // LineRenderer width is a diameter. The outer energy beam therefore ends
-    // exactly at the server damage radius on both sides of its centre line.
     private const float VisualBeamWidth = BlastRadius * 2f;
 
     private static readonly Color Purple = new Color(0.7f, 0.08f, 1.8f, 0.9f);
@@ -249,8 +244,6 @@ public sealed class HollowAbility : MonoBehaviour, IAbility
                 float portalDistance = Vector3.Dot(circle.position - origin, direction);
                 float arrival = Mathf.SmoothStep(0f, 1f,
                     Mathf.InverseLerp(portalDistance - 3f, portalDistance, visibleLength));
-                // Magic circles are decorative and deliberately remain 1.6x
-                // the fixed damage radius at every point along the beam.
                 circle.localScale = Vector3.one * arrival;
                 foreach (LineRenderer line in circle.GetComponentsInChildren<LineRenderer>())
                     line.startColor = line.endColor = WithAlpha(BrightPurple, fade * arrival);

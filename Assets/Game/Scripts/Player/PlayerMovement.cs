@@ -59,7 +59,6 @@ public class PlayerMovement : NetworkBehaviour
     [HideInInspector] public Rigidbody rb;
     [HideInInspector] public Vector2 moveInput;
 
-    // Set only by the local practice spawner, never by a network payload.
     public bool IsCpuControlled { get; private set; }
     public bool IsPracticeDummy { get; private set; }
     public bool HasSimulationAuthority => isOwner || (IsCpuControlled && isServer);
@@ -143,10 +142,8 @@ public class PlayerMovement : NetworkBehaviour
         }
     }
 
-// Add this field near the top with other private fields
 private SlideAbility slideAbility;
 
-// Replace your existing Awake with this
 void Awake()
 {
     transform.localScale *= CharacterScale;
@@ -171,7 +168,6 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
 {
     yield return new WaitUntil(() => rb != null);
 
-    // Wait a moment for ownership to settle
     yield return null;
 
     Debug.Log($"[Move] OnSpawned isOwner={isOwner} kinematic(before)={rb.isKinematic}");
@@ -253,9 +249,6 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         if (!HasSimulationAuthority) return;
         if (IsPracticeDummy)
         {
-            // The dummy remains a normal physics target so ability hit detection and
-            // damage use the standard player path, but never acquires movement from
-            // input, recoil, hazards, or gravity.
             if (rb != null)
             {
                 rb.linearVelocity = Vector3.zero;
@@ -275,8 +268,6 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
 
         if (raw == Vector2.zero)
         {
-            // Releasing the stick/key must stop acceleration immediately.
-            // Smoothing only the input ramp-up avoids the old movement tail.
             smoothedMoveInput = Vector2.zero;
         }
         else
@@ -293,9 +284,6 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         }
         UpdateGrounded();
 
-        // A held jump is queued once per landing. This makes the mobile jump
-        // button continuously hop without turning a held press into repeated
-        // air or wall jumps.
         if (!isGrounded)
         {
             heldJumpUsedOnCurrentGroundContact = false;
@@ -309,8 +297,6 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         UpdateBoundaryFooting();
         HandleWallDetection();
 
-        // Consume an active slide jump before either suppression or normal
-        // jump handling can downgrade it to a regular jump.
         if (slideJumpExecutedThisStep || TryExecuteRequestedSlideJump())
         {
             ApplyBoundaryForces();
@@ -364,8 +350,6 @@ private System.Collections.IEnumerator SetupPhysicsAuthority()
         }
 
         JumpPressedThisFrame = false;
-        //Cursor.lockState = CursorLockMode.None;
-        //Cursor.visible = true;
     }
 
     private bool TryExecuteRequestedSlideJump()
@@ -500,7 +484,6 @@ void HandleWallDetection()
     if (isGrounded)
     {
         wallStickCounter = 0f;
-        // If we land while suppressed (e.g. mid-slide), reset suppression
         if (MovementSuppressed && movementSuppressionAllowsEnvironmentalRelease)
             SetMovementSuppressed(false, -1f);
         return;
@@ -515,7 +498,6 @@ void HandleWallDetection()
     {
         wallStickCounter = Mathf.Max(0f, wallStickCounter - Time.fixedDeltaTime);
 
-        // Wall contact lost — if still suppressed, release it
         if (wallStickCounter <= 0f && MovementSuppressed && movementSuppressionAllowsEnvironmentalRelease)
             SetMovementSuppressed(false, -1f);
     }
@@ -549,7 +531,6 @@ void HandleJump()
 {
     if (!jumpRequested) return;
 
-    // Always release suppression on jump regardless of source
     if (MovementSuppressed)
         SetMovementSuppressed(false, -1f);
 
@@ -586,9 +567,6 @@ void HandleJump()
         JumpPressedThisFrame = true;
         GetComponent<PlayerAbilities>()?.CancelGrappleForJump();
 
-        // Resolve slide jumps at the moment the input is queued. Waiting until
-        // later in FixedUpdate allowed suppression and component execution
-        // order to consume the request before SlideAbility saw it.
         if (TryExecuteRequestedSlideJump())
         {
             jumpRequested = false;
@@ -653,9 +631,6 @@ void HandleJump()
             match.EffectivePullStrength,
             IsStableGrounded);
         rb.AddForce(acceleration, ForceMode.Acceleration);
-        // Slope movement may disable built-in gravity while grounded. Boundary
-        // recovery at the arena edge must never leave the player gravity-free,
-        // except while a wall run is actively holding the player in place.
         rb.useGravity = !IsWallRunning;
 
         Vector3 radial = rb.position - match.ArenaCenter;
@@ -704,8 +679,6 @@ void HandleJump()
         float smoothedX = Mathf.LerpAngle(currentEuler.x, xTilt, tiltBlend);
         float smoothedZ = Mathf.LerpAngle(currentEuler.z, zTilt, tiltBlend);
 
-        // Yaw is exact rather than damped: the networked skin's front must
-        // agree with the first-person camera on every physics tick.
         rb.MoveRotation(Quaternion.Euler(smoothedX, yaw, smoothedZ));
     }
 
@@ -813,10 +786,6 @@ void HandleJump()
         if (candidate.CompareTag("Wall"))
             return true;
 
-        // The Boundary floor is generated at runtime and its exposed sides are
-        // legitimate wall-jump routes. Restrict the exception to the two floor
-        // containers so hazards, projectiles, and other players cannot become
-        // accidental wall-jump surfaces merely because they share a layer.
         Transform current = candidate.transform;
         while (current != null)
         {
@@ -855,12 +824,9 @@ void HandleJump()
     if (slideAbility != null && slideAbility.HandleObstacleCollision(collision))
         return;
 
-    // If we hit a ceiling or steep wall, release suppression
     foreach (ContactPoint contact in collision.contacts)
     {
         float angle = Vector3.Angle(contact.normal, Vector3.down);
-        // Normal pointing down = ceiling hit
-        // Normal pointing mostly horizontal = wall hit  
         if (angle < 45f || (angle > 60f && angle < 120f))
         {
             if (MovementSuppressed && movementSuppressionAllowsEnvironmentalRelease)

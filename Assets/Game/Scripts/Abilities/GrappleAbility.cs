@@ -9,15 +9,10 @@ public sealed class GrappleAbility : MonoBehaviour, IAbility
     public const float MaximumRange = 50f;
     public const float MaximumActiveDuration = 4f;
     public const float MaximumServerFacingAngle = 60f;
-    // Grappling steers the current velocity instead of simply dragging the
-    // player to the anchor. This keeps traversal momentum meaningful and lets
-    // a release carry the player past the ledge.
     public const float MaximumTraversalSpeed = 96f;
     public const float MinimumTraversalSpeed = 24f;
     public const float TraversalAcceleration = 95f;
     public const float DirectionRedirectRadiansPerSecond = 8f;
-    // Release before reaching the anchor so the grapple becomes a traversal
-    // launch instead of pulling the player all the way into the surface.
     public const float ReleaseDistance = 4f;
     private const float CableSpeed = 115f;
     private const float MinimumCableTravelTime = 0.08f;
@@ -160,7 +155,6 @@ public sealed class GrappleAbility : MonoBehaviour, IAbility
             Vector3 delta = anchor - movement.rb.worldCenterOfMass;
             if (delta.sqrMagnitude > 1.5f * 1.5f)
             {
-                // Preserve the final redirected pull before releasing it.
                 movement.rb.linearVelocity = CalculateTraversalVelocity(
                     movement.rb.linearVelocity,
                     delta.normalized,
@@ -227,9 +221,6 @@ public sealed class GrappleAbility : MonoBehaviour, IAbility
 
     private static Material CreateMobileSafeRopeMaterial()
     {
-        // Use a shader already retained by the UI build on iOS. The previous
-        // runtime Shader.Find-only URP material could be stripped and render
-        // as pink on device.
         Shader shader = Shader.Find("Sprites/Default");
         if (shader == null)
             shader = Shader.Find("UI/Default");
@@ -314,8 +305,6 @@ public sealed class GrappleAbility : MonoBehaviour, IAbility
 
     private void ConfigureSparks(ParticleSystem particles, float rate, int maxParticles)
     {
-        // A newly added ParticleSystem can already be playing before its first
-        // frame. Duration cannot be changed until it has been fully cleared.
         particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         ParticleSystem.MainModule main = particles.main;
         main.loop = rate > 0f;
