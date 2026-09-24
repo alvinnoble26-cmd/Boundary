@@ -65,12 +65,7 @@ public class ServerSceneDriver : MonoBehaviour
             yield break;
         }
 
-        // Register the authoritative Game scene before clients arrive. Waiting
-        // in Boot for playerCount creates a deadlock: clients wait for the
-        // server's scene assignment while the server waits for fully registered
-        // players. GameManager pauses the arena separately until both spawned
-        // PlayerMovement objects exist, so preloading does not start the round.
-        Debug.Log("[ServerSceneDriver] Server ready. Preloading network Game scene.");
+        Debug.Log("preload game scene - this will check what is loading first");
         LoadGameScene();
     }
 
